@@ -1,10 +1,11 @@
 # Hardware notes
 
-Findings from tracing the driver board's KiCad files, recorded because two of
-them are easy to misdiagnose on the bench.
+Findings from tracing the driver board's KiCad files, recorded because several
+of them are easy to misdiagnose on the bench.
 
-Everything here describes Willem Hillier's original board, unchanged. Nothing
-in this fork modifies the hardware.
+Everything here describes Willem Hillier's original board. This fork changes no
+copper, no footprint geometry and no connectivity — only the library
+*references* the files use to find their symbols, which had rotted with age.
 
 ## DIP switches, as actually wired
 
@@ -33,7 +34,7 @@ That is why the firmware disables the transmitter before reading the switches.
 ### SW1 — the small block: 4 positions, all wired, only 2 pins
 
 Labelled `MIDI_CHANNEl` in the schematic (upstream's typo, kept here so the
-name is searchable).
+name stays searchable).
 
 | Switch | Pad | Goes to | Reaches the MCU as |
 |---|---|---|---|
@@ -51,22 +52,79 @@ analog nets, and the firmware separates them by voltage threshold —
 multimeter cannot see four connections because there are only two wires.
 
 Practical consequence: this block cannot be read as digital inputs. Anything
-that wants a physical switch has to go through `readSmallDip()`, and only when
-the MIDI channel is not already using the block.
+wanting a physical switch has to go through `readSmallDip()`, and only when the
+MIDI channel is not already using the block.
 
-## The schematic will not open: legacy format, and a missing symbol cache
+## Opening the schematic in a modern KiCad
 
-Two separate problems stacked on top of each other.
+Three separate problems, all now addressed. If you are working from a fresh
+clone you should not hit any of them.
 
-**1. The symbol cache was never committed.** `midi-solenoid-driver.sch` opens
-with `LIBS:midi-solenoid-driver-cache`, but that file is absent. Upstream's
-`.gitignore` excluded `*-cache.lib`, which is a reasonable rule for source
+### 1. The symbol cache was never committed
+
+`midi-solenoid-driver.sch` opens with `LIBS:midi-solenoid-driver-cache`, but
+that file is absent, so KiCad greets you with:
+
+> The project symbol library cache file 'midi-solenoid-driver-cache.lib' was
+> not found.
+
+Upstream's `.gitignore` excluded `*-cache.lib` — a sensible rule for source
 code and a damaging one for a KiCad 5 project, where the cache is how a
-schematic stays self-contained. This fork's `.gitignore` no longer excludes it.
+schematic stays self-contained. This fork no longer excludes it.
 
-**2. The file is legacy Eeschema format** (`Schematic File Version 4`, KiCad 5)
-and **KiCad 9's `kicad-cli` cannot read it.** This fails silently, which is the
-part worth warning about:
+**Choose "Load Without Cache File".** Nothing is lost by doing so: every symbol
+in this design comes from a stock KiCad library, so there are no custom symbols
+that only existed in the cache. Then follow KiCad's own advice in that dialog
+and save immediately.
+
+### 2. Two symbols moved between KiCad 5 and KiCad 9
+
+These caused the red `?` placeholders where the MOSFETs should be. Both
+references have been updated in the schematic:
+
+| Was (KiCad 5) | Now (KiCad 9) | Count |
+|---|---|---|
+| `Device:Q_NMOS_GDS` | `Transistor_FET:Q_NMOS_GDS` | 16 |
+| `MCU_Microchip_ATmega:ATmega328PB-AU` | `MCU_Microchip_ATmega:ATmega328PB-A` | 1 |
+
+`-A` is KiCad's TQFP-32 variant, which matches the board's
+`Package_QFP:TQFP-32_7x7mm_P0.8mm` footprint. The *value* field still reads
+`ATmega328PB-AU`, deliberately — that is the real Microchip order code, and
+only the symbol reference needed changing.
+
+Every other symbol in the design was verified present in KiCad 9 unchanged.
+
+### 3. The project footprint library was never committed
+
+Five footprints referenced the nickname `footprints:`, a project-local library
+absent from upstream's repository. Three of them exist in stock KiCad 9
+libraries under different nicknames, one has been renamed, and one is genuinely
+custom and exists nowhere else:
+
+| Footprint | Stock equivalent in KiCad 9 |
+|---|---|
+| `Fuseholder_Blade_Mini_Keystone_3568` | `Fuse:` — same name |
+| `TerminalBlock_MetzConnect_Type701_RT11L02HGLU_1x02_P6.35mm_Horizontal` | `TerminalBlock_MetzConnect:` — same name |
+| `TerminalBlock_Phoenix_PT-1,5-16-3.5-H_1x16_P3.50mm_Horizontal` | `TerminalBlock_Phoenix:` — same name |
+| `RJ12_Amphenol_54601` | renamed to `Connector_RJ:RJ12_Amphenol_54601-x06_Horizontal` |
+| `willemhillier.wordpress-logo` | **none — custom artwork** |
+
+Rather than remap four references to lookalikes and lose the fifth, all five
+were **recovered from `midi-solenoid-driver.kicad_pcb`**, which embeds complete
+footprint definitions for everything placed on the board. They now live in
+[`footprints.pretty/`](midi-solenoid-driver/footprints.pretty/) with an
+`fp-lib-table` pointing at them, so the nickname resolves from a fresh clone
+with nothing to install.
+
+The recovered footprints are the ones actually used to manufacture this board,
+not substitutes. Placement, net assignments and timestamps were stripped, and
+references reset to `REF**`, as a library footprint requires. All five were
+verified to parse and render under KiCad 9.
+
+### What the command line cannot do
+
+**KiCad 9's `kicad-cli` cannot read the legacy Eeschema format at all, and
+fails silently:**
 
 ```
 $ kicad-cli sch export pdf --output sch.pdf midi-solenoid-driver.sch
@@ -76,33 +134,16 @@ Done.
 
 Exit status 0, a 271 KB file, and a completely blank page. A netlist export
 from the same file returns `(components)` and `(nets)` both empty. Do not trust
-the exit code here; check the output.
+the exit code — check the output. Use the GUI, which has the legacy importer
+the CLI lacks.
 
-**The PCB is unaffected.** KiCad 9 reads `midi-solenoid-driver.kicad_pcb`
-correctly, warning only that legacy zone fills will be converted on a
-best-effort basis.
+The PCB is unaffected: `kicad-cli` reads `midi-solenoid-driver.kicad_pcb`
+correctly, warning only that legacy zone fills are converted on a best-effort
+basis.
 
-### Getting the schematic back
+### Finishing the job
 
-Open the project in the **KiCad 9 GUI**, not the CLI. The GUI has the legacy
-importer the command-line tool lacks, and will convert the schematic on open.
-Because the cache is missing, it will resolve symbols against your installed
-libraries instead — which works here, because every symbol in this design is a
-stock KiCad symbol. There are no custom symbols to lose:
-
-```
-Connector:6P6C                      Device:R_Pack04
-Connector:Screw_Terminal_01x02      Device:R_US
-Connector:Screw_Terminal_01x16      Interface_UART:SN75LBC176D
-Connector_Generic:Conn_02x03_Odd_Even   MCU_Microchip_ATmega:ATmega328PB-AU
-Device:C                            Regulator_Switching:R-78B5.0-2.0
-Device:D_Small                      Switch:SW_DIP_x04
-Device:Fuse                         Switch:SW_DIP_x08
-Device:LED_Small                    power:+12V
-Device:Q_NMOS_GDS                   power:+5V
-                                    power:GND
-```
-
-**Then save and commit the converted `.kicad_sch`.** KiCad 6 and later embed
-symbol definitions directly in the schematic file, so once converted, the
-project carries its own symbols and this class of problem cannot recur.
+Once the schematic opens cleanly, **save it and commit the converted
+`.kicad_sch`.** KiCad 6 and later embed symbol definitions directly in the
+schematic file, so from that point the project carries its own symbols and this
+entire class of problem cannot recur.
