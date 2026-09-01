@@ -99,6 +99,19 @@ Arduino IDE, or `arduino-cli`:
 Open [`firmware/midiSolenoidDriverDirectMIDI/midiSolenoidDriverDirectMIDI.ino`](firmware/midiSolenoidDriverDirectMIDI/midiSolenoidDriverDirectMIDI.ino)
 and upload.
 
+Verified building with MiniCore 3.1.3 and MIDI Library 5.0.2:
+
+```
+arduino-cli compile --fqbn MiniCore:avr:328:variant=modelPB \n  firmware/midiSolenoidDriverDirectMIDI
+```
+
+Which yields, comfortably inside the 328PB:
+
+```
+Sketch uses 5754 bytes (17%) of program storage space. Maximum is 32384 bytes.
+Global variables use 450 bytes (21%) of dynamic memory, leaving 1598 for locals.
+```
+
 On boot, output 1 clicks once for 150 ms. That's the heartbeat — if you hear it,
 the board came up.
 
@@ -126,6 +139,19 @@ any given moment rather than all 16 at once. On a full chord that is a
 substantially gentler load, and it takes some of the growl out of the hold.
 There is normally no reason to change it, but setting it to `0` restores the
 original all-in-phase behaviour if you want to compare.
+
+Simulating one full 2 ms period with all 16 channels held, at the default 40%
+duty:
+
+| | In phase (`pwmPhaseStep = 0`) | Staggered (125 us) |
+|---|---|---|
+| Duty per coil | 40% | 40% |
+| Mean coils on | 6.40 | 6.40 |
+| **Peak coils on** | **16** | **7** |
+| Load over the period | 0 coils for 60% of it, then all 16 for 40% | 6 coils for 60% of it, 7 for 40% |
+
+Same average power, same holding force, less than half the peak draw, and a
+nearly flat load instead of a hard square wave at 500 Hz.
 
 `peakDuration` needs to be long enough for the solenoid to physically pull in —
 too short and it will buzz or fail to seat under load. `pwmOnTime` needs to be
