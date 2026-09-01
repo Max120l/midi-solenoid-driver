@@ -31,3 +31,9 @@ _autosave-*
 # Exported BOM files
 *.xml
 *.csv
+
+# KiCad editor lock files and automatic project backups.
+# These appear whenever the project is open in KiCad and are never source.
+*.lck
+~*.lck
+*-backups/
