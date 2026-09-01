@@ -262,6 +262,84 @@ by a comfortable margin. Small valve solenoids will often hold far below 40%.
 
 These values are a working starting point, not a universal answer.
 
+### Driving the pull-in less hard
+
+```cpp
+const int peakDutyPercent = 100;
+```
+
+100 means solid DC for the whole peak window. Lower values PWM the pull-in as
+well, at the same 500 Hz and with the same per-channel stagger.
+
+**This is the single most effective lever on supply current**, because the
+pull-in is the only time every energised channel draws full current
+simultaneously — the hold phase is already staggered and duty-limited. Reducing
+it also brings the stagger to bear on the attack, which at 100% it cannot
+touch.
+
+Reduce it when the solenoids are overspecced for what they move, which is
+common: a 22 W actuator shifting a small valve does not need 22 W to seat it.
+Tune on the bench under real load — reduce until a solenoid seats sluggishly or
+not at all, then back off generously. Too low is worse than too high: notes
+fail silently under load, which is far harder to diagnose later than a supply
+that runs warm.
+
+Bounds are checked at compile time; 0 or 101 fails the build.
+
+### Worked example: an overspecced, duty-limited solenoid
+
+A U0530S tubular solenoid — 12 V, 6.5 Ω, 1.8 A, 22 W, **rated 10% duty cycle**
+— driving a small valve. Force falls roughly with the square of coil current,
+so the numbers move very differently from the current:
+
+| `peakDutyPercent` | Coil current | Pull-in force | 16-ch attack | 20-ch | 64-ch |
+|---|---|---|---|---|---|
+| 100 | 1.85 A | 100% | 29.5 A | 36.9 A | 118 A |
+| 80 | 1.46 A | 62% | 18.6 A | 23.3 A | 74.5 A |
+| 60 | 1.07 A | 33% | 10.2 A | 12.8 A | 40.9 A |
+| 50 | 0.87 A | 22% | 7.0 A | 8.7 A | 27.8 A |
+
+A solenoid rated to pull 700 g moving a valve needing perhaps 50 g still has
+roughly a 4:1 margin at 60% duty. Three times less supply current for margin
+you were never using.
+
+Note how much peak-and-hold is already doing before you touch this: at 100%,
+sixteen channels attack at 29.5 A and settle to **4.3 A** holding.
+
+**Capacitors cannot rescue the attack.** C = I·t/ΔV, so covering 37 A for a
+40 ms peak within 1 V of droop needs about 1.5 farads. Bulk capacitance tames
+switching edges only — the supply must genuinely deliver the attack, or the
+attack must come down.
+
+### Solenoids with a duty-cycle rating
+
+Many cheap actuators are rated for intermittent use — "10% ED", "duty cycle
+10%" — meaning they are not built to stay energised. Treat the rating as a
+thermal budget: **rated wattage × rated duty** is roughly the average
+dissipation that produces the quoted temperature rise. For a 22 W solenoid at
+10%, that is 2.2 W.
+
+Hold dissipation, allowing for the flyback diode clamping the coil during the
+off portion:
+
+| `pwmOnTime` | Duty | Coil current | Dissipation | vs a 2.2 W budget |
+|---|---|---|---|---|
+| 800 | 40% | 0.67 A | 2.95 W | 134% — over |
+| 700 | 35% | 0.58 A | 2.20 W | 100% — at the limit |
+| 600 | 30% | 0.48 A | 1.49 W | 68% |
+| 500 | 25% | 0.39 A | 0.98 W | 45% |
+
+What saves you is thermal mass: the coil integrates over minutes, so what
+matters is the average across a passage, not any single note. Ordinary playing
+with notes down a third of the time is comfortable even at 40%.
+
+The real hazards are a **drone or pedal point held for minutes**, and a **stuck
+note**. On duty-limited solenoids the stuck-note watchdog stops being a
+convenience and becomes a thermal safety feature — consider shortening
+`maxNoteDuration` well below its 30 s default, and note that it will also cut
+off any legitimately long note, which is a genuine trade-off rather than a free
+win.
+
 ### Phase staggering
 
 ```cpp

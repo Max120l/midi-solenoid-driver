@@ -10,9 +10,10 @@
 //      upstream, so this firmware decodes standard 31250-baud MIDI on the same
 //      RJ12 pin using the Arduino MIDI Library. No interface board needed.
 //
-//   2. Peak-and-hold drive. Each solenoid is driven at full current for a short
-//      pull-in window, then PWM'd down to a lower holding current, so coils
-//      survive sustained notes. Each channel's hold PWM is phase-staggered to
+//   2. Peak-and-hold drive. Each solenoid is driven hard for a short pull-in
+//      window, then PWM'd down to a lower holding current, so coils survive
+//      sustained notes. The pull-in itself can also be PWM'd, for solenoids
+//      overspecced for what they move -- see peakDutyPercent. Each channel's hold PWM is phase-staggered to
 //      spread the load on the supply, and daisy-chained boards offset their
 //      stagger from each other.
 //
@@ -179,10 +180,35 @@ byte solenoidState[numSolenoids];
 unsigned long noteOnTime[numSolenoids];
 byte notePeakDuration[numSolenoids];
 
-const int peakDurationMax = 40; // ms at full current, and at full velocity
+const int peakDurationMax = 40; // ms of pull-in drive, and at full velocity
 const int peakDurationMin = 15; // ms at the lowest velocity, when scaling
-const int pwmPeriod       = 2000; // us, hold PWM period (500 Hz)
+const int pwmPeriod       = 2000; // us, PWM period for both phases (500 Hz)
 const int pwmOnTime       = 800;  // us, hold PWM on-time (40% duty)
+
+// How hard to drive the pull-in, as a percentage. 100 means solid DC for the
+// whole peak window, which is what a solenoid sized correctly for its load
+// wants.
+//
+// Lower it when the solenoids are overspecced for what they are moving, which
+// is common -- a 22 W actuator shifting a small valve does not need all 22 W
+// to seat it. This is the single most effective lever on the current your
+// supply has to deliver, because the pull-in is the only time every energised
+// channel draws full current at once. Dropping to 60 takes a 16-channel attack
+// from 29.5 A to 17.7 A on 6.5 ohm solenoids.
+//
+// Tune it on the bench under real load: reduce until a solenoid fails to seat
+// or seats sluggishly, then back off generously. Too low and notes will
+// silently fail to sound under load, which is much harder to diagnose later
+// than a supply that runs warm.
+const int peakDutyPercent = 100;
+
+// Derived. Equals pwmPeriod at 100%, which the loop treats as solid DC.
+const int peakOnTime = ((long)pwmPeriod * peakDutyPercent) / 100;
+
+static_assert(peakDutyPercent >= 1 && peakDutyPercent <= 100,
+              "peakDutyPercent must be between 1 and 100");
+static_assert(pwmOnTime < pwmPeriod,
+              "pwmOnTime must be shorter than pwmPeriod");
 
 // Each channel's hold PWM is offset in time from the one before it, so that
 // simultaneously-held solenoids do not all switch on at the same instant.
@@ -401,23 +427,25 @@ void loop() {
       continue;
     }
 
+    // Shift this channel's place in the PWM cycle by its index, staggering the
+    // 16 channels' on-times across the period rather than stacking them. Both
+    // the peak and the hold phase use it.
+    unsigned long cyclePosition =
+      (cycleBase + boardPhaseOffset + (unsigned long)i * pwmPhaseStep) % pwmPeriod;
+
     if (solenoidState[i] == 1) {
       if (currentMillis - noteOnTime[i] >= notePeakDuration[i]) {
         solenoidState[i] = 2;
+        // Deliberately no "else" on the state-2 block below: a solenoid that
+        // just finished pulling in should start holding on this same pass.
+      } else if (peakOnTime >= pwmPeriod) {
+        digitalWrite(solenoidPins[i], HIGH);   // 100%, solid DC
+      } else {
+        digitalWrite(solenoidPins[i], (cyclePosition < peakOnTime) ? HIGH : LOW);
       }
     }
-    // Deliberately not an "else if": a solenoid that just finished its peak
-    // window above should start holding on this same pass, not the next one.
     if (solenoidState[i] == 2) {
-      // Shift this channel's place in the PWM cycle by its index, staggering
-      // the 16 channels' on-times across the period rather than stacking them.
-      unsigned long cyclePosition =
-        (cycleBase + boardPhaseOffset + (unsigned long)i * pwmPhaseStep) % pwmPeriod;
-      if (cyclePosition < pwmOnTime) {
-        digitalWrite(solenoidPins[i], HIGH);
-      } else {
-        digitalWrite(solenoidPins[i], LOW);
-      }
+      digitalWrite(solenoidPins[i], (cyclePosition < pwmOnTime) ? HIGH : LOW);
     }
   }
 }
