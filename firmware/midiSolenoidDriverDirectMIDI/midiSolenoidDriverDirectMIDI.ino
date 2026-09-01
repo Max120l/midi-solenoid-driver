@@ -79,21 +79,41 @@ const byte fixedChannel = 1;
 
 // --- Velocity response ---
 //
-// VELOCITY_OFF    every note gets the full pull-in time. Correct for organ
-//                 valves, which are open or shut and have no dynamics.
-// VELOCITY_ON     pull-in time scales with velocity, for struck instruments.
-// VELOCITY_SWITCH read velocitySwitchPin at boot: closed (low) enables it.
-//                 Only usable on a pin the note offset is not already using,
-//                 so it requires OFFSET_COARSE3.
-#define VELOCITY_OFF    0
-#define VELOCITY_ON     1
-#define VELOCITY_SWITCH 2
+// VELOCITY_OFF      every note gets the full pull-in time. Correct for organ
+//                   valves, which are open or shut and have no dynamics.
+// VELOCITY_ON       pull-in time scales with velocity, for struck instruments.
+// VELOCITY_SMALLDIP read one switch of the small DIP block at boot. Available
+//                   whenever the channel is not also coming from that block,
+//                   which makes it the usual way to put velocity on a switch.
+// VELOCITY_SWITCH   read velocitySwitchPin on the large DIP block at boot.
+//                   Needs a switch the note offset is not using, so it
+//                   requires OFFSET_COARSE3.
+//
+// Both switch modes are active-low: closed enables velocity.
+#define VELOCITY_OFF      0
+#define VELOCITY_ON       1
+#define VELOCITY_SWITCH   2
+#define VELOCITY_SMALLDIP 3
 
 #define VELOCITY_SOURCE VELOCITY_OFF
 
-// Switch 4 of the large DIP block. Unused when NOTE_OFFSET_MODE is
-// OFFSET_COARSE3; part of the note offset when it is OFFSET_FULL7.
+// Switch 4 of the large DIP block, for VELOCITY_SWITCH. Unused when
+// NOTE_OFFSET_MODE is OFFSET_COARSE3; part of the note offset when it is
+// OFFSET_FULL7.
 const int velocitySwitchPin = 18;
+
+// Which bit of the small DIP block to read for VELOCITY_SMALLDIP, 0-3.
+const int velocitySmallDipBit = 0;
+
+// --- Configuration sanity checks ---
+// Catch switch assignments that collide, at compile time rather than by
+// mystifying behaviour on the bench.
+#if (VELOCITY_SOURCE == VELOCITY_SWITCH) && (NOTE_OFFSET_MODE == OFFSET_FULL7)
+#error "VELOCITY_SWITCH needs large-DIP switch 4, which OFFSET_FULL7 uses for the note offset. Use VELOCITY_SMALLDIP, or switch to OFFSET_COARSE3."
+#endif
+#if (VELOCITY_SOURCE == VELOCITY_SMALLDIP) && (CHANNEL_SOURCE == CHANNEL_DIP)
+#error "VELOCITY_SMALLDIP and CHANNEL_DIP both want the small DIP block. Pick one: use a fixed channel, or put velocity on VELOCITY_SWITCH."
+#endif
 
 // --- Stuck-note watchdog ---
 // Force-release any solenoid held longer than this, in milliseconds. Guards
@@ -246,7 +266,7 @@ void handleSystemReset() {
 
 // ===================== DIP switch reading =====================
 
-#if CHANNEL_SOURCE == CHANNEL_DIP
+#if (CHANNEL_SOURCE == CHANNEL_DIP) || (VELOCITY_SOURCE == VELOCITY_SMALLDIP)
 // The small DIP block is not wired to four digital pins; it is read as two
 // analog voltages, two switches per pin. Ported unchanged from upstream's
 // firmware, which is the authority on these thresholds.
@@ -342,6 +362,8 @@ void setup() {
 #elif VELOCITY_SOURCE == VELOCITY_SWITCH
   pinMode(velocitySwitchPin, INPUT_PULLUP);
   velocityEnabled = !digitalRead(velocitySwitchPin);
+#elif VELOCITY_SOURCE == VELOCITY_SMALLDIP
+  velocityEnabled = readSmallDip(velocitySmallDipBit);
 #else
   velocityEnabled = false;
 #endif

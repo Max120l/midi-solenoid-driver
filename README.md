@@ -126,20 +126,31 @@ number your DAW displays.
 #define VELOCITY_SOURCE VELOCITY_OFF
 ```
 
-| Mode | Behaviour |
-|---|---|
-| `VELOCITY_OFF` | Every note gets the full pull-in time |
-| `VELOCITY_ON` | Pull-in time scales with velocity |
-| `VELOCITY_SWITCH` | Read `velocitySwitchPin` at boot; closed enables it |
+| Mode | Behaviour | Needs |
+|---|---|---|
+| `VELOCITY_OFF` | Every note gets the full pull-in time | — |
+| `VELOCITY_ON` | Pull-in time scales with velocity | — |
+| `VELOCITY_SMALLDIP` | Read one bit of the small DIP block at boot | Channel not from the small DIP |
+| `VELOCITY_SWITCH` | Read large-DIP switch 4 (pin 18) at boot | `OFFSET_COARSE3` |
 
-When enabled, velocity scales `peakDuration` between `peakDurationMin` (15 ms)
-and `peakDurationMax` (40 ms). Harder notes pull in for longer and therefore
-hit harder — which is meaningful on a struck instrument and meaningless on an
-organ valve, where the valve is simply open or shut. Hence the default of off.
+When enabled, velocity scales the pull-in time between `peakDurationMin`
+(15 ms) and `peakDurationMax` (40 ms). Harder notes pull in for longer and
+therefore hit harder — meaningful on a struck instrument, meaningless on an
+organ valve, which is simply open or shut. Hence the default of off.
 
-`VELOCITY_SWITCH` uses switch 4 of the large DIP block (pin 18), which is only
-free under `OFFSET_COARSE3`. Under `OFFSET_FULL7` that switch is part of the
-note offset, so use `VELOCITY_ON` or `VELOCITY_OFF` instead.
+**If you want velocity on a physical switch, `VELOCITY_SMALLDIP` is normally
+the one to use.** Under `OFFSET_FULL7` every switch of the large DIP block is
+part of the note offset, so there is no spare one there — but if the MIDI
+channel is fixed in firmware, the whole small DIP block is idle, and
+`velocitySmallDipBit` picks which of its four switches to read.
+
+`VELOCITY_SWITCH` is the alternative for a board running `OFFSET_COARSE3`,
+where large-DIP switches 4-7 are unused anyway.
+
+These constraints are enforced at compile time. Asking for `VELOCITY_SWITCH`
+alongside `OFFSET_FULL7`, or `VELOCITY_SMALLDIP` alongside `CHANNEL_DIP`, fails
+the build with a message telling you which switches collided — rather than
+flashing cleanly and behaving strangely on the bench.
 
 ### Stuck-note watchdog
 
