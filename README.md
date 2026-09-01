@@ -30,7 +30,7 @@ straight to the driver board.
 |---|---|---|
 | Input | 38400 baud MIDI-over-serial, needs the interface board | 31250 baud standard MIDI, direct |
 | Parsing | Hand-rolled byte-by-byte state machine | Arduino MIDI Library, on inverted SoftwareSerial |
-| Solenoid drive | Full current for the whole note | Peak-and-hold: full current to pull in, then PWM to hold |
+| Solenoid drive | Full current for the whole note | Peak-and-hold: full current to pull in, then phase-staggered PWM to hold |
 | Note offset | 7-bit DIP switch, 1-note steps | 3 switches, 16-note steps |
 | MIDI channel | 4-bit analog DIP switch | Fixed in firmware |
 
@@ -112,6 +112,21 @@ const int pwmPeriod    = 2000; // us, hold PWM period (500 Hz)
 const int pwmOnTime    = 800;  // us, hold PWM on-time (40% duty)
 ```
 
+A fourth is derived rather than set by hand:
+
+```cpp
+const int pwmPhaseStep = pwmPeriod / numSolenoids; // us, 125 us per channel
+```
+
+Each channel's hold PWM is offset by `i * pwmPhaseStep`, so the 16 channels'
+on-times are spread evenly across the 2 ms period instead of all starting
+together. Every coil still gets the same 40% duty and the same holding force;
+what changes is that the supply sees roughly 7 coils' worth of hold current at
+any given moment rather than all 16 at once. On a full chord that is a
+substantially gentler load, and it takes some of the growl out of the hold.
+There is normally no reason to change it, but setting it to `0` restores the
+original all-in-phase behaviour if you want to compare.
+
 `peakDuration` needs to be long enough for the solenoid to physically pull in —
 too short and it will buzz or fail to seat under load. `pwmOnTime` needs to be
 high enough to *keep* it seated but low enough that the coil doesn't overheat on
@@ -131,10 +146,11 @@ Things this fork does not yet do. Contributions welcome.
 - **Note offset is coarse.** 16-note steps rather than upstream's 1-note steps,
   because only three switches survived on this board. A board with the full
   7-switch block can restore fine offsets.
-- **All 16 channels PWM in phase.** Every held solenoid switches on at the same
-  instant in each 2 ms cycle, so the supply sees the sum of all hold currents as
-  one spike rather than a spread load. Staggering each channel's PWM phase would
-  smooth this considerably.
+- **Hold PWM timing jitters while MIDI is arriving.** `SoftwareSerial` receives a
+  byte by busy-waiting through it with interrupts disabled, roughly 320 us at
+  31250 baud, during which `loop()` does not run and PWM edges land late. It is
+  audible only as a slight roughness in the hold under dense MIDI. Moving to the
+  hardware UART, or to timer-driven PWM, would remove it.
 - **No velocity response.** Velocity is used only as an on/off test. The
   hardware could plausibly vary `peakDuration` or hold duty with velocity.
 - **No aftertouch or polypressure.** Stubbed but unimplemented upstream too.

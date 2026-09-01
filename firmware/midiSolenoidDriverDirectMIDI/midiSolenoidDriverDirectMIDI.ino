@@ -13,6 +13,7 @@
 //   2. Peak-and-hold drive. Each solenoid is driven at full current for a short
 //      pull-in window, then PWM'd down to a lower holding current. This lets the
 //      solenoid pull in hard without cooking itself (or the driver) on long notes.
+//      Each channel's hold PWM is phase-staggered to spread the supply load.
 //
 //   3. Three-switch note offset. The original reads a 7-bit DIP switch for the
 //      lowest note and a separate analog DIP for MIDI channel. This board has
@@ -66,6 +67,13 @@ unsigned long noteOnTime[numSolenoids];
 const int peakDuration = 40;   // ms at full current before dropping to hold
 const int pwmPeriod    = 2000; // us, hold PWM period (500 Hz)
 const int pwmOnTime    = 800;  // us, hold PWM on-time (40% duty)
+
+// Each channel's hold PWM is offset in time from the one before it, so that
+// simultaneously-held solenoids do not all switch on at the same instant.
+// Spreading 16 channels at 40% duty across the period means the supply sees
+// roughly 7 coils' worth of hold current at any moment instead of all 16,
+// without changing any individual coil's duty cycle or holding force.
+const int pwmPhaseStep = pwmPeriod / numSolenoids; // us, 125 us per channel
 
 void handleNoteOff(byte channel, byte pitch, byte velocity);
 
@@ -129,8 +137,7 @@ void loop() {
 
   unsigned long currentMillis = millis();
   unsigned long currentMicros = micros();
-  unsigned long cyclePosition = currentMicros % pwmPeriod;
-  bool isPwmHigh = (cyclePosition < pwmOnTime);
+  unsigned long cycleBase = currentMicros % pwmPeriod;
 
   for (int i = 0; i < numSolenoids; i++) {
     if (solenoidState[i] == 1) {
@@ -141,7 +148,11 @@ void loop() {
     // Deliberately not an "else if": a solenoid that just finished its peak
     // window above should start holding on this same pass, not the next one.
     if (solenoidState[i] == 2) {
-      if (isPwmHigh) {
+      // Shift this channel's place in the PWM cycle by its index, staggering
+      // the 16 channels' on-times across the period rather than stacking them.
+      unsigned long cyclePosition =
+        (cycleBase + (unsigned long)i * pwmPhaseStep) % pwmPeriod;
+      if (cyclePosition < pwmOnTime) {
         digitalWrite(solenoidPins[i], HIGH);
       } else {
         digitalWrite(solenoidPins[i], LOW);
