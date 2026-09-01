@@ -90,13 +90,18 @@ Everything configurable sits in one block at the top of the sketch.
 ### Note offset — which 16 notes this board plays
 
 ```cpp
-#define NOTE_OFFSET_MODE OFFSET_FULL7
+#define NOTE_OFFSET_MODE OFFSET_COARSE3
 ```
 
 | Mode | Switches used | Steps | Use when |
 |---|---|---|---|
 | `OFFSET_FULL7` | all 7 of the large DIP block | 1 note | Normal, undamaged hardware |
 | `OFFSET_COARSE3` | switches 1-3 only | 16 notes | The other four switches are dead |
+
+**This fork defaults to `OFFSET_COARSE3`**, because the boards it is maintained
+against have a damaged large DIP block with only three working switches. If
+your switches are all good — which they should be on a board you have just
+built — set `OFFSET_FULL7` instead. Nothing else needs to change.
 
 `OFFSET_FULL7` is upstream's mapping, restored: switches 1-7 are worth
 +1, +2, +4, +8, +16, +32, +64 respectively, active-low, so any base note from
@@ -174,8 +179,19 @@ holds notes longer than that.
 Boards chain over RJ12 and all see the same MIDI stream. Each one is told which
 16 notes are *its* by its DIP switches. All boards run identical firmware.
 
-A four-board chain covering MIDI notes 36-99 (C2 to D#7), under
-`OFFSET_FULL7`:
+A four-board chain under the default `OFFSET_COARSE3`, covering MIDI notes
+48-111 (C3 to D#8). Base notes are limited to multiples of 16, which is exactly
+one board's worth, so four boards tile without gaps:
+
+| Board | Base note | Notes covered | Switches closed |
+|---|---|---|---|
+| 1 | 48 | 48-63 | 1, 2 |
+| 2 | 64 | 64-79 | 3 |
+| 3 | 80 | 80-95 | 1, 3 |
+| 4 | 96 | 96-111 | 2, 3 |
+
+The same chain under `OFFSET_FULL7`, where any base note is reachable — here
+placed at 36-99 (C2 to D#7) instead:
 
 | Board | Base note | Notes covered | Switches closed |
 |---|---|---|---|
@@ -183,9 +199,6 @@ A four-board chain covering MIDI notes 36-99 (C2 to D#7), under
 | 2 | 52 | 52-67 | 6, 5, 3 |
 | 3 | 68 | 68-83 | 7, 3 |
 | 4 | 84 | 84-99 | 7, 5, 3 |
-
-Under `OFFSET_COARSE3` you are limited to multiples of 16, so a four-board
-chain would sit at 48, 64, 80 and 96, covering notes 48-111.
 
 Points that matter with more than one board:
 

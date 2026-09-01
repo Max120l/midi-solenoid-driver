@@ -58,14 +58,19 @@
 //
 // OFFSET_FULL7   uses all seven switches of the large DIP block, in 1-note
 //                steps, exactly as upstream did. This is the correct setting
-//                for undamaged hardware.
+//                for undamaged hardware, and the one to pick if you are
+//                building this from scratch.
 // OFFSET_COARSE3 uses only switches 1-3, in 16-note steps, for a board whose
 //                remaining four switches are dead. One board's worth of notes
-//                per step, so a chain still addresses the full keyboard.
+//                per step, so a chain still addresses the full keyboard, just
+//                not at arbitrary offsets.
 #define OFFSET_FULL7   0
 #define OFFSET_COARSE3 1
 
-#define NOTE_OFFSET_MODE OFFSET_FULL7
+// Defaults to COARSE3 because the boards this fork is maintained against have
+// a damaged large DIP block with only three working switches. If your switches
+// are all good, change this to OFFSET_FULL7 -- nothing else needs to change.
+#define NOTE_OFFSET_MODE OFFSET_COARSE3
 
 // --- Where the MIDI channel comes from ---
 #define CHANNEL_FIXED 0  // use fixedChannel below
