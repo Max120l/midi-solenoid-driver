@@ -2,7 +2,9 @@
 
 A fork of [willemcvu/midi-solenoid-driver](https://github.com/willemcvu/midi-solenoid-driver)
 that lets the solenoid driver board accept **standard MIDI directly**, with no
-interface board in between, and adds **peak-and-hold** solenoid drive.
+interface board in between, and adds **peak-and-hold** solenoid drive,
+**selectable MIDI channel**, **optional velocity response**, and **defensive
+handling of badly-formed MIDI**.
 
 All hardware in this repository — the driver PCB, the schematics, the gerbers,
 the photographs — is Willem Hillier's original work, unchanged. This fork only
@@ -20,23 +22,22 @@ working" and the repository has had no commits since October 2020. Attempts to
 reach the original author about it went unanswered.
 
 Rather than finish the missing interface board, this fork moves the job onto the
-driver board itself. The ATmega328PB now decodes 31250-baud MIDI on the same
-RJ12 input pin using the Arduino MIDI Library, so a MIDI source connects
-straight to the driver board.
+driver board itself. The ATmega328PB decodes 31250-baud MIDI on the same RJ12
+input pin using the Arduino MIDI Library, so a MIDI source connects straight to
+the driver board.
 
 ## What's different
 
 | | Upstream `midiSolenoidDriver` | This fork's `midiSolenoidDriverDirectMIDI` |
 |---|---|---|
 | Input | 38400 baud MIDI-over-serial, needs the interface board | 31250 baud standard MIDI, direct |
-| Parsing | Hand-rolled byte-by-byte state machine | Arduino MIDI Library, on inverted SoftwareSerial |
-| Solenoid drive | Full current for the whole note | Peak-and-hold: full current to pull in, then phase-staggered PWM to hold |
-| Note offset | 7-bit DIP switch, 1-note steps | 3 switches, 16-note steps |
-| MIDI channel | 4-bit analog DIP switch | Fixed in firmware |
-
-The last two rows are a downgrade, not an improvement — they're a concession to
-a board whose large DIP switch block has only three working switches. See
-[Known limitations](#known-limitations).
+| Parsing | Hand-rolled byte-by-byte state machine | Arduino MIDI Library on the hardware UART |
+| Running status | Mishandled | Handled |
+| Solenoid drive | Full current for the whole note | Peak-and-hold, phase-staggered across channels |
+| Velocity | Ignored | Optionally scales pull-in time |
+| Note offset | 7-bit DIP switch, 1-note steps | Same, plus a 3-switch fallback mode |
+| MIDI channel | 4-bit analog DIP switch | Fixed, DIP-read, or omni |
+| Malformed MIDI | Notes can stick on | All-notes-off, stop, reset, and a stuck-note watchdog |
 
 Upstream's original firmware is still here, untouched, in
 [`firmware/midiSolenoidDriver/`](firmware/midiSolenoidDriver/). If you have the
@@ -53,39 +54,134 @@ original project description, board photos, and daisy-chaining details.
 
 ### MIDI input wiring
 
-The firmware reads MIDI on **pin 0** (the RJ12 serial input) using
-`SoftwareSerial` in **inverse-logic mode**:
+MIDI arrives on **pin 0 (RXD0)**, the ATmega's hardware UART receive pin — the
+same pin upstream used. Feed it a **conventional, non-inverted MIDI signal**:
+idle high, standard UART polarity, which is what a correctly-wired optocoupler
+front end produces. If your input idles *low*, the optocoupler is wired
+backwards; fix the wiring rather than the firmware.
+
+The firmware disables the UART **transmitter** while keeping the receiver:
 
 ```cpp
-SoftwareSerial invertedSerial(0, 255, true);
+UCSR0B &= ~(1 << TXEN0);
 ```
 
-That third argument matters. It means the firmware expects the MIDI signal
-already inverted at the pin — the polarity you get straight off a MIDI current
-loop, without an inverting optocoupler stage in front of it. If you feed it a
-conventional non-inverted MIDI signal, you will get nothing. Change the third
-argument to `false` in that case.
+Several boards share the RJ12 line, and none of them should be able to drive
+it. Upstream does the same thing for the same reason. Two consequences worth
+knowing:
 
-### DIP switches
+- **There is no serial debug output.** If you want `Serial.print` while
+  bench-testing, comment that line out — but do not do so with the board
+  connected to a shared bus, because it will fight every other board on it.
+- It also frees pin 1 to be read as a DIP switch input, which is why the
+  switches are configured *after* the UART in `setup()`.
 
-Three switches set the lowest MIDI note the board responds to, in steps of 16
-(one board's worth of notes per step). Switches are active-low.
+Flashing over the bootloader still works normally.
 
-| SW1 (pin 15) | SW2 (pin 16) | SW3 (pin 17) | Base note |
+## Configuration
+
+Everything configurable sits in one block at the top of the sketch.
+
+### Note offset — which 16 notes this board plays
+
+```cpp
+#define NOTE_OFFSET_MODE OFFSET_FULL7
+```
+
+| Mode | Switches used | Steps | Use when |
 |---|---|---|---|
-| off | off | off | 0 |
-| **on** | off | off | 16 |
-| off | **on** | off | 32 |
-| **on** | **on** | off | 48 |
-| off | off | **on** | 64 |
-| **on** | off | **on** | 80 |
-| off | **on** | **on** | 96 |
-| **on** | **on** | **on** | 112 |
+| `OFFSET_FULL7` | all 7 of the large DIP block | 1 note | Normal, undamaged hardware |
+| `OFFSET_COARSE3` | switches 1-3 only | 16 notes | The other four switches are dead |
 
-The board responds to notes `baseNote` through `baseNote + 15`. Daisy-chained
-boards each get a different switch setting so they cover different octaves.
+`OFFSET_FULL7` is upstream's mapping, restored: switches 1-7 are worth
++1, +2, +4, +8, +16, +32, +64 respectively, active-low, so any base note from
+0 to 127 is reachable. The board responds to `baseNote` through
+`baseNote + 15`.
 
-MIDI channel is fixed at **1** in firmware (`const int midiChannel = 1;`).
+`OFFSET_COARSE3` re-weights the three surviving switches to +16, +32 and +64,
+giving base notes 0, 16, 32 … 112. One board's worth of notes per step, so a
+chain can still address the whole keyboard — just not at arbitrary offsets.
+
+### MIDI channel
+
+```cpp
+#define CHANNEL_SOURCE CHANNEL_FIXED
+const byte fixedChannel = 1;
+```
+
+| Mode | Behaviour |
+|---|---|
+| `CHANNEL_FIXED` | Uses `fixedChannel`, 1-16 |
+| `CHANNEL_DIP` | Reads the 4-bit small DIP block, upstream's `readSmallDip()` ported back |
+| `CHANNEL_OMNI` | Responds on every channel |
+
+`CHANNEL_DIP` reads two analog pins, two switches each, using upstream's
+voltage thresholds — that block isn't wired to four digital pins. Upstream's
+mapping is 0-indexed; this firmware adds 1, so the switches read as the channel
+number your DAW displays.
+
+### Velocity response
+
+```cpp
+#define VELOCITY_SOURCE VELOCITY_OFF
+```
+
+| Mode | Behaviour |
+|---|---|
+| `VELOCITY_OFF` | Every note gets the full pull-in time |
+| `VELOCITY_ON` | Pull-in time scales with velocity |
+| `VELOCITY_SWITCH` | Read `velocitySwitchPin` at boot; closed enables it |
+
+When enabled, velocity scales `peakDuration` between `peakDurationMin` (15 ms)
+and `peakDurationMax` (40 ms). Harder notes pull in for longer and therefore
+hit harder — which is meaningful on a struck instrument and meaningless on an
+organ valve, where the valve is simply open or shut. Hence the default of off.
+
+`VELOCITY_SWITCH` uses switch 4 of the large DIP block (pin 18), which is only
+free under `OFFSET_COARSE3`. Under `OFFSET_FULL7` that switch is part of the
+note offset, so use `VELOCITY_ON` or `VELOCITY_OFF` instead.
+
+### Stuck-note watchdog
+
+```cpp
+const unsigned long maxNoteDuration = 30000UL;
+```
+
+Any solenoid held longer than this is force-released. Set to `0` to disable —
+but understand what you are turning off: with the watchdog disabled, one
+missing note-off leaves a valve open until you power-cycle the board. 30
+seconds is longer than almost any real note. Raise it if your music genuinely
+holds notes longer than that.
+
+## Daisy-chaining several boards
+
+Boards chain over RJ12 and all see the same MIDI stream. Each one is told which
+16 notes are *its* by its DIP switches. All boards run identical firmware.
+
+A four-board chain covering MIDI notes 36-99 (C2 to D#7), under
+`OFFSET_FULL7`:
+
+| Board | Base note | Notes covered | Switches closed |
+|---|---|---|---|
+| 1 | 36 | 36-51 | 6, 3 |
+| 2 | 52 | 52-67 | 6, 5, 3 |
+| 3 | 68 | 68-83 | 7, 3 |
+| 4 | 84 | 84-99 | 7, 5, 3 |
+
+Under `OFFSET_COARSE3` you are limited to multiples of 16, so a four-board
+chain would sit at 48, 64, 80 and 96, covering notes 48-111.
+
+Points that matter with more than one board:
+
+- **Every board must have its transmitter disabled.** The firmware does this,
+  but if you comment it out for debugging on one board, take that board off the
+  bus first.
+- **Channel.** With `CHANNEL_FIXED` every board listens on the same channel,
+  which is what you usually want — they're separated by note range, not by
+  channel. Use `CHANNEL_DIP` if you want per-board channels instead.
+- **Power.** Four boards is up to 64 solenoids. The phase staggering below
+  reduces the peak draw *within* one board; it does not coordinate boards with
+  each other. Size the supply for the realistic worst case.
 
 ## Building and flashing
 
@@ -94,38 +190,50 @@ Arduino IDE, or `arduino-cli`:
 - **Board:** ATmega328PB. Requires a core with 328PB support — e.g.
   [MiniCore](https://github.com/MCUdude/MiniCore).
 - **Libraries:** [MIDI Library](https://github.com/FortySevenEffects/arduino_midi_library)
-  by Forty Seven Effects; `SoftwareSerial` ships with the Arduino core.
+  by Forty Seven Effects.
 
 Open [`firmware/midiSolenoidDriverDirectMIDI/midiSolenoidDriverDirectMIDI.ino`](firmware/midiSolenoidDriverDirectMIDI/midiSolenoidDriverDirectMIDI.ino)
 and upload.
 
-Verified building with MiniCore 3.1.3 and MIDI Library 5.0.2:
+Verified building with MiniCore 3.1.3 and MIDI Library 5.0.2, in every
+combination of the configuration options above:
 
 ```
-arduino-cli compile --fqbn MiniCore:avr:328:variant=modelPB \n  firmware/midiSolenoidDriverDirectMIDI
+arduino-cli compile --fqbn MiniCore:avr:328:variant=modelPB \
+  firmware/midiSolenoidDriverDirectMIDI
 ```
 
 Which yields, comfortably inside the 328PB:
 
 ```
-Sketch uses 5754 bytes (17%) of program storage space. Maximum is 32384 bytes.
-Global variables use 450 bytes (21%) of dynamic memory, leaving 1598 for locals.
+Sketch uses 5732 bytes (17%) of program storage space. Maximum is 32384 bytes.
+Global variables use 555 bytes (27%) of dynamic memory, leaving 1493 for locals.
 ```
 
-On boot, output 1 clicks once for 150 ms. That's the heartbeat — if you hear it,
-the board came up.
+On boot, output 1 clicks once for 150 ms. That's the heartbeat — if you hear
+it, the board came up.
 
 ## Tuning peak-and-hold
 
-Three constants at the top of the sketch:
-
 ```cpp
-const int peakDuration = 40;   // ms at full current before dropping to hold
-const int pwmPeriod    = 2000; // us, hold PWM period (500 Hz)
-const int pwmOnTime    = 800;  // us, hold PWM on-time (40% duty)
+const int peakDurationMax = 40;   // ms at full current
+const int peakDurationMin = 15;   // ms at lowest velocity, when scaling
+const int pwmPeriod       = 2000; // us, hold PWM period (500 Hz)
+const int pwmOnTime       = 800;  // us, hold PWM on-time (40% duty)
 ```
 
-A fourth is derived rather than set by hand:
+`peakDurationMax` needs to be long enough for the solenoid to physically pull
+in — too short and it will buzz or fail to seat under load. `pwmOnTime` needs
+to be high enough to *keep* it seated but low enough that the coil doesn't
+overheat on sustained notes.
+
+Tune in that order: raise the peak until every solenoid reliably pulls in under
+real load, then lower `pwmOnTime` in steps until one drops out, then back off
+by a comfortable margin. Small valve solenoids will often hold far below 40%.
+
+These values are a working starting point, not a universal answer.
+
+### Phase staggering
 
 ```cpp
 const int pwmPhaseStep = pwmPeriod / numSolenoids; // us, 125 us per channel
@@ -133,15 +241,10 @@ const int pwmPhaseStep = pwmPeriod / numSolenoids; // us, 125 us per channel
 
 Each channel's hold PWM is offset by `i * pwmPhaseStep`, so the 16 channels'
 on-times are spread evenly across the 2 ms period instead of all starting
-together. Every coil still gets the same 40% duty and the same holding force;
-what changes is that the supply sees roughly 7 coils' worth of hold current at
-any given moment rather than all 16 at once. On a full chord that is a
-substantially gentler load, and it takes some of the growl out of the hold.
-There is normally no reason to change it, but setting it to `0` restores the
-original all-in-phase behaviour if you want to compare.
+together. Every coil still gets the same duty and the same holding force; what
+changes is the peak the supply has to deliver.
 
-Simulating one full 2 ms period with all 16 channels held, at the default 40%
-duty:
+Simulating one full 2 ms period with all 16 channels held, at 40% duty:
 
 | | In phase (`pwmPhaseStep = 0`) | Staggered (125 us) |
 |---|---|---|
@@ -151,36 +254,68 @@ duty:
 | Load over the period | 0 coils for 60% of it, then all 16 for 40% | 6 coils for 60% of it, 7 for 40% |
 
 Same average power, same holding force, less than half the peak draw, and a
-nearly flat load instead of a hard square wave at 500 Hz.
+nearly flat load instead of a hard square wave at 500 Hz. Setting
+`pwmPhaseStep` to `0` restores the original behaviour if you want to compare.
 
-`peakDuration` needs to be long enough for the solenoid to physically pull in —
-too short and it will buzz or fail to seat under load. `pwmOnTime` needs to be
-high enough to *keep* it seated but low enough that the coil doesn't overheat on
-sustained notes. Start conservative (longer peak, higher duty), then reduce
-while listening for dropouts.
+There is also a small per-board offset derived from the note offset, so
+chained boards don't stagger identically. Don't lean on it: the boards run from
+independent crystals and boot at different moments, so their cycles drift
+relative to each other regardless, and the offset is smaller than one pass of
+`loop()` anyway. It is a free nudge, not load management.
 
-These values are a working starting point for one particular set of solenoids,
-not a universal answer. Yours will differ.
+## Robustness with badly-formed MIDI
+
+A solenoid left energised is worse than a missed note: it drones, it heats the
+coil, and it heats the driver. Everything here fails toward "off".
+
+**Note-off expressed as velocity 0.** Handled — a note-on with zero velocity is
+treated as note-off, per the spec. This is how most sequencers express note-off
+in the first place, and how a note "removed" by zeroing its velocity arrives.
+
+**Overlapping and duplicate notes.** A second note-on for a note already
+sounding restarts its pull-in, so the note re-articulates rather than being
+ignored. A single note-off then releases it, regardless of how many note-ons
+arrived. This is deliberately *not* reference-counted: if a file sends two
+note-ons and only one note-off, counting would hold the valve open forever,
+whereas last-off-wins simply releases it. The failure mode is a note that stops
+slightly early, not a valve that never closes.
+
+**Panic messages.** CC 120 (All Sound Off), CC 123 (All Notes Off), MIDI Stop
+and System Reset all release every solenoid. Sequencers emit these on stop, on
+panic, and at the end of a file, and honouring them is the difference between a
+clean stop and a chord left droning.
+
+**Note-offs that never arrive.** The watchdog force-releases anything held past
+`maxNoteDuration`. This is the backstop for a truncated file, a crashed
+sequencer, or a cable pulled mid-note.
+
+**Running status and dense streams.** Upstream's hand-rolled parser mishandled
+running status, which tightly-packed files use heavily. The MIDI library
+handles it correctly, along with interleaved real-time bytes and message types
+this board ignores. Reception is on the hardware UART, which is interrupt-driven
+and buffered — the previous `SoftwareSerial` implementation busy-waited through
+each byte with interrupts disabled for roughly 320 us, during which a second
+byte arriving was simply lost. That was the real hazard at high note density.
+
+**A note on tempo.** Tempo changes are a Standard MIDI File concept: meta-events
+resolved by whatever plays the file. They never reach this board, which only
+ever sees note and control messages already placed in time by the player. There
+is nothing for the firmware to do about them, and any firmware claiming to
+handle tempo would be doing nothing. What tempo *does* affect is how densely
+events arrive — and that is exactly what moving to the hardware UART addresses.
 
 ## Known limitations
 
 Things this fork does not yet do. Contributions welcome.
 
-- **MIDI channel is not selectable.** Upstream read it from a 4-bit analog DIP
-  switch (`readSmallDip()`); that code is still in the original firmware and
-  could be ported back in.
-- **Note offset is coarse.** 16-note steps rather than upstream's 1-note steps,
-  because only three switches survived on this board. A board with the full
-  7-switch block can restore fine offsets.
-- **Hold PWM timing jitters while MIDI is arriving.** `SoftwareSerial` receives a
-  byte by busy-waiting through it with interrupts disabled, roughly 320 us at
-  31250 baud, during which `loop()` does not run and PWM edges land late. It is
-  audible only as a slight roughness in the hold under dense MIDI. Moving to the
-  hardware UART, or to timer-driven PWM, would remove it.
-- **No velocity response.** Velocity is used only as an on/off test. The
-  hardware could plausibly vary `peakDuration` or hold duty with velocity.
 - **No aftertouch or polypressure.** Stubbed but unimplemented upstream too.
+- **Velocity affects pull-in time only.** It does not vary holding force, and
+  on a valve it has no acoustic effect at all.
+- **The per-board PWM offset is below `loop()` resolution**, as described above.
 - **Untested with daisy-chained boards** in this direct-MIDI configuration.
+- **Four `unused parameter` warnings** under `-Wall -Wextra`, from MIDI library
+  callback signatures that require arguments this firmware doesn't read. They
+  do not appear in a default build.
 
 ## Credit and licence
 
