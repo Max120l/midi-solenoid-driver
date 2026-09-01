@@ -9,8 +9,15 @@
 *~
 _autosave-*
 *.tmp
-*-cache.lib
-*-rescue.lib
+# NOT ignored: KiCad 5 symbol cache and rescue libraries.
+#
+# Upstream ignored these, which is why midi-solenoid-driver-cache.lib is absent
+# from this repository and the schematic reports a missing library on open. It
+# is harmless here because every symbol in this design comes from a stock KiCad
+# library, so a current KiCad resolves them all -- but a project using any
+# custom symbol would be unrecoverable this way. Keep the cache committed.
+#*-cache.lib
+#*-rescue.lib
 *-save.pro
 *-save.kicad_pcb
 

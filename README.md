@@ -52,6 +52,11 @@ original project description, board photos, and daisy-chaining details.
 - MCU: ATmega328PB
 - 16 solenoid outputs, "OUTPUTS 1-16" on the silkscreen
 
+[`hardware/HARDWARE-NOTES.md`](hardware/HARDWARE-NOTES.md) records how both DIP
+switch blocks are actually wired -- including why the small block shows only two
+GPIO connections on a multimeter, and why switch 8 of the large block does
+nothing -- and how to deal with the schematic's missing symbol cache.
+
 ### MIDI input wiring
 
 MIDI arrives on **pin 0 (RXD0)**, the ATmega's hardware UART receive pin — the
