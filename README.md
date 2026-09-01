@@ -456,6 +456,13 @@ Things this fork does not yet do. Contributions welcome.
   callback signatures that require arguments this firmware doesn't read. They
   do not appear in a default build.
 
+## Ideas and open questions
+
+[`IDEAS.md`](IDEAS.md) parks work that is thought about but not decided: the
+Raspberry Pi player, configuring boards over the MIDI bus rather than by DIP
+switch, and the interaction between the boot exercise routine and blower
+timing.
+
 ## Credit and licence
 
 Original project, hardware and firmware: **Willem Hillier**
