@@ -13,9 +13,9 @@
 //   2. Peak-and-hold drive. Each solenoid is driven hard for a short pull-in
 //      window, then PWM'd down to a lower holding current, so coils survive
 //      sustained notes. The pull-in itself can also be PWM'd, for solenoids
-//      overspecced for what they move -- see peakDutyPercent. Each channel's hold PWM is phase-staggered to
-//      spread the load on the supply, and daisy-chained boards offset their
-//      stagger from each other.
+//      overspecced for what they move -- see peakDutyPercent. Both phases are
+//      phase-staggered across the 16 channels to spread the load on the
+//      supply, and daisy-chained boards offset their stagger from each other.
 //
 //   3. Selectable MIDI channel: fixed in firmware, read from the small DIP
 //      switch block as upstream did, or omni (respond on every channel).
