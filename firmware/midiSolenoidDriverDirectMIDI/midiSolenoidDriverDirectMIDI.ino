@@ -129,6 +129,34 @@ const int velocitySmallDipBit = 0;
 // your music genuinely holds notes longer than that.
 const unsigned long maxNoteDuration = 30000UL;
 
+// --- Power-up valve exercise ---
+//
+// Cycles every output in turn at boot. The point is to break any adhesion
+// between valve and seat that built up while the instrument sat closed --
+// "pluck" -- so the first note of the session behaves like the hundredth. On a
+// lightly loaded valve, pluck can easily be the largest single force the
+// solenoid has to overcome, and it is worst on the first cycle after a rest.
+//
+// Run this before wind is applied. With the chest unpressurised the valves
+// move freely, the plungers break loose with nothing opposing them, and no
+// pipe speaks.
+//
+// Sequential rather than all at once, deliberately: one solenoid at a time
+// draws a sixteenth of the current, and you can hear each output fire in
+// order, so a dead channel or a swapped connector announces itself. It doubles
+// as a power-on self test.
+//
+// Driven at full power regardless of peakDutyPercent, since breaking stiction
+// is exactly the job that wants maximum force, and one-at-a-time makes the
+// current draw trivial.
+//
+// Total time is cycles x 16 x (on + off), so the defaults take about 3.8 s.
+// Set exerciseCycles to 0 to disable, in which case the shorter boot heartbeat
+// runs instead.
+const int exerciseCycles  = 2;
+const int exerciseOnTime  = 60;  // ms energised
+const int exerciseOffTime = 60;  // ms released, so the valve can reseat
+
 // ===================== MIDI input =====================
 //
 // The hardware UART, not SoftwareSerial. SoftwareSerial receives a byte by
@@ -239,6 +267,20 @@ void releaseSolenoid(int i) {
 void releaseAll() {
   for (int i = 0; i < numSolenoids; i++) {
     releaseSolenoid(i);
+  }
+}
+
+// Fire every output in turn at full power. See exerciseCycles above for why.
+// Blocking on purpose: this runs once in setup(), before the board is doing
+// anything else.
+void exerciseValves() {
+  for (int c = 0; c < exerciseCycles; c++) {
+    for (int i = 0; i < numSolenoids; i++) {
+      digitalWrite(solenoidPins[i], HIGH);
+      delay(exerciseOnTime);
+      digitalWrite(solenoidPins[i], LOW);
+      delay(exerciseOffTime);
+    }
   }
 }
 
@@ -403,11 +445,19 @@ void setup() {
   // channel step apart, so four boards interleave rather than align.
   boardPhaseOffset = (baseNote / numSolenoids) * (pwmPhaseStep / 4);
 
-  // Boot heartbeat: one short click on output 1, so you can hear that the
-  // board came up without needing to send it anything.
-  digitalWrite(solenoidPins[0], HIGH);
-  delay(150);
-  digitalWrite(solenoidPins[0], LOW);
+  if (exerciseCycles > 0) {
+    exerciseValves();
+    // The UART has been unattended for several seconds. Discard whatever
+    // arrived, so a fragment of a message that began before we started cannot
+    // be parsed as a note the moment the loop opens.
+    while (Serial.available()) Serial.read();
+  } else {
+    // Boot heartbeat: one short click on output 1, so you can hear that the
+    // board came up without needing to send it anything.
+    digitalWrite(solenoidPins[0], HIGH);
+    delay(150);
+    digitalWrite(solenoidPins[0], LOW);
+  }
 }
 
 void loop() {

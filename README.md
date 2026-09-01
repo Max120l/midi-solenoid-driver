@@ -174,6 +174,38 @@ missing note-off leaves a valve open until you power-cycle the board. 30
 seconds is longer than almost any real note. Raise it if your music genuinely
 holds notes longer than that.
 
+### Power-up valve exercise
+
+```cpp
+const int exerciseCycles  = 2;   // 0 disables
+const int exerciseOnTime  = 60;  // ms energised
+const int exerciseOffTime = 60;  // ms released
+```
+
+Fires every output in turn at boot, at full power, before wind is applied.
+
+The point is **pluck** — the adhesion between a valve and its seat after the
+instrument has sat closed. On a lightly loaded valve this can be the largest
+single force the solenoid has to overcome, and it is worst on the very first
+cycle after a rest, which is exactly the note you least want to fail. Working
+the valves loose while the chest is unpressurised costs nothing and no pipe
+speaks.
+
+It is sequential rather than simultaneous on purpose. One solenoid at a time
+draws a sixteenth of the current, and you hear each output fire in order — so a
+dead channel, a swapped connector or a stuck valve announces itself at every
+power-up. It doubles as a power-on self test.
+
+Full power is used regardless of `peakDutyPercent`, since breaking stiction is
+the one job that genuinely wants maximum force, and one-at-a-time makes the
+current draw trivial.
+
+The defaults take `2 × 16 × 120 ms` ≈ **3.8 seconds**. The UART is unattended
+during that time, so the receive buffer is discarded afterwards to stop a
+part-received message sounding a note the instant the loop opens. Set
+`exerciseCycles` to 0 to disable, in which case the shorter boot heartbeat runs
+instead and the whole routine is optimised out of the build.
+
 ## Daisy-chaining several boards
 
 Boards chain over RJ12 and all see the same MIDI stream. Each one is told which
