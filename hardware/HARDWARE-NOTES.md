@@ -141,9 +141,22 @@ The PCB is unaffected: `kicad-cli` reads `midi-solenoid-driver.kicad_pcb`
 correctly, warning only that legacy zone fills are converted on a best-effort
 basis.
 
-### Finishing the job
+### This is now done
 
-Once the schematic opens cleanly, **save it and commit the converted
-`.kicad_sch`.** KiCad 6 and later embed symbol definitions directly in the
-schematic file, so from that point the project carries its own symbols and this
-entire class of problem cannot recur.
+The schematic has been opened in KiCad 9 and saved, producing
+`midi-solenoid-driver.kicad_sch`. **That file is now the authoritative
+schematic.** Because KiCad 6 and later embed symbol definitions directly in the
+schematic, the project now carries its own symbols and this entire class of
+problem cannot recur.
+
+Verified after conversion, by exporting a netlist from the new file: 81
+components and 82 nets, no unresolved symbols, all 16 MOSFETs resolving to
+`Transistor_FET:Q_NMOS_GDS` and the MCU to `ATmega328PB-A`.
+
+[`midi-solenoid-driver-schematic.pdf`](midi-solenoid-driver/midi-solenoid-driver-schematic.pdf)
+is a rendering of it, committed so the schematic can be read without KiCad at
+all.
+
+The original legacy `midi-solenoid-driver.sch` is kept alongside it for
+provenance. It is no longer maintained, and KiCad will not touch it again — if
+you edit the schematic, edit the `.kicad_sch`.
