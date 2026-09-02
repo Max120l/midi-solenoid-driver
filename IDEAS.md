@@ -106,6 +106,62 @@ Worth separating two things that got conflated:
 So if this gets built, do the tuning parameters first and treat the switches as
 a separate question that may not need answering at all.
 
+## Audible diagnostics: a read-back channel out of the instrument itself
+
+The boards cannot transmit, so configuration is write-only and there is no way
+to ask one what it currently believes. But this instrument is not a mute
+peripheral — it is roughly 40 pipes, percussion, and a band leader arm. A board
+that cannot send a byte can still make a noise, and that is enough to build a
+genuine read-back channel with no additional wiring.
+
+### Identity comes free
+
+Every board covers a different note range, so a board answering a query
+identifies itself simply by what it sounds like. Board 1's lowest note and
+board 3's lowest note are different pitches. No addressing scheme is needed on
+the listening end; the ear does it.
+
+**A board can only speak with its own sixteen outputs.** Whichever board the
+drum and the leader arm happen to be wired to is the only one that can use
+them. Any scheme has to work using nothing but that board's own notes, with
+percussion and the arm as a bonus for the one board that has them.
+
+### Counting, not pitch, for values
+
+The temptation is to encode a value as a pitch. Resist it: judging intervals by
+ear is imprecise and turns every diagnostic into a tuning exercise. Counting is
+unambiguous — three notes, pause, seven notes is 37, and nobody needs a good
+ear at two in the morning.
+
+Pitch for *who*, counting for *what*.
+
+Two details that matter:
+
+- **Zero needs an explicit representation.** "No notes" is indistinguishable
+  from "board not responding", which is exactly the case you most need to tell
+  apart. Use a distinct marker — a single long note, or the board's top note —
+  rather than silence.
+- **The Pi can supply the framing.** It knows when it sent a query, so it knows
+  when a reply should begin. Percussion as an open/close marker is a nice
+  touch where available, but should not be load-bearing.
+
+### The leader arm is the status indicator
+
+It is the one output that is not a note, so using it costs nothing musically.
+Arm up on fault, down on clear, and the state of the instrument is readable
+across a room in silence. Better than any LED buried inside the case.
+
+### Constraints, so this stays fun rather than becoming a liability
+
+- **Silent by default.** Gate all of it behind a diagnostic mode the Pi enables
+  explicitly. An organ that chirps its configuration mid-waltz is a bad organ.
+- **Cap the repeats.** Error reporting that hammers one valve in a loop is the
+  pathological case for a solenoid rated 10% duty. Say it once, or twice, then
+  stop, whatever the Pi does or does not do next.
+- **A report is not a performance.** Reporting takes seconds and blocks the
+  notes it uses. It belongs to commissioning and fault-finding, not to
+  playback.
+
 ## Resolved, kept for the record
 
 - **Latching registers.** Worried the 10% duty rating meant registers could not
