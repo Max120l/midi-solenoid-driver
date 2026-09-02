@@ -321,6 +321,13 @@ Sketch uses 5896 bytes (18%) of program storage space. Maximum is 32384 bytes.
 Global variables use 569 bytes (27%) of dynamic memory, leaving 1479 for locals.
 ```
 
+**Confirmed running on hardware**, not merely compiling: an ATmega328PB at
+8 MHz internal, MIDI decoded on the hardware UART, boot exercise routine and
+note handling both working. The optocoupler feeding it was inverting, corrected
+with an external NPN inverter as described under
+[MIDI input wiring](#midi-input-wiring) — that is the sanctioned fix, in
+preference to the firmware workaround.
+
 ### ⚠️ The clock setting is not optional
 
 **This board has no crystal.** `XTAL1`/`PB6` and `XTAL2`/`PB7` are wired as
@@ -400,26 +407,34 @@ Bounds are checked at compile time; 0 or 101 fails the build.
 
 ### Worked example: an overspecced, duty-limited solenoid
 
-A U0530S tubular solenoid — 12 V, 6.5 Ω, 1.8 A, 22 W, **rated 10% duty cycle**
-— driving a small valve. Force falls roughly with the square of coil current,
-so the numbers move very differently from the current:
+A U0530S tubular solenoid driving a small valve. Datasheet says 12 V, 6.5 Ω,
+1.8 A, 22 W, **rated 10% duty cycle**; **measured coil resistance is closer to
+7 Ω**, which is what the figures below use — 1.71 A and 20.6 W at 12 V.
+
+Force falls roughly with the square of coil current, so the numbers move very
+differently from the current:
 
 | `peakDutyPercent` | Coil current | Pull-in force | 16-ch attack | 20-ch | 64-ch |
 |---|---|---|---|---|---|
-| 100 | 1.85 A | 100% | 29.5 A | 36.9 A | 118 A |
-| 80 | 1.46 A | 62% | 18.6 A | 23.3 A | 74.5 A |
-| 60 | 1.07 A | 33% | 10.2 A | 12.8 A | 40.9 A |
-| 50 | 0.87 A | 22% | 7.0 A | 8.7 A | 27.8 A |
+| 100 | 1.71 A | 100% | 27.4 A | 34.3 A | 110 A |
+| 80 | 1.35 A | 62% | 17.3 A | 21.6 A | 69 A |
+| 70 | 1.17 A | 47% | 13.1 A | 16.4 A | 52 A |
+| 60 | 0.99 A | 33% | 9.5 A | 11.9 A | 38 A |
+| 50 | 0.81 A | 22% | 6.5 A | 8.1 A | 26 A |
+
+The force column is independent of coil resistance — it depends only on the
+ratio of held current to full current, which the duty cycle sets. Only the
+amperages moved.
 
 A solenoid rated to pull 700 g moving a valve needing perhaps 50 g still has
 roughly a 4:1 margin at 60% duty. Three times less supply current for margin
 you were never using.
 
 Note how much peak-and-hold is already doing before you touch this: at 100%,
-sixteen channels attack at 29.5 A and settle to **4.3 A** holding.
+sixteen channels attack at 27.4 A and settle to **4.0 A** holding.
 
-**Capacitors cannot rescue the attack.** C = I·t/ΔV, so covering 37 A for a
-40 ms peak within 1 V of droop needs about 1.5 farads. Bulk capacitance tames
+**Capacitors cannot rescue the attack.** C = I·t/ΔV, so covering 34 A for a
+40 ms peak within 1 V of droop needs about 1.4 farads. Bulk capacitance tames
 switching edges only — the supply must genuinely deliver the attack, or the
 attack must come down.
 
@@ -428,18 +443,21 @@ attack must come down.
 Many cheap actuators are rated for intermittent use — "10% ED", "duty cycle
 10%" — meaning they are not built to stay energised. Treat the rating as a
 thermal budget: **rated wattage × rated duty** is roughly the average
-dissipation that produces the quoted temperature rise. For a 22 W solenoid at
-10%, that is 2.2 W.
+dissipation that produces the quoted temperature rise. For the measured 7 Ω
+coil that is 20.6 W at 12 V, so the budget is about **2.1 W**.
 
 Hold dissipation, allowing for the flyback diode clamping the coil during the
 off portion:
 
-| `pwmOnTime` | Duty | Coil current | Dissipation | vs a 2.2 W budget |
+| `pwmOnTime` | Duty | Coil current | Dissipation | vs a 2.1 W budget |
 |---|---|---|---|---|
-| 800 | 40% | 0.67 A | 2.95 W | 134% — over |
-| 700 | 35% | 0.58 A | 2.20 W | 100% — at the limit |
-| 600 | 30% | 0.48 A | 1.49 W | 68% |
-| 500 | 25% | 0.39 A | 0.98 W | 45% |
+| 800 | 40% | 0.63 A | 2.74 W | 133% — over |
+| 700 | 35% | 0.54 A | 2.00 W | 97% — at the limit |
+| 600 | 30% | 0.44 A | 1.38 W | 67% |
+| 500 | 25% | 0.35 A | 0.87 W | 42% |
+
+Measuring 7 Ω rather than 6.5 Ω barely moves these proportions, since both the
+dissipation and the budget scale the same way with resistance.
 
 What saves you is thermal mass: the coil integrates over minutes, so what
 matters is the average across a passage, not any single note. Ordinary playing
