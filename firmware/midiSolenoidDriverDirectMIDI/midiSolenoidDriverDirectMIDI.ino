@@ -257,6 +257,17 @@ const int pwmPhaseStep = pwmPeriod / numSolenoids; // us, 125 us per channel
 // case rather than trusting this.
 int boardPhaseOffset = 0;
 
+// Each channel's fixed offset into the PWM cycle, precomputed in setup().
+//
+// This exists for speed, not clarity. The board runs from the internal 8 MHz
+// oscillator, and a 32-bit modulo per channel per pass -- sixteen of them --
+// costs more than everything else in loop() put together. Precomputing the
+// offsets lets the hot path use 16-bit arithmetic and a single conditional
+// subtraction instead, which keeps the loop period well under the 125 us phase
+// step it is trying to resolve. Without it the stagger is washed out by the
+// loop being slower than the thing it is staggering.
+unsigned int channelPhase[numSolenoids];
+
 // ===================== Solenoid control =====================
 
 void releaseSolenoid(int i) {
@@ -445,6 +456,12 @@ void setup() {
   // channel step apart, so four boards interleave rather than align.
   boardPhaseOffset = (baseNote / numSolenoids) * (pwmPhaseStep / 4);
 
+  for (int i = 0; i < numSolenoids; i++) {
+    channelPhase[i] =
+      (unsigned int)(((unsigned long)boardPhaseOffset
+                      + (unsigned long)i * pwmPhaseStep) % pwmPeriod);
+  }
+
   if (exerciseCycles > 0) {
     exerciseValves();
     // The UART has been unattended for several seconds. Discard whatever
@@ -464,8 +481,8 @@ void loop() {
   MIDI.read();
 
   unsigned long currentMillis = millis();
-  unsigned long currentMicros = micros();
-  unsigned long cycleBase = currentMicros % pwmPeriod;
+  // The one 32-bit modulo per pass. Everything below stays 16-bit.
+  unsigned int cycleBase = (unsigned int)(micros() % pwmPeriod);
 
   for (int i = 0; i < numSolenoids; i++) {
     if (solenoidState[i] == 0) continue;
@@ -477,11 +494,14 @@ void loop() {
       continue;
     }
 
-    // Shift this channel's place in the PWM cycle by its index, staggering the
-    // 16 channels' on-times across the period rather than stacking them. Both
-    // the peak and the hold phase use it.
-    unsigned long cyclePosition =
-      (cycleBase + boardPhaseOffset + (unsigned long)i * pwmPhaseStep) % pwmPeriod;
+    // Shift this channel's place in the PWM cycle by its precomputed offset,
+    // staggering the 16 channels' on-times across the period rather than
+    // stacking them. Both the peak and the hold phase use it.
+    //
+    // Both terms are below pwmPeriod, so their sum is below twice it and one
+    // conditional subtraction replaces a modulo.
+    unsigned int cyclePosition = cycleBase + channelPhase[i];
+    if (cyclePosition >= pwmPeriod) cyclePosition -= pwmPeriod;
 
     if (solenoidState[i] == 1) {
       if (currentMillis - noteOnTime[i] >= notePeakDuration[i]) {

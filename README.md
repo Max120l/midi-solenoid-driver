@@ -260,19 +260,49 @@ Verified building with MiniCore 3.1.3 and MIDI Library 5.0.2, in every
 combination of the configuration options above:
 
 ```
-arduino-cli compile --fqbn MiniCore:avr:328:variant=modelPB \
+arduino-cli compile --fqbn MiniCore:avr:328:variant=modelPB,clock=8MHz_internal \
   firmware/midiSolenoidDriverDirectMIDI
 ```
 
 Which yields, comfortably inside the 328PB:
 
 ```
-Sketch uses 5732 bytes (17%) of program storage space. Maximum is 32384 bytes.
-Global variables use 555 bytes (27%) of dynamic memory, leaving 1493 for locals.
+Sketch uses 5896 bytes (18%) of program storage space. Maximum is 32384 bytes.
+Global variables use 569 bytes (27%) of dynamic memory, leaving 1479 for locals.
 ```
 
-On boot, output 1 clicks once for 150 ms. That's the heartbeat — if you hear
-it, the board came up.
+### ⚠️ The clock setting is not optional
+
+**This board has no crystal.** `XTAL1`/`PB6` and `XTAL2`/`PB7` are wired as
+solenoid outputs CTRL5 and CTRL6, so the oscillator pins are unavailable and
+the ATmega runs from its internal RC oscillator.
+
+MiniCore defaults to `clock=16MHz_external`. Build with that default and flash
+it to a chip fused for 8 MHz internal, and `F_CPU` is wrong by a factor of two:
+
+- `Serial.begin(31250)` actually produces **15625 baud** — no MIDI is received
+  at all
+- `millis()` and `micros()` run at half speed, so the 40 ms peak becomes 80 ms,
+  the hold PWM drops to 250 Hz, and the watchdog stretches to 60 s
+- The boot heartbeat still clicks, just slowly — so the board looks alive while
+  being completely deaf, which is a miserable thing to debug
+
+Set the clock explicitly, and make it match the fuses actually programmed into
+your chips. In the Arduino IDE that is Tools → Clock → "Internal 8 MHz".
+
+31250 baud divides exactly at both 8 and 16 MHz (`UBRR` = 15 and 31
+respectively), so there is no divisor rounding error at either. The whole error
+budget belongs to the RC oscillator, which is factory-calibrated to about ±1%
+but drifts with temperature and supply. UART framing tolerates roughly ±2%, so
+this works — it worked for upstream too — but if you ever see occasional
+garbled MIDI in a cold or hot organ chamber, oscillator drift is the first
+suspect, not the firmware.
+
+Running at 8 MHz also makes `loop()` timing tight enough to matter: see
+[Phase staggering](#phase-staggering).
+
+On boot the valve exercise routine runs, or if disabled, output 1 clicks once
+for 150 ms as a heartbeat.
 
 ## Tuning peak-and-hold
 
@@ -396,11 +426,30 @@ Same average power, same holding force, less than half the peak draw, and a
 nearly flat load instead of a hard square wave at 500 Hz. Setting
 `pwmPhaseStep` to `0` restores the original behaviour if you want to compare.
 
-There is also a small per-board offset derived from the note offset, so
-chained boards don't stagger identically. Don't lean on it: the boards run from
-independent crystals and boot at different moments, so their cycles drift
-relative to each other regardless, and the offset is smaller than one pass of
-`loop()` anyway. It is a free nudge, not load management.
+There is also a small per-board offset derived from the note offset, so chained
+boards don't stagger identically. Don't lean on it: each board runs from its
+own internal RC oscillator, which varies by a percent or two part to part, so
+chained boards drift relative to one another continuously and would never stay
+in lockstep anyway. It is a free nudge, not load management.
+
+### Why the offsets are precomputed
+
+At 8 MHz, `loop()` speed is not a detail. A 32-bit modulo per channel per pass
+— sixteen of them — costs more than everything else in the loop combined, and
+would push the loop period past the 125 µs phase step it is trying to resolve.
+A stagger finer than the loop that implements it is no stagger at all.
+
+So each channel's offset is computed once in `setup()` into `channelPhase[]`,
+and the hot path uses 16-bit arithmetic with a single conditional subtraction:
+
+```cpp
+unsigned int cyclePosition = cycleBase + channelPhase[i];
+if (cyclePosition >= pwmPeriod) cyclePosition -= pwmPeriod;
+```
+
+Exactly one 32-bit modulo survives, computing `cycleBase` once per pass. The
+result is arithmetically identical to the obvious version — verified across all
+32000 (position, channel) combinations — at 32 bytes of RAM.
 
 ## Robustness with badly-formed MIDI
 

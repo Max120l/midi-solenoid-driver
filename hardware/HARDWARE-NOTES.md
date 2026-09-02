@@ -55,6 +55,51 @@ Practical consequence: this block cannot be read as digital inputs. Anything
 wanting a physical switch has to go through `readSmallDip()`, and only when the
 MIDI channel is not already using the block.
 
+## There is no crystal
+
+`XTAL1`/`PB6` (pin 7) and `XTAL2`/`PB7` (pin 8) are wired as solenoid outputs
+CTRL5 and CTRL6. The oscillator pins are unavailable, there is no crystal or
+resonator anywhere in the design, and the ATmega runs from its internal RC
+oscillator.
+
+**Firmware must be built for the internal oscillator**, matching the fuses in
+your chips — 8 MHz internal on the boards this fork is maintained against.
+MiniCore defaults to `clock=16MHz_external`, and building with that default
+produces a binary that flashes cleanly, clicks its boot heartbeat, and receives
+no MIDI whatsoever, because `Serial.begin(31250)` lands on 15625 baud. See the
+README's build section.
+
+31250 divides exactly at 8 MHz (`UBRR` = 15), so all of the baud error budget
+belongs to the RC oscillator itself — around ±1% calibrated, drifting with
+temperature and supply, against a UART tolerance of roughly ±2%. It works, and
+worked for upstream, but it is the first thing to suspect if MIDI ever garbles
+in a cold or overheated chamber.
+
+## The schematic includes an RS485 transceiver that shipped boards may not have
+
+The schematic in this repository has **U3, an SN75LBC176D** RS485 transceiver at
+roughly x=98 mm, y=182 mm on the sheet — bottom left, immediately right of the
+RJ12 jacks J1 and J3. In it, the RJ12 pins 3 and 4 carry a differential pair
+into U3, whose receiver output drives `MIDI_IN` and thence PD0.
+
+Upstream's history contains *"Added RS485 transceiver, need to ship new rev"*,
+and **boards in circulation appear not to have that revision.** If your board
+has no 8-pin SOIC near the RJ12 jacks, the schematic here does not describe
+your hardware's input path, and MIDI presumably reaches PD0 directly from the
+connector.
+
+Worth checking the physical board before reasoning from this schematic about
+anything on the input side. Note also:
+
+- Only the receiver half is wired even in this revision: `RE` is tied to GND,
+  while `DE` (driver enable) and `D` (driver input) are both unconnected. So
+  the board cannot transmit in either revision, which rules out any
+  configuration scheme that needs acknowledgement or read-back.
+- There is no termination and no idle bias on the A/B pair — only J1, J3 and
+  U3 sit on those nets.
+- There is **no optocoupler anywhere on the driver board**. Any MIDI input
+  isolation is external to it.
+
 ## Opening the schematic in a modern KiCad
 
 Three separate problems, all now addressed. If you are working from a fresh
