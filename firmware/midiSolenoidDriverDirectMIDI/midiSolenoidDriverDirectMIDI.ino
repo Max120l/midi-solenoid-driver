@@ -148,6 +148,35 @@ const int velocitySmallDipBit = 0;
 
 #define MIDI_INPUT_POLARITY MIDI_INPUT_NORMAL
 
+// --- Diagnostics ---
+//
+// For when nothing happens and you need to know which of three filters is
+// eating the input: the framing, the channel, or the note range.
+//
+// DIAGNOSTIC_RAW_BYTES  Every byte arriving on the MIDI port clicks output 1,
+//                       bypassing the MIDI parser, the channel filter and the
+//                       note range completely. Nothing else runs.
+//                         clicks  -> bytes arrive and frame correctly, so the
+//                                    fault is downstream: channel or note range
+//                         silent  -> baud, polarity, or wiring. Nothing is
+//                                    getting in at all.
+//
+// DIAGNOSTIC_ANY_NOTE   Listens on every channel, and any note-on clicks
+//                       output 1 whatever its pitch. Normal playing still
+//                       works alongside it.
+//                         clicks but no valve -> note range. Check the DIP
+//                                    switches: with all of them open baseNote
+//                                    is 0, so the board answers only notes
+//                                    0-15 and a keyboard sending 60 is ignored.
+//                         nothing -> channel filter was not the problem either
+//
+// Work downwards: RAW_BYTES first, since it makes the fewest assumptions.
+#define DIAGNOSTIC_OFF       0
+#define DIAGNOSTIC_RAW_BYTES 1
+#define DIAGNOSTIC_ANY_NOTE  2
+
+#define DIAGNOSTIC_MODE DIAGNOSTIC_OFF
+
 // --- Stuck-note watchdog ---
 // Force-release any solenoid held longer than this, in milliseconds. Guards
 // against a note-off that never arrives. Set to 0 to disable, but be aware
@@ -339,6 +368,13 @@ void handleNoteOn(byte channel, byte pitch, byte velocity) {
     return;
   }
 
+#if DIAGNOSTIC_MODE == DIAGNOSTIC_ANY_NOTE
+  // Any note at all, on any channel, whatever its pitch.
+  digitalWrite(solenoidPins[0], HIGH);
+  delay(15);
+  digitalWrite(solenoidPins[0], LOW);
+#endif
+
   if (pitch >= baseNote && pitch < baseNote + numSolenoids) {
     int i = pitch - baseNote;
 
@@ -423,7 +459,9 @@ boolean readSmallDip(int bitNo) {
 
 // Returns the channel to pass to MIDI.begin(): 1-16, or MIDI_CHANNEL_OMNI.
 byte selectedChannel() {
-#if CHANNEL_SOURCE == CHANNEL_OMNI
+#if DIAGNOSTIC_MODE == DIAGNOSTIC_ANY_NOTE
+  return MIDI_CHANNEL_OMNI;   // diagnostics override the configured channel
+#elif CHANNEL_SOURCE == CHANNEL_OMNI
   return MIDI_CHANNEL_OMNI;
 #elif CHANNEL_SOURCE == CHANNEL_DIP
   // Upstream's small-DIP mapping produces a 0-indexed channel; the MIDI
@@ -517,6 +555,19 @@ void setup() {
 }
 
 void loop() {
+#if DIAGNOSTIC_MODE == DIAGNOSTIC_RAW_BYTES
+  // Deliberately crude: no parsing, no filtering, nothing else running. If a
+  // byte reaches this pin at the right baud, you hear it.
+  while (MIDI_PORT.available()) {
+    MIDI_PORT.read();
+    digitalWrite(solenoidPins[0], HIGH);
+    delay(15);
+    digitalWrite(solenoidPins[0], LOW);
+    delay(35);
+  }
+  return;
+#endif
+
   MIDI.read();
 
   unsigned long currentMillis = millis();
