@@ -146,7 +146,7 @@ const int velocitySmallDipBit = 0;
 #define MIDI_INPUT_NORMAL   0
 #define MIDI_INPUT_INVERTED 1
 
-#define MIDI_INPUT_POLARITY MIDI_INPUT_NORMAL
+#define MIDI_INPUT_POLARITY MIDI_INPUT_INVERTED
 
 // --- Diagnostics ---
 //

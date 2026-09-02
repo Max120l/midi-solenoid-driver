@@ -84,6 +84,37 @@ what dense MIDI produces, and `loop()` stalls meanwhile so the hold PWM gets
 rougher too. Costs about 500 bytes of flash. Fine for proving a few notes;
 not what you want under a full chest.
 
+#### Fixing it in hardware instead
+
+Invert the signal before it reaches pin 0 and you keep the hardware UART.
+Speed is irrelevant here — a bit is 32 µs at 31250 baud, so any logic family
+has thousands of times the margin it needs. Choose for signal quality:
+
+- **74HC14**, a Schmitt-trigger hex inverter. The best pick: it inverts *and*
+  squares up the lazy edges an optocoupler with a large pull-up tends to
+  produce.
+- **74HCT04** if you would rather not use a Schmitt — CMOS input currents with
+  TTL-compatible thresholds.
+- **A single NPN transistor**, which is usually already in the drawer:
+
+```
+  opto out ──[4.7k]──┬── B                      +5V
+                     │                           │
+                   [10k]      2N3904           [1k]
+                     │        E ── GND           │
+                    GND       C ─────────────────┴──── to pin 0 (RXD0)
+```
+
+The 10k from base to ground matters more than it looks: it holds the
+transistor off if the input ever floats, so the output idles **high** — which
+a UART reads as "no data" rather than as a break condition.
+
+Tie unused gate inputs of a logic IC to GND or Vcc; floating CMOS inputs
+oscillate. Power either option from the board's own 5 V rail.
+
+To verify before connecting: with MIDI idle and nothing playing, the inverter
+output should sit **high**, near 5 V. If it idles low, it is still inverted.
+
 The firmware disables the UART **transmitter** while keeping the receiver:
 
 ```cpp
