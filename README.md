@@ -62,8 +62,27 @@ nothing -- and how to deal with the schematic's missing symbol cache.
 MIDI arrives on **pin 0 (RXD0)**, the ATmega's hardware UART receive pin — the
 same pin upstream used. Feed it a **conventional, non-inverted MIDI signal**:
 idle high, standard UART polarity, which is what a correctly-wired optocoupler
-front end produces. If your input idles *low*, the optocoupler is wired
-backwards; fix the wiring rather than the firmware.
+front end produces.
+
+If your input idles *low*, the signal is inverted and the UART will never frame
+a byte — it sees a permanent break condition. **The symptom is total silence:
+the board boots, runs its exercise routine, and ignores every note.** The right
+fix is the wiring, but there is an escape hatch for testing:
+
+```cpp
+#define MIDI_INPUT_POLARITY MIDI_INPUT_INVERTED
+```
+
+The AVR's USART has no receive-invert bit, so inverting in firmware means
+abandoning the hardware UART for `SoftwareSerial` in inverse-logic mode.
+
+**Treat that as a bench workaround, not a destination.** `SoftwareSerial`
+receives each byte by busy-waiting through it with interrupts disabled — about
+320 µs at 31250 baud, which at 8 MHz is a quarter of the CPU's entire budget
+for that stretch. A byte arriving during another byte is lost, which is exactly
+what dense MIDI produces, and `loop()` stalls meanwhile so the hold PWM gets
+rougher too. Costs about 500 bytes of flash. Fine for proving a few notes;
+not what you want under a full chest.
 
 The firmware disables the UART **transmitter** while keeping the receiver:
 

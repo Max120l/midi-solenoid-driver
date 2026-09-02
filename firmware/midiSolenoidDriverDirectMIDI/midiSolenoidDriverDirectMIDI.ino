@@ -121,6 +121,33 @@ const int velocitySmallDipBit = 0;
 #error "VELOCITY_SMALLDIP and CHANNEL_DIP both want the small DIP block. Pick one: use a fixed channel, or put velocity on VELOCITY_SWITCH."
 #endif
 
+// --- MIDI input polarity ---
+//
+// MIDI_INPUT_NORMAL   Hardware UART. Expects a conventional non-inverted MIDI
+//                     signal: idle high, standard UART polarity. This is what
+//                     a correctly wired optocoupler front end produces, and it
+//                     is the setting you want in the end.
+//
+// MIDI_INPUT_INVERTED SoftwareSerial in inverse-logic mode, for a front end
+//                     that delivers the signal upside down. The AVR's USART
+//                     has no receive-invert bit, so inverting in firmware
+//                     means giving up the hardware UART entirely.
+//
+// Treat INVERTED as a bench workaround, not a destination. SoftwareSerial
+// receives each byte by busy-waiting through it with interrupts disabled --
+// about 320 us at 31250 baud, and at 8 MHz that is a quarter of the CPU's
+// entire budget for that period. A byte arriving during another byte is lost,
+// which is exactly what dense MIDI produces, and loop() stalls meanwhile so
+// the hold PWM gets rougher too. Fine for testing a few notes. Not what you
+// want under a whole chest.
+//
+// If MIDI does not work at all and the wiring is otherwise sound, this is the
+// first thing to try.
+#define MIDI_INPUT_NORMAL   0
+#define MIDI_INPUT_INVERTED 1
+
+#define MIDI_INPUT_POLARITY MIDI_INPUT_NORMAL
+
 // --- Stuck-note watchdog ---
 // Force-release any solenoid held longer than this, in milliseconds. Guards
 // against a note-off that never arrives. Set to 0 to disable, but be aware
@@ -159,13 +186,19 @@ const int exerciseOffTime = 60;  // ms released, so the valve can reseat
 
 // ===================== MIDI input =====================
 //
-// The hardware UART, not SoftwareSerial. SoftwareSerial receives a byte by
-// busy-waiting through it with interrupts disabled, roughly 320 us at 31250
-// baud, during which nothing else runs -- so a byte arriving during another
-// byte is simply lost. That is exactly the failure mode dense MIDI provokes.
-// The hardware UART is interrupt-driven and buffered, so back-to-back bytes
-// are fine.
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial, MIDI);
+// Normally the hardware UART: interrupt-driven and buffered, so back-to-back
+// bytes are fine. See MIDI_INPUT_POLARITY above for why the inverted variant
+// has to give that up.
+#if MIDI_INPUT_POLARITY == MIDI_INPUT_INVERTED
+  #include <SoftwareSerial.h>
+  // (rxPin, txPin, inverseLogic) -- RX on pin 0, no transmit, inverted.
+  SoftwareSerial invertedSerial(0, 255, true);
+  MIDI_CREATE_INSTANCE(SoftwareSerial, invertedSerial, MIDI);
+  #define MIDI_PORT invertedSerial
+#else
+  MIDI_CREATE_INSTANCE(HardwareSerial, Serial, MIDI);
+  #define MIDI_PORT Serial
+#endif
 
 // ===================== Hardware pin mapping =====================
 
@@ -427,11 +460,17 @@ void setup() {
   // straight back out. This board is a leaf node on the bus, so turn it off.
   MIDI.turnThruOff();
 
-  // Disable only the UART transmitter, keeping the receiver. Several boards
-  // share the RJ12 line and none of them should be able to drive it. Upstream
-  // does the same thing for the same reason. This also frees pin 1 to be read
-  // as a DIP input below, so it has to happen before the switches are set up.
+  // Several boards share the RJ12 line and none of them should be able to
+  // drive it, so the UART transmitter is always disabled. Upstream does the
+  // same thing for the same reason. This also frees pin 1 to be read as a DIP
+  // input below, so it has to happen before the switches are set up.
+#if MIDI_INPUT_POLARITY == MIDI_INPUT_INVERTED
+  // SoftwareSerial owns pin 0 in this mode, so the hardware receiver has to go
+  // too or the two fight over the same pin.
+  UCSR0B &= ~((1 << RXEN0) | (1 << TXEN0));
+#else
   UCSR0B &= ~(1 << TXEN0);
+#endif
 
   // Switches are active-low.
   for (int i = 0; i < numOffsetSwitches; i++) {
@@ -467,7 +506,7 @@ void setup() {
     // The UART has been unattended for several seconds. Discard whatever
     // arrived, so a fragment of a message that began before we started cannot
     // be parsed as a note the moment the loop opens.
-    while (Serial.available()) Serial.read();
+    while (MIDI_PORT.available()) MIDI_PORT.read();
   } else {
     // Boot heartbeat: one short click on output 1, so you can hear that the
     // board came up without needing to send it anything.
