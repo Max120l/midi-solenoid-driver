@@ -78,6 +78,19 @@ Fitted backwards it is reverse-biased and inert, so the gate reaches 5 V and
 everything works — which is presumably why boards shipped this way went
 unnoticed. Removing the LED entirely also works.
 
+This is independent of how the outputs are driven. The clamp is a DC level, so
+it applies equally to upstream's plain on/off firmware and to peak-and-hold
+PWM — the gate never exceeds the LED's forward voltage either way.
+
+Whether it *appears* to work depends on the load. At 2 V of Vgs a logic-level
+MOSFET is weakly on rather than off, passing perhaps tens to a couple of
+hundred milliamps in its linear region. A small valve magnet drawing ~120 mA
+might actuate on that: hot, inefficient, and cooking the MOSFET, but working
+well enough that nobody looks closer. Anything approaching an amp will not
+move at all. Since the board is fused for 2.5 A per channel, the fault would
+have broken the hardware's intended load too — so the LEDs were most likely
+never populated, or always fitted backwards.
+
 ### If you want working indicators
 
 Give each LED a series resistor so it stops clamping the gate. Assuming a 2 V
