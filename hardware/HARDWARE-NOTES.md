@@ -55,6 +55,56 @@ Practical consequence: this block cannot be read as digital inputs. Anything
 wanting a physical switch has to go through `readSmallDip()`, and only when the
 MIDI channel is not already using the block.
 
+## The gate indicator LEDs cannot work as drawn
+
+D17-D32, the small LEDs on the MOSFET gates, are wired anode to the gate and
+cathode to ground, **with no current-limiting resistor of their own**:
+
+```
+U1 pin --- RN7 (1k) --- GATE --- Q1 gate
+                          |
+                        D17 (A)
+                          |
+                         GND
+```
+
+`RN7` is the gate resistor and simultaneously the LED's only current limit.
+Once the LED forward-biases it **clamps the gate at its forward voltage** —
+around 2 V for a red part. The MOSFET sees 2 V of Vgs instead of 5 and cannot
+pass any useful current.
+
+Fitted the "correct" way round, the LED lights and the solenoid does not fire.
+Fitted backwards it is reverse-biased and inert, so the gate reaches 5 V and
+everything works — which is presumably why boards shipped this way went
+unnoticed. Removing the LED entirely also works.
+
+### If you want working indicators
+
+Give each LED a series resistor so it stops clamping the gate. Assuming a 2 V
+red part and a 5 V drive:
+
+| Series R | Gate voltage | LED current |
+|---|---|---|
+| none (as drawn) | 2.0 V | 3.0 mA — MOSFET will not switch |
+| 2.2k | 4.1 V | 0.94 mA |
+| **4.7k** | **4.5 V** | **0.53 mA** |
+| 10k | 4.7 V | 0.27 mA |
+
+4.7k is the reasonable compromise: 4.5 V is ample for a logic-level MOSFET and
+half a milliamp is visible on a modern 0603 indoors. In practice this means
+lifting a pad and inserting an 0603 in series with each of sixteen LEDs, which
+is unpleasant enough that **not fitting them at all is a defensible choice.**
+
+A higher-forward-voltage LED (blue or white, ~3.2 V) raises the clamp rather
+than removing it. Whether 3.2 V of Vgs is enough depends entirely on the
+MOSFET, and the schematic specifies only a generic `Q_NMOS_GDS` with no part
+number — check what is actually populated before relying on it.
+
+**For a board respin**, move the indicator to the drain: LED plus its own
+resistor from +12 V to the output node. That reports the output actually
+switching rather than the gate merely going high, is fully decoupled from the
+gate, and about 4.7k off the 12 V rail gives a properly bright 2 mA.
+
 ## There is no crystal
 
 `XTAL1`/`PB6` (pin 7) and `XTAL2`/`PB7` (pin 8) are wired as solenoid outputs
