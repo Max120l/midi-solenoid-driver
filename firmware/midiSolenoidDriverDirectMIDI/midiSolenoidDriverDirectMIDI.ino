@@ -273,7 +273,7 @@ byte notePeakDuration[numSolenoids];
 const int peakDurationMax = 40; // ms of pull-in drive, and at full velocity
 const int peakDurationMin = 15; // ms at the lowest velocity, when scaling
 const int pwmPeriod       = 2000; // us, PWM period for both phases (500 Hz)
-const int pwmOnTime       = 800;  // us, hold PWM on-time (40% duty)
+const int pwmOnTime       = 500;  // us, hold PWM on-time (25% duty)
 
 // How hard to drive the pull-in, as a percentage. 100 means solid DC for the
 // whole peak window, which is what a solenoid sized correctly for its load

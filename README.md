@@ -454,15 +454,37 @@ coil that is 20.6 W at 12 V, so the budget is about **2.1 W**.
 Hold dissipation, allowing for the flyback diode clamping the coil during the
 off portion:
 
-| `pwmOnTime` | Duty | Coil current | Dissipation | vs a 2.1 W budget |
-|---|---|---|---|---|
-| 800 | 40% | 0.63 A | 2.74 W | 133% — over |
-| 700 | 35% | 0.54 A | 2.00 W | 97% — at the limit |
-| 600 | 30% | 0.44 A | 1.38 W | 67% |
-| 500 | 25% | 0.35 A | 0.87 W | 42% |
+| `pwmOnTime` | Duty | Coil current | Hold force | Dissipation | vs 2.1 W |
+|---|---|---|---|---|---|
+| 800 | 40% | 0.63 A | ~93 gf | 2.74 W | 133% — over |
+| 700 | 35% | 0.54 A | ~70 gf | 2.00 W | 97% |
+| 600 | 30% | 0.44 A | ~47 gf | 1.38 W | 67% |
+| **500 (default)** | 25% | 0.35 A | ~30 gf | 0.87 W | 42% |
+| 400 | 20% | 0.26 A | ~17 gf | 0.48 W | 23% |
 
 Measuring 7 Ω rather than 6.5 Ω barely moves these proportions, since both the
 dissipation and the budget scale the same way with resistance.
+
+#### Measured, on a bench with unloaded solenoids
+
+| `pwmOnTime` | Predicted, solenoid only | Measured, whole board | Difference |
+|---|---|---|---|
+| 800 | 250 mA | 330 mA | 80 mA |
+| 400 | 53 mA | 100 mA | 47 mA |
+
+The gap is roughly constant rather than proportional, so it is fixed overhead —
+the ATmega and the RECOM regulator, not the coil. Subtract about 50 mA and the
+model matches at both points.
+
+**Why the default is 500 and not 400.** 400 held fine unloaded, but a bench
+solenoid has no spring, no valve, and gravity helping it stay in. The return
+spring measures around 50 gf, and it stiffens as the valve opens, so the real
+holding requirement is perhaps 10–30 gf once gravity on the plunger is
+subtracted. 400 offers ~17 gf against that; 500 offers ~30 gf.
+
+The failure mode of too little hold is a valve dropping out partway through a
+held note — intermittent, audible, and unpleasant to diagnose months later.
+Start at 500 with real springs, and only come down once it has proven itself.
 
 What saves you is thermal mass: the coil integrates over minutes, so what
 matters is the average across a passage, not any single note. Ordinary playing
