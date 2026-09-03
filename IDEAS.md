@@ -42,6 +42,14 @@ player-piano front end already does the playlist-and-transport job. This is a
 well-trodden problem and writing a MIDI player GUI from scratch would be the
 least interesting part of the project.
 
+*Update:* a survey found less than expected, and a simple `mido`-based player
+already exists and is in use for bench testing. The genuinely instrument-
+specific part — arranging a DAW's multi-track file onto the organ's fixed
+slots — is now built: see [`tools/organ-arranger/`](tools/organ-arranger/).
+It is deliberately a converter rather than a live translator, so every
+decision it makes is inspectable before the organ hears it. The player stays
+dumb and plays the arranged file.
+
 ## Configuring the boards from the touchscreen
 
 The appeal is obvious: no digging inside the organ for DIP switches.

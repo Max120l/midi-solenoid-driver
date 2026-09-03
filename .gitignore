@@ -37,3 +37,9 @@ _autosave-*
 *.lck
 ~*.lck
 *-backups/
+
+# Python tooling under tools/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc

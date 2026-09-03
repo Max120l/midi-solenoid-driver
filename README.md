@@ -604,6 +604,17 @@ Things this fork does not yet do. Contributions welcome.
   callback signatures that require arguments this firmware doesn't read. They
   do not appear in a default build.
 
+## Tools
+
+[`tools/organ-arranger/`](tools/organ-arranger/) turns a multi-track MIDI file
+authored in a DAW into the single-track, single-channel file these boards
+play, where every note is a driver-board slot. It maps pitches, percussion and
+set/reset registers through one YAML organ definition, makes each slot
+physically playable — merging overlaps, enforcing minimum note lengths and
+re-articulation gaps — pulses every register reset before and after the music
+so their state is always known, and writes a report of every note it dropped,
+merged, stretched or trimmed. Python, on `mido`; see its README.
+
 ## Ideas and open questions
 
 [`IDEAS.md`](IDEAS.md) parks work that is thought about but not decided: the
