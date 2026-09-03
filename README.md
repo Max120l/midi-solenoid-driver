@@ -282,6 +282,11 @@ placed at 36-99 (C2 to D#7) instead:
 | 3 | 68 | 68-83 | 7, 3 |
 | 4 | 84 | 84-99 | 7, 5, 3 |
 
+**Verified with two boards**, at base notes set by their DIP switches, sharing
+one MIDI signal down the chain. The same binary runs on every board — the note
+offset is read from the switches at boot, so nothing in the firmware needs to
+differ between them.
+
 Points that matter with more than one board:
 
 - **Every board must have its transmitter disabled.** The firmware does this,
@@ -568,7 +573,11 @@ Things this fork does not yet do. Contributions welcome.
 - **Velocity affects pull-in time only.** It does not vary holding force, and
   on a valve it has no acoustic effect at all.
 - **The per-board PWM offset is below `loop()` resolution**, as described above.
-- **Untested with daisy-chained boards** in this direct-MIDI configuration.
+- **Tested with two daisy-chained boards, not four.** Two boards sharing one
+  single-ended signal down the RJ12 chain, with distinct note offsets, work
+  correctly. Longer chains under real solenoid load are still unproven — see
+  the note on ground reference under
+  [Daisy-chaining several boards](#daisy-chaining-several-boards).
 - **Four `unused parameter` warnings** under `-Wall -Wextra`, from MIDI library
   callback signatures that require arguments this firmware doesn't read. They
   do not appear in a default build.
