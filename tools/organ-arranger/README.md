@@ -53,9 +53,16 @@ python layout_to_organ.py instrument/layout.xlsx -o instrument/organ.yaml
 
 A chain set up at 48, 64, 80 and 96 instead would use `--base-note 48`.
 
+Each track heads a group of columns that runs until the next track name; the
+row beneath names them. `number` is required; the rest are used when present:
+a `section` column on a pitched track divides it into ranks (Main's Base,
+Accompaniment and Melody), and registers may be given as `instrument`,
+`section` and `action` columns — so two "Violin" stops on different sections
+stay distinct — or as a single `Trombone on` / `Trombone off` label.
+
 It infers that tracks named like *drums* or *registers* are pulse tracks
-(`--pulse-track NAME=MS` to override), pairs registers from the action text
-`<name> on` / `<name> off`, and **warns** about everything it had to decide:
+(`--pulse-track NAME=MS` to override), and **warns** about everything it had
+to decide:
 a note that drives two solenoids (kept as a doubled rank), a solenoid with no
 entry, a register pair where both rows say "on" (it assumes the higher note is
 "on" and tells you), a label it could not parse. Read the warnings; they are
@@ -84,6 +91,7 @@ tracks:
   Main:                        # matched to the DAW track by name
     kind: pitched              # notes keep their written duration
     notes: { 48: 60, 55: [64, 65] }   # note on this track -> slot(s)
+    sections: { Base: [48], Melody: [55] }   # optional: the ranks a transcriber arranges for
   Drums:
     kind: pulse                # every note is a strike of fixed length
     pulse_ms: 50
@@ -203,10 +211,10 @@ python organ_transcribe.py tune.mid --organ instrument/organ.yaml --plan tune.pl
 Writes `tune.fororgan.mid` (open it in the DAW, or feed it to the arranger) and
 `tune.fororgan.txt`. What it does:
 
-1. **Derives the organ's ranks** from the definition: each pitched track's
-   available notes, split where a track has a gap of a fifth or more — so
-   `Main` becomes `Main:low` (bass and accompaniment) and `Main:high` (the
-   melody section), which are different ranks on the same track.
+1. **Derives the organ's ranks** from the definition. Where the layout names
+   sections, those are the ranks — `Main:Base` (four pipes), `Main:Accompainment`,
+   `Main:Melody`, three ranks on one track. Otherwise a track is split
+   wherever its notes leave a gap of a fifth or more.
 2. **Reads and classifies the source.** Identical tracks (a doubled lead) are
    dropped. The lowest voice is the bass; the busiest reasonably-high line is
    the melody and goes to the widest upper rank; chordal low tracks are
@@ -222,9 +230,12 @@ Writes `tune.fororgan.mid` (open it in the DAW, or feed it to the arranger) and
 4. **Folds each voice into its rank's compass** one octave at a time,
    preferring an octave that actually has the pipe (an octave displacement is
    far less wrong than a wrong semitone), staying near the line's previous
-   note with a gentle pull toward the rank's centre. A note with no pipe in
-   any octave is snapped to the nearest one, or dropped with
-   `--out-of-scale drop`; every one is listed.
+   note with a gentle pull toward the rank's centre. A voice may have a
+   **fallback** rank — the bass gets the accompaniment automatically — and a
+   note its own rank cannot play **spills over** there first, which is what a
+   band-organ arrangement does with a four-pipe bass. A note with no pipe on
+   either is snapped to the nearest one, or dropped with `--out-of-scale
+   drop`; every one is listed.
 5. **Thins chords** to what a voice may hold — one note for the melody
    (highest) and bass (lowest), two for counters, three for accompaniment.
 6. **Maps drums** by GM number onto the organ's percussion, alternating
@@ -243,8 +254,9 @@ Everything in step 2 is written to the plan and can be changed:
 ```yaml
 transpose: auto            # or an integer
 voices:
-  - { source: "Steel Drums#1", rank: "Main:high", role: melody, max_poly: 1, weight: 3.0 }
-  - { source: "Picked Bs.#4",  rank: "Main:low",  role: bass,   max_poly: 1, weight: 2.0 }
+  - { source: "Steel Drums#1", rank: "Main:Melody", role: melody, max_poly: 1, weight: 3.0 }
+  - { source: "Picked Bs.#4",  rank: "Main:Base",   role: bass,   max_poly: 1, weight: 2.0,
+      fallback: "Main:Accompainment" }                                 # spill-over rank
   - { source: "Marimba#5",     rank: TenorCM,     role: accomp, max_poly: 3, weight: 1.0 }
   - { source: "Organ 2#2",     rank: drop,        role: counter }      # silence a voice
 drums:

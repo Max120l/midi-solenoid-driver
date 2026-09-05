@@ -7,7 +7,8 @@
 # 0 + N - 1. Under each track, `notes` maps the note as written on
 # that track in the DAW to the slot(s) it sounds. A pulse track treats every
 # note as a strike of fixed length; a pitched track keeps written durations.
-# `registers` lists set/reset coil pairs so the arranger can close every
+# `sections` divides a pitched track into the ranks the transcriber arranges
+# for. `registers` lists set/reset coil pairs so the arranger can close every
 # register before and after the music.
 
 name: Band organ
@@ -41,36 +42,37 @@ tracks:
       86: 50
       88: 28
       89: 52
-    labels: {36: C, 41: F, 43: G, 46: A#, 48: C, 50: D, 52: E, 53: F, 55: G, 57: A, 58: A#, 60: C, 72: C,
-      74: D, 76: E, 77: F, 78: F#, 79: G, 81: A, 82: A#, 83: B, 84: C, 86: D, 88: E, 89: F}
+    sections:
+      Base: [36, 41, 43, 46]
+      Accompainment: [48, 50, 52, 53, 55, 57, 58, 60]
+      Melody: [72, 74, 76, 77, 78, 79, 81, 82, 83, 84, 86, 88, 89]
   TenorCM:
     kind: pitched
     notes: {60: 15, 62: 60, 64: 16, 65: 59, 66: 17, 67: 58, 69: 18, 70: 57, 71: 19, 72: 56}
-    labels: {60: C, 62: D, 64: E, 65: F, 66: F#, 67: G, 69: A, 70: A#, 71: B, 72: C}
   TrebCM:
     kind: pitched
     notes: {84: 20, 86: 53, 88: 21, 89: 51, 90: 22, 91: 49, 93: 23, 94: 47, 95: 24, 96: 45}
-    labels: {84: C, 86: D, 88: E, 89: F, 90: F#, 91: G, 93: A, 94: A#, 95: B, 96: C}
   Drums:
     kind: pulse
     pulse_ms: 50
-    notes: {21: 63, 22: 54, 23: 55, 25: 14}
-    labels: {21: Leader, 22: Snare, 23: Snare, 25: Bass}
+    notes: {21: 63, 35: 14, 38: 55, 39: 54}
+    labels: {21: Leader, 35: Bass, 38: Snare, 39: Snare}
   Registers:
     kind: pulse
     pulse_ms: 100
     notes: {99: 13, 100: 12, 102: 11, 103: 10, 106: 9, 107: 8, 109: 7, 110: 6, 114: 5, 115: 4, 118: 3,
       119: 2, 121: 1, 122: 0}
-    labels: {99: MEL flute on, 100: MEL flute on, 102: MEL violin off, 103: MEL violin on, 106: Trumpet
-        on, 107: Trumpet on, 109: ACC viol off, 110: ACC viol on, 114: Cello off, 115: Cello on, 118: Clarinet
-        off, 119: Clarinet on, 121: Trombone off, 122: Trombone on}
+    labels: {99: Flute Melody off, 100: Flute Melody on, 102: Violin Melody off, 103: Violin Melody on,
+      106: Trumpet Melody off, 107: Trumpet Melody on, 109: Violin Accompainment off, 110: Violin Accompainment
+        on, 114: Cello TenorCM off, 115: Cello TenorCM on, 118: Clarinet TenorCM off, 119: Clarinet TenorCM
+        on, 121: Trombone Base off, 122: Trombone Base on}
 registers:
-- {name: Trombone, set: 0, reset: 1}
-- {name: Clarinet, set: 2, reset: 3}
-- {name: Cello, set: 4, reset: 5}
-- {name: ACC viol, set: 6, reset: 7}
-- {name: Trumpet, set: 8, reset: 9}
-- {name: MEL violin, set: 10, reset: 11}
-- {name: MEL flute, set: 12, reset: 13}
+- {name: Trombone Base, set: 0, reset: 1}
+- {name: Clarinet TenorCM, set: 2, reset: 3}
+- {name: Cello TenorCM, set: 4, reset: 5}
+- {name: Violin Accompainment, set: 6, reset: 7}
+- {name: Trumpet Melody, set: 8, reset: 9}
+- {name: Violin Melody, set: 10, reset: 11}
+- {name: Flute Melody, set: 12, reset: 13}
 timing: {min_note_ms: 50, min_gap_ms: 30, pulse_ms: 50, register_pulse_ms: 100, register_stagger_ms: 60,
   lead_in_ms: 1000, settle_ms: 250, reset_registers_at_start: true, reset_registers_at_end: true}

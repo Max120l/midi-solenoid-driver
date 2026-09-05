@@ -67,6 +67,10 @@ class Track:
     notes: dict[int, tuple[int, ...]]      # score note -> one or more slots
     pulse_ms: int                          # used when kind is pulse
     labels: dict[int, str] = field(default_factory=dict)   # score note -> text, for the report
+    # Optional: section name -> the track's notes in it. Divides one track into
+    # the ranks a transcriber arranges for (Main's Base / Accompaniment /
+    # Melody). The arranger itself does not need it.
+    sections: dict[str, list[int]] = field(default_factory=dict)
 
     def label(self, note: int) -> str:
         return self.labels.get(note) or f"{self.name} {note_name(note)}"
@@ -128,8 +132,10 @@ class Organ:
                     slots = v if isinstance(v, (list, tuple)) else [v]
                     notes[int(k)] = tuple(int(s) for s in slots)
                 labels = {int(k): str(v) for k, v in (tdef.get("labels") or {}).items()}
+                sections = {str(k): [int(x) for x in (v or [])]
+                            for k, v in (tdef.get("sections") or {}).items()}
                 tracks[str(tname)] = Track(str(tname), kind, notes,
-                                           int(tdef.get("pulse_ms", timing.pulse_ms)), labels)
+                                           int(tdef.get("pulse_ms", timing.pulse_ms)), labels, sections)
 
             registers = []
             for r in (raw.get("registers") or []):
@@ -180,6 +186,11 @@ class Organ:
                     owner[slot] = track.name
                     self.slot_min_len_ms[slot] = (track.pulse_ms if track.kind == KIND_PULSE
                                                   else t.min_note_ms)
+            for section, sec_notes in track.sections.items():
+                for n in sec_notes:
+                    if n not in track.notes:
+                        raise OrganError(f"track {track.name}: section {section} lists note {n}, "
+                                         f"which the track does not have")
 
         for reg in self.registers:
             if reg.set_slot == reg.reset_slot:

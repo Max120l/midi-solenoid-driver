@@ -97,9 +97,28 @@ class Rank:
 
 
 def derive_ranks(organ: oa.Organ) -> dict[str, Rank]:
+    """One rank per pitched region the organ can play.
+
+    If the definition names sections for a track (Main's Base, Accompaniment,
+    Melody), those are the ranks -- the instrument's own word for how it is
+    built. Otherwise a track is split wherever its notes leave a gap of a
+    fifth or more, which finds a melody section sitting above a bass section
+    but cannot tell two adjacent sections apart.
+    """
     ranks: dict[str, Rank] = {}
+
+    def add(name: str, tname: str, region: list[int]) -> None:
+        region = sorted(region)
+        ranks[name] = Rank(name, tname, region, region[0], region[-1],
+                           (region[0] + region[-1]) / 2, {n % 12 for n in region})
+
     for tname, track in organ.tracks.items():
         if track.kind != oa.KIND_PITCHED or not track.notes:
+            continue
+        if track.sections:
+            for section, sec_notes in track.sections.items():
+                if sec_notes:
+                    add(f"{tname}:{section}", tname, list(sec_notes))
             continue
         notes = sorted(track.notes)
         regions: list[list[int]] = [[notes[0]]]
@@ -110,12 +129,14 @@ def derive_ranks(organ: oa.Organ) -> dict[str, Rank]:
                 regions[-1].append(b)
         labels = ["low", "high"] if len(regions) == 2 else [str(i + 1) for i in range(len(regions))]
         for i, region in enumerate(regions):
-            name = tname if len(regions) == 1 else f"{tname}:{labels[i]}"
-            ranks[name] = Rank(name, tname, region, region[0], region[-1],
-                               (region[0] + region[-1]) / 2, {n % 12 for n in region})
+            add(tname if len(regions) == 1 else f"{tname}:{labels[i]}", tname, region)
     if not ranks:
         raise TranscribeError("the organ has no pitched tracks to arrange for")
     return ranks
+
+
+def is_melody_rank_name(name: str) -> bool:
+    return "melod" in name.lower() or name.endswith(":high")
 
 
 # ----------------------------------------------------------------------------
@@ -230,6 +251,10 @@ class Voice:
     role: str
     max_poly: int
     weight: float
+    # A second rank to try when the first has no pipe for a note. What a real
+    # band-organ arrangement does with a bass rank of four pipes: the notes it
+    # cannot play spill over to the accompaniment an octave up.
+    fallback: str | None = None
 
 
 @dataclass
@@ -244,8 +269,10 @@ class Plan:
     def to_dict(self) -> dict:
         return {
             "transpose": self.transpose,
-            "voices": [{"source": v.source, "rank": v.rank, "role": v.role,
-                        "max_poly": v.max_poly, "weight": v.weight} for v in self.voices],
+            "voices": [{k: val for k, val in (("source", v.source), ("rank", v.rank), ("role", v.role),
+                                               ("max_poly", v.max_poly), ("weight", v.weight),
+                                               ("fallback", v.fallback)) if val is not None}
+                       for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
             "registration": self.registration,
         }
@@ -255,7 +282,8 @@ class Plan:
         try:
             voices = [Voice(str(v["source"]), str(v["rank"]), str(v.get("role", ROLE_COUNTER)),
                             int(v.get("max_poly", ROLE_POLY.get(v.get("role", ROLE_COUNTER), 2))),
-                            float(v.get("weight", ROLE_WEIGHT.get(v.get("role", ROLE_COUNTER), 1.0))))
+                            float(v.get("weight", ROLE_WEIGHT.get(v.get("role", ROLE_COUNTER), 1.0))),
+                            str(v["fallback"]) if v.get("fallback") else None)
                       for v in d.get("voices", [])]
             drums = d.get("drums") or {}
             t = d.get("transpose", "auto")
@@ -283,7 +311,15 @@ def auto_plan(sources: list[Source], ranks: dict[str, Rank], organ: oa.Organ) ->
     if bass is not None and bass.median >= 55:
         bass = None
     if bass:
-        voices.append(Voice(bass.key, low_rank.name, ROLE_BASS, ROLE_POLY[ROLE_BASS], ROLE_WEIGHT[ROLE_BASS]))
+        # Spill-over for the bass: the next rank up on the same track, if it is
+        # near enough to be the accompaniment rather than the melody.
+        above = sorted((r for r in ranks.values()
+                        if r.track == low_rank.track and r is not low_rank
+                        and 0 < r.center - low_rank.center <= 24),
+                       key=lambda r: r.center)
+        fallback = above[0].name if above else None
+        voices.append(Voice(bass.key, low_rank.name, ROLE_BASS, ROLE_POLY[ROLE_BASS],
+                            ROLE_WEIGHT[ROLE_BASS], fallback))
         pitched = [s for s in pitched if s is not bass]
 
     # Melody: the busiest reasonably-high line, favouring thin textures and
@@ -296,7 +332,7 @@ def auto_plan(sources: list[Source], ranks: dict[str, Rank], organ: oa.Organ) ->
     # that is the upper section of the main rank -- not the highest-pitched
     # rank, which is a ten-note counter-melody rank.
     upper = [r for r in ranks.values() if r.center >= 60] or list(ranks.values())
-    melody_rank = max(upper, key=lambda r: (r.name.endswith(":high"), len(r.notes), r.center))
+    melody_rank = max(upper, key=lambda r: (is_melody_rank_name(r.name), len(r.notes), r.center))
     candidates = [s for s in pitched if s.median >= 64] or pitched
     melody = max(candidates, key=melody_score, default=None)
     if melody:
@@ -319,7 +355,12 @@ def auto_plan(sources: list[Source], ranks: dict[str, Rank], organ: oa.Organ) ->
 
     # Spread counters across the counter ranks by register, high to low, so
     # they do not all pile onto one ten-note rank.
-    counter_ranks = [r for r in other_ranks if r.name != low_rank.name] or other_ranks
+    # Counter-melodies go to the counter-melody ranks: the tracks that are not
+    # the melody's. An accompaniment section on the melody's own track is not
+    # a spare rank, it is the accompaniment.
+    counter_ranks = ([r for r in other_ranks if r.track != melody_rank.track]
+                     or [r for r in other_ranks if r.name != low_rank.name]
+                     or other_ranks)
     counters.sort(key=lambda s: -s.median)
     for i, s in enumerate(counters):
         if len(counter_ranks) >= 2:
@@ -341,8 +382,10 @@ def register_names(organ: oa.Organ) -> list[str]:
 def default_registration(organ: oa.Organ) -> list[dict]:
     """Soft stops for the intro; the loud ones when the melody enters."""
     names = register_names(organ)
+    # Soft first, so "Violin Accompaniment" is a soft stop and "Violin Melody" a loud one.
     soft = [n for n in names if any(w in n.lower() for w in ("flute", "acc", "cello", "clarinet"))]
-    loud = [n for n in names if any(w in n.lower() for w in ("violin", "trumpet", "trombone"))]
+    loud = [n for n in names if n not in soft
+            and any(w in n.lower() for w in ("violin", "trumpet", "trombone"))]
     plan = []
     if soft:
         plan.append({"at": "start", "on": soft})
@@ -355,9 +398,10 @@ def default_registration(organ: oa.Organ) -> list[dict]:
 # Transposition
 # ----------------------------------------------------------------------------
 
-def coverage(voice_notes: list[Note], rank: Rank, shift: int) -> float:
+def coverage(voice_notes: list[Note], rank: Rank, shift: int, fallback: Rank | None = None) -> float:
+    pcs = rank.pcs | (fallback.pcs if fallback else set())
     total = sum(n.end - n.start for n in voice_notes) or 1e-9
-    hit = sum((n.end - n.start) for n in voice_notes if (n.pitch + shift) % 12 in rank.pcs)
+    hit = sum((n.end - n.start) for n in voice_notes if (n.pitch + shift) % 12 in pcs)
     return hit / total
 
 
@@ -368,7 +412,8 @@ def choose_transposition(plan: Plan, sources: dict[str, Source], ranks: dict[str
         for v in plan.voices:
             if v.rank == ROLE_DROP or v.source not in sources or v.rank not in ranks:
                 continue
-            score += v.weight * coverage(sources[v.source].notes, ranks[v.rank], shift)
+            score += v.weight * coverage(sources[v.source].notes, ranks[v.rank], shift,
+                                         ranks.get(v.fallback) if v.fallback else None)
             wsum += v.weight
         scored.append((shift, score / wsum if wsum else 0.0))
     best = max(scored, key=lambda s: (round(s[1], 6), -abs(s[0])))
@@ -395,6 +440,7 @@ class VoiceStats:
     snapped: int = 0
     dropped: int = 0
     folded: int = 0
+    spilled: int = 0          # placed on the fallback rank
 
 
 def thin_chords(notes: list[Note], max_poly: int, role: str) -> tuple[list[Note], int]:
@@ -416,34 +462,58 @@ def thin_chords(notes: list[Note], max_poly: int, role: str) -> tuple[list[Note]
     return sorted(out, key=lambda n: (n.start, n.pitch)), removed
 
 
+def place_in_rank(p: int, prev: float, rank: Rank) -> tuple[int, bool]:
+    """Where pitch p lands on a rank, and whether it lands on a pipe.
+
+    Octave candidates inside the rank's compass are preferred if they actually
+    have the pipe -- displacing a note by an octave is far less wrong than
+    snapping it to a neighbouring semitone -- and among those, the one nearest
+    the line's previous note, with a gentle pull toward the rank's centre so a
+    line cannot drift away and stay there. A rank narrower than an octave may
+    have no candidate at all for a pitch class; then the answer is the pipe
+    nearest by pitch class, and it is not exact.
+    """
+    candidates = [c for c in range(p % 12, 128, 12) if rank.lo <= c <= rank.hi]
+    if candidates:
+        target = min(candidates, key=lambda c: (c not in rank.notes,
+                                                 abs(c - prev) + 0.3 * abs(c - rank.center)))
+        return target, target in rank.notes
+    nearest = min(rank.notes, key=lambda c: (min((c - p) % 12, (p - c) % 12), abs(c - prev)))
+    return nearest, False
+
+
 def fold_voice(notes: list[Note], rank: Rank, shift: int, snap: bool, stats: VoiceStats,
-               report: list[str], origin: str) -> list[Placed]:
-    """Transpose, fold each note into the rank's compass near the line's last
-    note, then snap to the nearest pipe (or drop) if there is none for it."""
+               report: list[str], origin: str, fallback: Rank | None = None) -> list[Placed]:
+    """Transpose and place each note on its rank; spill to the fallback rank
+    when the first has no pipe for it; snap to the nearest pipe (or drop) when
+    neither does."""
     placed: list[Placed] = []
     prev = rank.center
     for n in sorted(notes, key=lambda n: (n.start, n.pitch)):
         p = n.pitch + shift
-        candidates = [c for c in range(p % 12, 128, 12) if rank.lo <= c <= rank.hi]
-        if not candidates:
-            candidates = [rank.lo]
-        # Prefer an octave that actually has this pipe: displacing a note by an
-        # octave is far less wrong than snapping it to a neighbouring semitone.
-        # Among those, stay close to the line's last note, with a gentle pull
-        # toward the rank's centre so a line cannot drift away and stay there.
-        target = min(candidates, key=lambda c: (c not in rank.notes,
-                                                 abs(c - prev) + 0.3 * abs(c - rank.center)))
-        if target != p:
-            stats.folded += 1
-        if target not in rank.notes:
+        target, exact = place_in_rank(p, prev, rank)
+        if not exact and fallback is not None:
+            alt, alt_exact = place_in_rank(p, prev, fallback)
+            if alt_exact:
+                stats.spilled += 1
+                if alt != p:
+                    stats.folded += 1
+                prev = alt
+                placed.append(Placed(fallback.track, alt, n.start, n.end, origin))
+                stats.kept += 1
+                continue
+        if not exact:
             if not snap:
                 stats.dropped += 1
-                report.append(f"{fmt_time(n.start)}  {origin}: {note_name(target)} has no pipe on {rank.name}; dropped")
+                report.append(f"{fmt_time(n.start)}  {origin}: {note_name(p)} has no pipe on {rank.name}; dropped")
                 continue
-            snapped = rank.nearest_note(target)
+            snapped = rank.nearest_note(target) if target not in rank.notes else target
             stats.snapped += 1
-            report.append(f"{fmt_time(n.start)}  {origin}: {note_name(target)} -> {note_name(snapped)} (nearest pipe on {rank.name})")
+            report.append(f"{fmt_time(n.start)}  {origin}: {note_name(p)} -> {note_name(snapped)} "
+                          f"(nearest pipe on {rank.name})")
             target = snapped
+        elif target != p:
+            stats.folded += 1
         prev = target
         placed.append(Placed(rank.track, target, n.start, n.end, origin))
         stats.kept += 1
@@ -597,6 +667,8 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
             lines.append(f"plan: source '{v.source}' is not in this file; ignored")
         elif v.rank != ROLE_DROP and v.rank not in ranks:
             raise TranscribeError(f"plan: rank '{v.rank}' does not exist; ranks are {sorted(ranks)}")
+        elif v.fallback and v.fallback not in ranks:
+            raise TranscribeError(f"plan: fallback rank '{v.fallback}' does not exist; ranks are {sorted(ranks)}")
 
     if plan.transpose == "auto":
         shift, shifts = choose_transposition(plan, by_key, ranks)
@@ -614,7 +686,8 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
         stats = VoiceStats()
         notes, thinned = thin_chords(src.notes, v.max_poly, v.role)
         stats.thinned = thinned
-        placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})"))
+        placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
+                                 fallback=ranks.get(v.fallback) if v.fallback else None))
         voice_stats[v.source] = stats
         if v.role == ROLE_MELODY:
             melody_first = src.first if melody_first is None else min(melody_first, src.first)
@@ -714,8 +787,9 @@ def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: st
         if s is None or st is None:
             L.append(f"  {v.source:<32} -> {v.rank:<12} {v.role:<8} (not used)")
             continue
-        L.append(f"  {s.name:<32} -> {v.rank:<12} {v.role:<8} kept {st.kept:>4}  "
-                 f"thinned {st.thinned:>3}  folded {st.folded:>4}  snapped {st.snapped:>3}  dropped {st.dropped:>3}")
+        where = v.rank + (f" (+{v.fallback})" if v.fallback else "")
+        L.append(f"  {s.name:<24} -> {where:<32} {v.role:<7} kept {st.kept:>4}  thinned {st.thinned:>3}  "
+                 f"folded {st.folded:>4}  spilled {st.spilled:>3}  snapped {st.snapped:>3}  dropped {st.dropped:>3}")
     if r.drum_counts:
         L.append("")
         L.append("Drums")

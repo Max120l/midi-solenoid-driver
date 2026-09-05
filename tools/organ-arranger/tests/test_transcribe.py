@@ -275,6 +275,91 @@ def test_plan_round_trips_through_yaml():
     assert again.drum_map == plan.drum_map
 
 
+# ----------------------------------------------------------------------------
+# Sections and spill-over
+# ----------------------------------------------------------------------------
+
+def sectioned_organ() -> oa.Organ:
+    # Main as this instrument really is: a four-pipe bass (C F G Bb), an
+    # eight-pipe accompaniment, a melody section.
+    d = organ_dict_sectioned()
+    return oa.Organ.from_dict(d)
+
+
+def organ_dict_sectioned() -> dict:
+    base = {36: 0, 41: 1, 43: 2, 46: 3}
+    acc = {48: 4, 50: 5, 52: 6, 53: 7, 55: 8, 57: 9, 58: 10, 60: 11}
+    mel = {72: 20, 74: 21, 76: 22, 77: 23, 79: 24, 81: 25, 84: 26}
+    return {
+        "name": "sectioned",
+        "tracks": {
+            "Main": {"notes": {**base, **acc, **mel},
+                     "sections": {"Base": sorted(base), "Accompainment": sorted(acc), "Melody": sorted(mel)}},
+            "TenorCM": {"notes": {60: 30, 62: 31, 64: 32, 65: 33, 67: 34, 69: 35, 71: 36, 72: 37}},
+        },
+    }
+
+
+def test_sections_become_ranks_named_by_the_sheet():
+    ranks = ot.derive_ranks(sectioned_organ())
+    assert set(ranks) == {"Main:Base", "Main:Accompainment", "Main:Melody", "TenorCM"}
+    assert ranks["Main:Base"].pcs == {0, 5, 7, 10}
+
+
+def test_bass_goes_to_the_base_rank_with_the_accompaniment_as_fallback():
+    org = sectioned_organ()
+    sources, _, _ = ot.read_source(d_major_tune())
+    plan = ot.auto_plan(sources, ot.derive_ranks(org), org)
+    bass = next(v for v in plan.voices if v.role == "bass")
+    assert bass.rank == "Main:Base" and bass.fallback == "Main:Accompainment"
+    melody = next(v for v in plan.voices if v.role == "melody")
+    assert melody.rank == "Main:Melody"
+
+
+def test_bass_notes_the_base_rank_lacks_spill_to_the_accompaniment_an_octave_up():
+    org = sectioned_organ()
+    # C major bass line: C G D A. Base has C and G; D and A are not there in any
+    # octave, but the accompaniment has D3 (50) and A3 (57).
+    mid = tune(track("Bass", notes(1, [36, 43, 38, 45] * 4, length=BEAT, step=BEAT)))
+    sources, _, _ = ot.read_source(mid)
+    plan = ot.auto_plan(sources, ot.derive_ranks(org), org)
+    plan.transpose = 0
+    r = ot.transcribe(mid, org, plan)
+    st = list(r.voice_stats.values())[0]
+    assert st.spilled == 8 and st.snapped == 0 and st.dropped == 0
+    main = [n for _, _, n in out_notes(r.mid, "Main")]
+    assert set(main) == {36, 43, 50, 57}
+
+
+def test_narrow_rank_without_fallback_snaps_by_pitch_class_and_reports_it():
+    d = organ_dict_sectioned()
+    del d["tracks"]["Main"]["sections"]["Accompainment"]
+    for n in (48, 50, 52, 53, 55, 57, 58, 60):
+        del d["tracks"]["Main"]["notes"][n]
+    org = oa.Organ.from_dict(d)
+    mid = tune(track("Bass", notes(1, [38] * 4, length=BEAT, step=BEAT)))       # D: no pipe at all
+    sources, _, _ = ot.read_source(mid)
+    plan = ot.auto_plan(sources, ot.derive_ranks(org), org)
+    plan.transpose = 0
+    r = ot.transcribe(mid, org, plan)
+    st = list(r.voice_stats.values())[0]
+    assert st.snapped == 4 and st.kept == 4
+    assert all(n in (36, 41, 43, 46) for _, _, n in out_notes(r.mid, "Main"))
+    assert any("no pipe" in l or "nearest pipe" in l for l in r.lines)
+
+
+def test_plan_fallback_round_trips_and_is_validated():
+    org = sectioned_organ()
+    sources, _, _ = ot.read_source(d_major_tune())
+    plan = ot.auto_plan(sources, ot.derive_ranks(org), org)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert [v.fallback for v in again.voices] == [v.fallback for v in plan.voices]
+    bad = ot.Plan.from_dict(plan.to_dict())
+    bad.voices[0].fallback = "Nope"
+    with pytest.raises(ot.TranscribeError, match="fallback rank"):
+        ot.transcribe(d_major_tune(), org, bad)
+
+
 def test_cli_writes_output_report_and_plan(tmp_path):
     org_path = tmp_path / "organ.yaml"
     org_path.write_text(yaml.safe_dump({

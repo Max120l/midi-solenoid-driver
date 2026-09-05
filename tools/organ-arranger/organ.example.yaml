@@ -28,6 +28,9 @@ tracks:
       57: 66
       59: 67
       60: 68
+    sections:        # optional: divides the track into the ranks a transcriber
+      Base: [48, 50, 52, 53]          # arranges for; the arranger ignores it
+      Melody: [55, 57, 59, 60]
 
   TenorCM:
     kind: pitched

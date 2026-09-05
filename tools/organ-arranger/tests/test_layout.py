@@ -112,6 +112,76 @@ def test_pulse_track_override_and_cli(tmp_path):
     assert "GENERATED" in out.read_text(encoding="utf-8")
 
 
+# ----------------------------------------------------------------------------
+# The second layout format: sections on pitched tracks, structured registers
+# ----------------------------------------------------------------------------
+
+def sample_v2(tmp_path):
+    header = ("Solenoid", "Main", None, None, "TenorCM", None, "Drums ", None, "Registers", None, None, None)
+    sub = (None, "number", "note", "section", "number", "note", "number", "note",
+           "number", "instrument", "Section", "action")
+    rows = [
+        (1, None, None, None, None, None, None, None, 122, "Trombone", "Base", "on"),
+        (2, None, None, None, None, None, None, None, 121, "Trombone", "Base", "off"),
+        (3, None, None, None, None, None, None, None, 110, "Violin", "Accompainment", "on"),
+        (4, None, None, None, None, None, None, None, 109, "Violin", "Accompainment", "off"),
+        (5, None, None, None, None, None, None, None, 103, "Violin", "Melody", "on"),
+        (6, None, None, None, None, None, None, None, 102, "Violin", "Melody", "off"),
+        (7, None, None, None, None, None, 35, "Bass", None, None, None, None),
+        (8, None, None, None, 60, "C", None, None, None, None, None, None),
+        (9, 36, "C", "Base", None, None, None, None, None, None, None, None),
+        (10, 41, "F", "Base", None, None, None, None, None, None, None, None),
+        (11, 48, "C", "Accompainment", None, None, None, None, None, None, None, None),
+        (12, 55, "G", "Accompainment", None, None, None, None, None, None, None, None),
+        (13, 72, "C", "Melody", None, None, None, None, None, None, None, None),
+        (14, 74, "D", "Melody", None, None, None, None, None, None, None, None),
+    ]
+    return make_sheet(tmp_path / "layout2.xlsx", rows, header=header) if False else _make_v2(tmp_path, header, sub, rows)
+
+
+def _make_v2(tmp_path, header, sub, rows):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(list(header))
+    ws.append(list(sub))
+    for r in rows:
+        ws.append(list(r))
+    path = tmp_path / "layout2.xlsx"
+    wb.save(path)
+    return path
+
+
+def test_v2_groups_span_several_columns_and_sections_are_emitted(tmp_path):
+    order, entries, _ = lo.read_layout(sample_v2(tmp_path))
+    assert order == ["Main", "TenorCM", "Drums", "Registers"]
+    organ, warnings = lo.build_organ(order, entries, 0, "t", {})
+    assert organ["tracks"]["Main"]["sections"] == {
+        "Base": [36, 41], "Accompainment": [48, 55], "Melody": [72, 74]}
+    assert "sections" not in organ["tracks"]["TenorCM"]
+    assert organ["tracks"]["Drums"]["labels"][35] == "Bass"
+    assert warnings == []
+
+
+def test_v2_registers_pair_by_instrument_and_section(tmp_path):
+    order, entries, _ = lo.read_layout(sample_v2(tmp_path))
+    organ, _ = lo.build_organ(order, entries, 0, "t", {})
+    regs = {r["name"]: r for r in organ["registers"]}
+    assert regs["Trombone Base"] == {"name": "Trombone Base", "set": 0, "reset": 1}
+    assert regs["Violin Accompainment"] == {"name": "Violin Accompainment", "set": 2, "reset": 3}
+    assert regs["Violin Melody"] == {"name": "Violin Melody", "set": 4, "reset": 5}
+    assert organ["tracks"]["Registers"]["labels"][110] == "Violin Accompainment on"
+
+
+def test_v2_definition_loads_and_yields_section_ranks(tmp_path):
+    import organ_transcribe as ot
+    order, entries, _ = lo.read_layout(sample_v2(tmp_path))
+    organ, _ = lo.build_organ(order, entries, 0, "t", {})
+    loaded = oa.Organ.from_dict(yaml.safe_load(lo.render_yaml(organ, tmp_path / "x.xlsx", 0)))
+    ranks = ot.derive_ranks(loaded)
+    assert {"Main:Base", "Main:Accompainment", "Main:Melody", "TenorCM"} == set(ranks)
+    assert ranks["Main:Base"].notes == [36, 41]
+
+
 def test_a_solenoid_on_two_tracks_is_an_error(tmp_path):
     make_sheet(tmp_path / "bad.xlsx", [(1, 60, "C", 60, "C", None, None, None, None)])
     with pytest.raises(lo.LayoutError, match="several tracks"):
