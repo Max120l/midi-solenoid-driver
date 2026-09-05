@@ -47,3 +47,6 @@ __pycache__/
 # Arranger outputs are derived from a song and organ.yaml; regenerate, do not commit.
 *.organ.mid
 *.organ.txt
+
+# Tune sources are not committed (they are other people's music); their plans are.
+tools/organ-arranger/tunes/*.mid

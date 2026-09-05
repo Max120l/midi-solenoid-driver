@@ -271,6 +271,11 @@ registration:
 
 Sources are `name#index` so two tracks with the same name stay distinct.
 
+Plans that have been settled by ear live in [`tunes/`](tunes/), one per tune,
+with the decision and the rebuild commands in a comment at the top. The tune's
+source `.mid` is **not** committed — it is someone else's music — so keep it
+next to its plan when rebuilding; the plan refers to it only by track names.
+
 What the tool cannot do is hear. Its output is *correct* for the organ long
 before it is *good*; the first listen will say more than the report, and the
 plan is where that judgement goes.

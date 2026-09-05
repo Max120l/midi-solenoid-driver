@@ -1,0 +1,34 @@
+# Plan for organ_transcribe: the Monkey Island intro theme (mkintro.mid).
+#
+# transpose is fixed at -2 (D minor). The scorer rates A minor (+5) and D minor
+# within a few tenths of a percent of each other -- both lose only the raised
+# leading tone -- and D minor won the listening test on the pipes: fewer bass
+# notes spill off the four-pipe Base rank, and it sits a fourth lower.
+#
+# The source .mid is not in the repository; keep it alongside this file when
+# rebuilding:
+#   organ_transcribe.py mkintro.mid --organ ../instrument/organ.yaml --plan mkintro.plan.yaml
+#   organ_arranger.py mkintro.fororgan.mid --organ ../instrument/organ.yaml
+#
+# rank: one of the ranks the report lists, or 'drop'. role: melody | bass |
+# counter | accomp. fallback: a second rank to spill to.
+transpose: -2
+voices:
+- {source: Picked Bs.#4, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0,
+  fallback: 'Main:Accompainment'}
+- {source: Steel Drums#1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: Marimba#5, rank: TenorCM, role: accomp, max_poly: 3, weight: 1.0}
+- {source: Organ 1#7, rank: 'Main:Accompainment', role: accomp, max_poly: 3, weight: 1.0}
+- {source: Organ 2#2, rank: TrebCM, role: counter, max_poly: 2, weight: 1.0}
+- {source: Steel Drums#6, rank: TrebCM, role: counter, max_poly: 2, weight: 1.0}
+- {source: Piano#3, rank: TenorCM, role: counter, max_poly: 2, weight: 1.0}
+- {source: Steel Drums#9, rank: TenorCM, role: counter, max_poly: 2, weight: 1.0}
+drums:
+  source: Drums#10
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody]
+- at: melody
+  'on': [Trombone Base, Trumpet Melody, Violin Melody]
