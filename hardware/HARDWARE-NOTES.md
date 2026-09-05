@@ -138,6 +138,35 @@ temperature and supply, against a UART tolerance of roughly ±2%. It works, and
 worked for upstream, but it is the first thing to suspect if MIDI ever garbles
 in a cold or overheated chamber.
 
+## Programming over ISP fires solenoids
+
+The ISP header shares its SPI lines with three outputs: MOSI is `CTRL13`,
+MISO is `CTRL14`, SCK is `CTRL15` (pins 12, 14 and 17 of the MCU). While a
+programmer is clocking data in, MOSFETs 13, 14 and 15 are switching. When
+programming finishes and reset releases, the board boots and runs the
+exercise routine: every output, at full power, in sequence.
+
+**This happens even with the 12 V supply switched off** if the programmer is
+supplying 5 V through the header. A buck regulator conducts backwards through
+its high-side body diode when its output is held above its input, so the
+board's 5 V rail back-feeds the "12 V" node to roughly 4 V — 0.6 A through a
+7 Ω coil, weak but enough to click an unloaded plunger. Confirm with a meter
+on the 12 V rail with only the programmer connected.
+
+The procedure that is safe regardless:
+
+1. 12 V supply **off**, **both fuses out** — that opens the fused rail and
+   nothing can fire whatever the 12 V node is doing.
+2. Programmer connected, supplying 5 V and ground through the header.
+3. Program.
+4. Programmer **disconnected**, fuses **in**, 12 V **on**.
+
+Do not run the programmer's 5 V and the board's own supply at the same time:
+that is two regulators contending for one rail.
+
+Since tuning is done over MIDI (see the README), reflashing is rare, which is
+the best mitigation of all.
+
 ## The schematic includes an RS485 transceiver that shipped boards may not have
 
 The schematic in this repository has **U3, an SN75LBC176D** RS485 transceiver at
