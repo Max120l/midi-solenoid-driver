@@ -43,12 +43,15 @@ One row per solenoid; one column pair per DAW track:
 | 28 | 60 · C | | | |
 
 Each solenoid has exactly one `(track, note)` entry. Solenoid *N* drives slot
-`base + N − 1` — with four boards at base notes 48, 64, 80 and 96, solenoid 1
-is slot 48 and solenoid 64 is slot 111.
+`base + N − 1`. This instrument's four boards sit at base notes 0, 16, 32 and
+48 — board 1 with every switch open — so solenoid 1 is slot 0, solenoid 64 is
+slot 63, and 0 is the default:
 
 ```bash
-python layout_to_organ.py "MIDI layout.xlsx" -o organ.yaml --base-note 48
+python layout_to_organ.py instrument/layout.xlsx -o instrument/organ.yaml
 ```
+
+A chain set up at 48, 64, 80 and 96 instead would use `--base-note 48`.
 
 It infers that tracks named like *drums* or *registers* are pulse tracks
 (`--pulse-track NAME=MS` to override), pairs registers from the action text

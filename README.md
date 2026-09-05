@@ -331,6 +331,11 @@ one board's worth, so four boards tile without gaps:
 | 3 | 80 | 80-95 | 1, 3 |
 | 4 | 96 | 96-111 | 2, 3 |
 
+This instrument's chain sits one step lower than that table: board 1 with
+every switch open at base note **0**, then 16, 32 and 48, so its 64 solenoids
+are slots 0–63. That is what `tools/organ-arranger/instrument/organ.yaml` is
+generated for; the table above is the same idea shifted up three octaves.
+
 The same chain under `OFFSET_FULL7`, where any base note is reachable — here
 placed at 36-99 (C2 to D#7) instead:
 

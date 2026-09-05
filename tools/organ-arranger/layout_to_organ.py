@@ -18,8 +18,9 @@ from row 3):
     ...
 
 Each solenoid row has exactly one (track, note) entry. Solenoid N drives
-driver-board slot base_note + N - 1: with four boards at base notes 48, 64, 80
-and 96, solenoid 1 is slot 48 and solenoid 64 is slot 111.
+driver-board slot base_note + N - 1. This instrument's four boards sit at base
+notes 0, 16, 32 and 48 -- board 1 with every switch open -- so solenoid 1 is
+slot 0 and solenoid 64 is slot 63, and 0 is the default.
 
 Tracks named like "drums" or "registers" become pulse tracks (a note is a
 strike); everything else is pitched. Register set/reset pairs are read from
@@ -246,8 +247,9 @@ def main(argv: list[str] | None = None) -> int:
                                 description="Generate organ.yaml from the layout spreadsheet.")
     p.add_argument("layout", help="the .xlsx layout, one row per solenoid")
     p.add_argument("-o", "--output", help="organ.yaml to write (default: alongside the sheet)")
-    p.add_argument("--base-note", type=int, default=48,
-                   help="slot of solenoid 1; solenoid N is base + N - 1 (default 48)")
+    p.add_argument("--base-note", type=int, default=0,
+                   help="slot of solenoid 1; solenoid N is base + N - 1 (default 0: board 1 "
+                        "with every switch open)")
     p.add_argument("--name", help="organ name for the definition (default: the sheet's file name)")
     p.add_argument("--sheet", help="worksheet name (default: the first)")
     p.add_argument("--pulse-track", action="append", default=[], metavar="NAME=MS",
