@@ -144,12 +144,13 @@ fires one coil at a time. A blade fuse carries 135% of its rating for minutes
 and about 200% for a second, so a 40 ms attack is invisible to it. The music
 does not size the fuse; the wire and the supply do.
 
-**5 A per bank** is the sensible value: comfortably above anything the music
-does, fast to open on a real short from a modest supply, and at or under the
-ampacity of the thinnest plausible wire. Step a bank to 7.5 A only after a
-nuisance blow, which would take all eight coils attacking together at a much
-higher pull-in duty than the default. Add one main fuse at the supply output
-sized to the supply, so the feeds and the star ground are covered as well.
+**5 A per bank**, and on this instrument that is a ceiling rather than a
+preference: the solenoid leads are **22 AWG**, good for about 5-7 A, so
+anything larger stops protecting them. 5 A is still comfortably above
+anything the music does and opens fast on a real short from a modest
+supply. A bank could only go to 7.5 A after rewiring it in 20 AWG. Add one
+main fuse at the supply output sized to the supply, so the feeds and the
+star ground are covered as well.
 
 No fuse protects a coil that is stuck **on**: 1.7 A continuous through a
 10%-duty solenoid trips nothing and simply cooks. That is the firmware
