@@ -686,6 +686,11 @@ every register reset before and after the music so their state is always
 known, and writes a report of every note it dropped, merged, stretched or
 trimmed. This organ's own sheet, generated definition and an all-notes sample
 file live in [`tools/organ-arranger/instrument/`](tools/organ-arranger/instrument/).
+A third tool, `organ_transcribe.py`, goes one step earlier: it takes an
+ordinary multi-track MIDI tune in any key and arranges it *for* the organ —
+finding the transposition that best fits the pipes, assigning voices to ranks,
+folding lines into each rank's compass, mapping the drums, beating the
+leader's arm on the downbeats — with every choice in an editable plan.
 Python, on `mido`; see its README.
 
 [`tools/organ-config/`](tools/organ-config/) retunes the boards over MIDI —

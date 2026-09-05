@@ -182,12 +182,90 @@ physically do and want measuring against the chest. If fast passages smear the
 gap is too small; if notes fail to speak the minimum is too short; the
 register pulse just needs to throw the latch reliably.
 
+## Arranging a tune that was never written for the organ
+
+`organ_transcribe.py` is the step *before* the arranger: it takes an ordinary
+multi-track MIDI file — any key, any instruments, notes anywhere — and produces
+the organ-format multi-track file above, with every note on a pipe that
+exists. It is mechanical arranging with musical heuristics, and every decision
+lands in a report and an editable plan, because taste belongs to the arranger
+and not to a script.
+
+```bash
+python organ_transcribe.py tune.mid --organ instrument/organ.yaml --write-plan tune.plan.yaml
+# edit tune.plan.yaml, then
+python organ_transcribe.py tune.mid --organ instrument/organ.yaml --plan tune.plan.yaml
+```
+
+Writes `tune.fororgan.mid` (open it in the DAW, or feed it to the arranger) and
+`tune.fororgan.txt`. What it does:
+
+1. **Derives the organ's ranks** from the definition: each pitched track's
+   available notes, split where a track has a gap of a fifth or more — so
+   `Main` becomes `Main:low` (bass and accompaniment) and `Main:high` (the
+   melody section), which are different ranks on the same track.
+2. **Reads and classifies the source.** Identical tracks (a doubled lead) are
+   dropped. The lowest voice is the bass; the busiest reasonably-high line is
+   the melody and goes to the widest upper rank; chordal low tracks are
+   accompaniment; the rest are counter-melodies, spread across the counter
+   ranks by register so they do not all pile onto one ten-note rank. Channel
+   10 is the drum kit — a track merely *named* "Steel Drums" is not.
+3. **Searches all 24 transpositions** and scores each by duration-weighted
+   coverage — the fraction of each voice that lands on a pitch class its rank
+   has — weighting the melody ×3 and the bass ×2. The report lists the top
+   five; `--transpose N` overrides. Expect near-ties: an E-minor tune that
+   also uses F♮ scored A minor (+5) a hair above D minor (−2) on this organ,
+   because F♮ becomes a B♭ the organ has rather than a D♯ it does not.
+4. **Folds each voice into its rank's compass** one octave at a time,
+   preferring an octave that actually has the pipe (an octave displacement is
+   far less wrong than a wrong semitone), staying near the line's previous
+   note with a gentle pull toward the rank's centre. A note with no pipe in
+   any octave is snapped to the nearest one, or dropped with
+   `--out-of-scale drop`; every one is listed.
+5. **Thins chords** to what a voice may hold — one note for the melody
+   (highest) and bass (lowest), two for counters, three for accompaniment.
+6. **Maps drums** by GM number onto the organ's percussion, alternating
+   between two snares where there are two, dropping what has no equivalent
+   (hi-hats, toms, crashes) and saying which. **The leader's arm beats every
+   downbeat** from the time signature, for as long as the music plays.
+7. **Writes a registration**: the soft stops before the first note, the loud
+   ones a quarter-second before the melody enters, everything off at the end.
+8. **Runs the result through the arranger.** `Arranger check: 0 dropped` means
+   every note has a pipe. Exit status 1 otherwise.
+
+### The plan file
+
+Everything in step 2 is written to the plan and can be changed:
+
+```yaml
+transpose: auto            # or an integer
+voices:
+  - { source: "Steel Drums#1", rank: "Main:high", role: melody, max_poly: 1, weight: 3.0 }
+  - { source: "Picked Bs.#4",  rank: "Main:low",  role: bass,   max_poly: 1, weight: 2.0 }
+  - { source: "Marimba#5",     rank: TenorCM,     role: accomp, max_poly: 3, weight: 1.0 }
+  - { source: "Organ 2#2",     rank: drop,        role: counter }      # silence a voice
+drums:
+  source: "Drums#10"
+  map: { 35: bass, 36: bass, 38: snare, 40: snare, 37: snare }
+  leader: downbeat           # or none
+registration:
+  - { at: start,  on: [Clarinet, Cello, ACC viol, MEL flute] }
+  - { at: melody, on: [Trombone, Trumpet, MEL violin] }
+  - { at: 45.0,   off: [Trumpet] }                                     # seconds
+```
+
+Sources are `name#index` so two tracks with the same name stay distinct.
+
+What the tool cannot do is hear. Its output is *correct* for the organ long
+before it is *good*; the first listen will say more than the report, and the
+plan is where that judgement goes.
+
 ## Tests
 
 ```bash
 pytest tests/
 ```
 
-Both tools are deterministic and tested end to end: a synthetic organ and a
-miniature of the real spreadsheet — including its quirks — with assertions on
-exactly which slot sounds when.
+All three tools are deterministic and tested end to end: a synthetic organ, a
+miniature of the real spreadsheet including its quirks, and a small tune in
+the wrong key — with assertions on exactly which slot sounds when.
