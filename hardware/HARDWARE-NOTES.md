@@ -156,6 +156,40 @@ No fuse protects a coil that is stuck **on**: 1.7 A continuous through a
 10%-duty solenoid trips nothing and simply cooks. That is the firmware
 watchdog's job, and a supply relay's.
 
+## Supply wiring: sized for voltage drop, not heat
+
+What sizes the supply wiring is not the current's heating but the voltage it
+drops -- and above all the drop on the **ground** leg, since that is the
+reference the single-ended MIDI line is measured against on each board.
+
+One board's worst case is all sixteen coils attacking at once: about 9.4 A
+for 40 ms at 60% pull-in on 7 ohm coils. Sustained, it holds under 1.5 A, so
+thermally even thin wire survives. Drop over a 2 m loop at that peak:
+
+| Gauge | Loop drop | Ground bounce on that board |
+|---|---|---|
+| 22 AWG | 1.0 V | ~0.5 V |
+| 20 AWG | 0.62 V | ~0.3 V |
+| **18 AWG** | **0.39 V** | **~0.2 V** |
+| 16 AWG | 0.24 V | ~0.12 V |
+| 14 AWG | 0.16 V | ~0.08 V |
+
+The UART input reads under about 1.5 V as low and over 3 V as high; 0.2 V of
+bounce is comfortable, 0.5 V starts eating the margin during exactly the
+moments -- big attacks -- when a corrupted byte hurts most.
+
+- **18 AWG per board**, 12 V and ground as a twisted or bundled pair back to
+  the star point; 16 AWG for any run over about 1.5 m.
+- **14 AWG for the trunk** from the supply to the star point. A full 64-coil
+  attack never happens musically, but a big chord is 10-15 A.
+- **Main fuse in the trunk's positive leg**, at the supply end.
+- **Star point at the supply**, or a bus bar beside it. Never board to board:
+  a chained ground puts every upstream board's drop under the last board's
+  reference.
+
+The 12 V terminal block accepts up to about 12 AWG. Tin or ferrule stranded
+ends; a loose strand in a screw terminal is a future intermittent.
+
 ## There is no crystal
 
 `XTAL1`/`PB6` (pin 7) and `XTAL2`/`PB7` (pin 8) are wired as solenoid outputs
