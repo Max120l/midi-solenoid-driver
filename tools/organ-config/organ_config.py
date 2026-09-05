@@ -55,6 +55,7 @@ PEAK_DURATION_MAX_MS = 127       # a CC value is 7 bits, so this is also the wir
 EXERCISE_CYCLES_MAX = 10
 
 INTER_MESSAGE_GAP_S = 0.02   # politeness between CCs; a save also takes the board ~30 ms
+MIDI_BAUD = 31250            # a UART at this rate, into a current-loop driver, is a MIDI out
 
 
 @dataclass
@@ -126,6 +127,23 @@ def describe(msg: mido.Message) -> str:
     return f"ch {msg.channel + 1}  {label:<18} {value}"
 
 
+def send_serial(messages: list[mido.Message], port, gap_s: float = INTER_MESSAGE_GAP_S,
+                sleep=time.sleep) -> None:
+    """Write the messages as raw MIDI bytes to anything with a write().
+
+    For a Raspberry Pi driving the optocoupler straight from a UART pin, this
+    is the whole transport: the same three bytes per control change that a
+    MIDI interface would send, at 31250 baud.
+    """
+    for m in messages:
+        port.write(bytes(m.bytes()))
+        print(describe(m))
+        sleep(gap_s)
+    flush = getattr(port, "flush", None)
+    if flush:
+        flush()
+
+
 def match_port(names: list[str], wanted: str | None) -> str:
     """Pick an output port: the one containing `wanted`, or the only one there is."""
     if wanted:
@@ -145,7 +163,11 @@ def match_port(names: list[str], wanted: str | None) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="organ_config",
                                 description="Retune the solenoid driver boards over MIDI.")
-    p.add_argument("--port", help="MIDI output port (substring match); optional if there is only one")
+    where = p.add_mutually_exclusive_group()
+    where.add_argument("--port", help="MIDI output port (substring match); optional if there is only one")
+    where.add_argument("--serial", metavar="DEVICE",
+                       help=f"send over a serial device at {MIDI_BAUD} baud instead, e.g. /dev/ttyAMA1 "
+                            f"on a Pi driving MIDI from a UART pin")
     p.add_argument("--list-ports", action="store_true", help="list MIDI output ports and exit")
     p.add_argument("--board", type=int, metavar="BASE",
                    help="address only the board with this base note (default: all boards)")
@@ -184,17 +206,29 @@ def main(argv: list[str] | None = None) -> int:
             print(describe(m))
         return 0
 
-    try:
-        port_name = match_port(mido.get_output_names(), a.port)
-    except LookupError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 2
-
-    with mido.open_output(port_name) as port:
-        for m in messages:
-            port.send(m)
-            print(describe(m))
-            time.sleep(INTER_MESSAGE_GAP_S)
+    if a.serial:
+        try:
+            import serial  # pyserial; only needed for this path
+        except ImportError:
+            print("error: --serial needs pyserial: pip install pyserial", file=sys.stderr)
+            return 2
+        try:
+            with serial.Serial(a.serial, baudrate=MIDI_BAUD, timeout=1) as port:
+                send_serial(messages, port)
+        except (serial.SerialException, OSError, ValueError) as e:
+            print(f"error: cannot send on {a.serial}: {e}", file=sys.stderr)
+            return 2
+    else:
+        try:
+            port_name = match_port(mido.get_output_names(), a.port)
+        except LookupError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        with mido.open_output(port_name) as port:
+            for m in messages:
+                port.send(m)
+                print(describe(m))
+                time.sleep(INTER_MESSAGE_GAP_S)
     if req.command == CMD_SAVE:
         print("saved -- each board should have clicked its output 1")
     return 0

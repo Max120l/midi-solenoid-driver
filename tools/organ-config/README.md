@@ -25,6 +25,26 @@ python organ_config.py --port "USB MIDI" --peak 60 --hold 25 --save
 `--port` is a case-insensitive substring; it can be omitted if there is only
 one MIDI output. `--dry-run` prints what would be sent and sends nothing.
 
+### From a Raspberry Pi UART instead of a MIDI interface
+
+If the Pi drives the optocoupler straight from a UART pin, there is no MIDI
+port for `mido` to find — the output is a serial device. Send to it directly:
+
+```bash
+pip install pyserial
+python organ_config.py --serial /dev/ttyAMA1 --peak 60 --hold 25 --save
+```
+
+That writes exactly the bytes a MIDI interface would, at 31250 baud. Two
+things to get right on the Pi side:
+
+- **Use a PL011 UART, not the mini-UART.** On a Pi 4, GPIO14 (pin 8) is
+  UART0's transmit and GPIO4 (pin 7) is UART3's, enabled with
+  `dtoverlay=uart3` in `config.txt`; they appear as `/dev/ttyAMA*` and do
+  31250 baud exactly. `/dev/ttyS0` is the mini-UART, whose baud rate follows
+  the core clock, and it is not to be trusted at this rate.
+- Whatever device your player already writes to is the one to use here.
+
 | Option | Firmware setting | Range |
 |---|---|---|
 | `--peak PCT` | `peakDutyPercent` | 1–100 |

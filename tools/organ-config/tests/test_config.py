@@ -96,6 +96,35 @@ def test_match_port_errors_are_specific():
         oc.match_port(["USB A", "USB B"], "usb")
 
 
+class FakeSerial:
+    def __init__(self):
+        self.buf = bytearray()
+        self.flushed = False
+
+    def write(self, data):
+        self.buf += data
+
+    def flush(self):
+        self.flushed = True
+
+
+def test_serial_path_writes_the_same_bytes_a_midi_port_would(capsys):
+    msgs, _ = oc.build_messages(oc.Request(peak=60, hold=25, command=oc.CMD_SAVE))
+    fake = FakeSerial()
+    oc.send_serial(msgs, fake, sleep=lambda s: None)
+    assert bytes(fake.buf) == b"".join(bytes(m.bytes()) for m in msgs)
+    assert fake.buf[0] == 0xB0 | (oc.CONFIG_CHANNEL - 1)       # control change, channel 16
+    assert list(fake.buf[:3]) == [0xBF, oc.CC_SELECT_BOARD, oc.SELECT_ALL]
+    assert fake.flushed
+    assert oc.MIDI_BAUD == 31250
+    assert "save" in capsys.readouterr().out
+
+
+def test_port_and_serial_are_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        oc.main(["--port", "x", "--serial", "/dev/null", "--peak", "60"])
+
+
 def test_dry_run_sends_nothing_and_reports(capsys):
     rc = oc.main(["--dry-run", "--peak", "60", "--hold", "25", "--save"])
     assert rc == 0
