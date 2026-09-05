@@ -118,6 +118,43 @@ resistor from +12 V to the output node. That reports the output actually
 switching rather than the gate merely going high, is fully decoupled from the
 gate, and about 4.7k off the 12 V rail gives a properly bright 2 mA.
 
+## Fusing: 20 A per bank is not protection
+
+The board carries two blade fuses, each feeding a bank of eight outputs, and
+the schematic specifies **20 A** for each -- 2.5 A per channel, 40 A per
+board. For solenoids sized to an actual load that is far too much, and it is
+worse than merely too much.
+
+A fuse protects the **wire**, not the solenoid: it exists so that a short
+downstream -- a chafed lead, a coil failed to its frame -- opens the fuse and
+not the loom. Two things follow:
+
+- **Rating at or below the wire's ampacity.** Typical solenoid hookup wire is
+  22 AWG (roughly 5-7 A) or 20 AWG (roughly 10 A). A 20 A fuse behind 22 AWG
+  makes the wire the fuse.
+- **The supply must be able to open it.** A switch-mode supply current-limits
+  at perhaps 120-150% of its rating, then hiccups. A 10 A supply delivers
+  maybe 13-15 A into a dead short, which never opens a 20 A fuse. It would
+  hiccup into the fault indefinitely, protecting nothing.
+
+What a bank of eight 7 ohm coils actually draws at this fork's settings (60%
+pull-in, 25% hold): about 0.7 A with all eight holding, about 4.7 A with all
+eight attacking at once for 40 ms, and 1.7 A during the boot exercise, which
+fires one coil at a time. A blade fuse carries 135% of its rating for minutes
+and about 200% for a second, so a 40 ms attack is invisible to it. The music
+does not size the fuse; the wire and the supply do.
+
+**5 A per bank** is the sensible value: comfortably above anything the music
+does, fast to open on a real short from a modest supply, and at or under the
+ampacity of the thinnest plausible wire. Step a bank to 7.5 A only after a
+nuisance blow, which would take all eight coils attacking together at a much
+higher pull-in duty than the default. Add one main fuse at the supply output
+sized to the supply, so the feeds and the star ground are covered as well.
+
+No fuse protects a coil that is stuck **on**: 1.7 A continuous through a
+10%-duty solenoid trips nothing and simply cooks. That is the firmware
+watchdog's job, and a supply relay's.
+
 ## There is no crystal
 
 `XTAL1`/`PB6` (pin 7) and `XTAL2`/`PB7` (pin 8) are wired as solenoid outputs
