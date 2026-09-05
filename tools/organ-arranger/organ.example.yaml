@@ -1,16 +1,13 @@
-# EXAMPLE organ definition -- replace every mapping below with your own.
+# EXAMPLE organ definition -- a placeholder layout, not a real instrument.
 #
-# This file is the only place the instrument's identity lives. Every value on
-# the right-hand side of a mapping is an OUTPUT SLOT: the MIDI note number the
-# driver boards listen for. Under OFFSET_COARSE3 with four boards at base
-# notes 48, 64, 80 and 96, the slots are 48-111 -- board 1 output 1 is slot 48,
-# board 4 output 16 is slot 111.
+# In practice this file is GENERATED from the layout spreadsheet by
+# layout_to_organ.py; this example exists to show the shape. Every slot value
+# is the MIDI note the driver boards listen for. With four boards under
+# OFFSET_COARSE3 at base notes 48, 64, 80 and 96, solenoid N is slot 48 + N - 1.
 #
-# The example below is a plausible 64-slot layout and nothing more:
-#   slots  48- 87   forty chromatic pipes, C3 to G6
-#   slots  88- 93   six percussion
-#   slots  96-109   seven registers, two slots each
-# Slots 94, 95, 110, 111 spare.
+# The organising idea: the mapping is PER TRACK. On a band organ the same note
+# number on a different track is a different pipe -- Main 60 and TenorCM 60
+# are two different solenoids -- so each DAW track carries its own map.
 
 name: Example band organ
 
@@ -18,89 +15,72 @@ name: Example band organ
 # with fixedChannel = 1.
 output_channel: 1
 
-# Score pitch -> slot. The key is the note as written in the DAW; the value is
-# which slot sounds it. Pitches that are not listed are dropped and reported.
-# Several pitches may share one slot if you want a substitute pipe; nothing
-# else may share a slot with anything.
-pitches:
-  48: 48    # C3
-  49: 49
-  50: 50
-  51: 51
-  52: 52
-  53: 53
-  54: 54
-  55: 55
-  56: 56
-  57: 57
-  58: 58
-  59: 59
-  60: 60    # C4, middle C
-  61: 61
-  62: 62
-  63: 63
-  64: 64
-  65: 65
-  66: 66
-  67: 67
-  68: 68
-  69: 69
-  70: 70
-  71: 71
-  72: 72    # C5
-  73: 73
-  74: 74
-  75: 75
-  76: 76
-  77: 77
-  78: 78
-  79: 79
-  80: 80
-  81: 81
-  82: 82
-  83: 83
-  84: 84    # C6
-  85: 85
-  86: 86
-  87: 87    # G6
+tracks:
+  # A pitched track keeps each note's written duration.
+  Main:
+    kind: pitched
+    notes:           # note as written on this track -> slot it sounds
+      48: 60
+      50: 61
+      52: 62
+      53: 63
+      55: [64, 65]   # one note may sound two pipes: a doubled rank
+      57: 66
+      59: 67
+      60: 68
 
-# GM drum note on channel 10 -> slot. Each hit becomes a fixed-length pulse
-# regardless of how long the note was drawn.
-percussion:
-  36: 88    # bass drum
-  38: 89    # snare
-  42: 90    # closed hi-hat  (wood block, say)
-  49: 91    # crash cymbal
-  51: 92    # ride cymbal
-  56: 93    # cowbell
+  TenorCM:
+    kind: pitched
+    notes:
+      60: 70         # same note number as Main 60, different pipe
+      62: 71
+      64: 72
 
-# Registers are set/reset latches: one pulse to the "set" coil opens the
-# register, one to the "reset" coil closes it. In the DAW, draw a note on the
-# register track spanning the section the register should be engaged for.
-#
-# Which track is the register track: any track whose name contains this text,
-# case-insensitively. (Alternatively `register_channel: N` picks by channel.)
-register_track: Registers
+  # A pulse track treats every note as a strike of fixed length, whatever was
+  # drawn in the DAW. Drums are usually one tick long there anyway.
+  Drums:
+    kind: pulse
+    pulse_ms: 50
+    notes:
+      25: 100
+      22: 101
+      23: 102
+    labels:          # optional, for the report
+      25: Bass
+      22: Snare
+      23: Snare
 
-# Note on the register track -> which register. The key is the note number you
-# draw in the DAW; the name is only for the report.
+  # Registers are set/reset latches driven by separate on and off notes: a
+  # pulse to the "set" coil opens the register, a pulse to "reset" closes it.
+  Registers:
+    kind: pulse
+    pulse_ms: 100
+    notes:
+      122: 104
+      121: 105
+      119: 106
+      118: 107
+    labels:
+      122: Trombone on
+      121: Trombone off
+      119: Clarinet on
+      118: Clarinet off
+
+# The set/reset coil pairs, as slots, so the arranger can pulse every reset
+# before the music starts (whatever state the registers were left in, they are
+# closed now) and again after it ends.
 registers:
-  60: { name: Register 1, set: 96,  reset: 97  }
-  61: { name: Register 2, set: 98,  reset: 99  }
-  62: { name: Register 3, set: 100, reset: 101 }
-  63: { name: Register 4, set: 102, reset: 103 }
-  64: { name: Register 5, set: 104, reset: 105 }
-  65: { name: Register 6, set: 106, reset: 107 }
-  66: { name: Register 7, set: 108, reset: 109 }
+  - { name: Trombone, set: 104, reset: 105 }
+  - { name: Clarinet, set: 106, reset: 107 }
 
-# All in milliseconds. These are starting points to tune against the chest.
+# All in milliseconds. Starting points to tune against the chest.
 timing:
   min_note_ms: 50            # shorter pitched notes are stretched to this
   min_gap_ms: 30             # silence needed between two notes on one slot
-  percussion_pulse_ms: 50    # how long a drum solenoid is driven per hit
-  register_pulse_ms: 100     # how long a register coil is pulsed
-  register_stagger_ms: 60    # spacing between register pulses in the preamble
+  pulse_ms: 50               # default for pulse tracks that do not say
+  register_pulse_ms: 100     # the arranger's own preamble/postamble resets
+  register_stagger_ms: 60    # spacing between those resets
   lead_in_ms: 1000           # silence before the music, after the preamble
   settle_ms: 250             # pause after the last note before the postamble
-  reset_registers_at_start: true   # pulse every reset first, so state is known
-  reset_registers_at_end: true     # and leave everything closed afterwards
+  reset_registers_at_start: true
+  reset_registers_at_end: true

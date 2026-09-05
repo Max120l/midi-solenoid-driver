@@ -676,12 +676,17 @@ Things this fork does not yet do. Contributions welcome.
 
 [`tools/organ-arranger/`](tools/organ-arranger/) turns a multi-track MIDI file
 authored in a DAW into the single-track, single-channel file these boards
-play, where every note is a driver-board slot. It maps pitches, percussion and
-set/reset registers through one YAML organ definition, makes each slot
-physically playable — merging overlaps, enforcing minimum note lengths and
-re-articulation gaps — pulses every register reset before and after the music
-so their state is always known, and writes a report of every note it dropped,
-merged, stretched or trimmed. Python, on `mido`; see its README.
+play, where every note is a driver-board slot. The mapping is per track —
+on a band organ the same note number on a different track is a different
+pipe — and comes from the instrument's **layout spreadsheet**, which
+`layout_to_organ.py` turns into the organ definition; the sheet is the source
+of truth. The arranger then makes each slot physically playable — merging
+overlaps, enforcing minimum note lengths and re-articulation gaps — pulses
+every register reset before and after the music so their state is always
+known, and writes a report of every note it dropped, merged, stretched or
+trimmed. This organ's own sheet, generated definition and an all-notes sample
+file live in [`tools/organ-arranger/instrument/`](tools/organ-arranger/instrument/).
+Python, on `mido`; see its README.
 
 [`tools/organ-config/`](tools/organ-config/) retunes the boards over MIDI —
 pull-in duty and duration, hold duty, watchdog, exercise passes — from the Pi

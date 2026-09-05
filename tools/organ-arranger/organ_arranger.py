@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-organ_arranger -- arrange a general MIDI file for a specific solenoid-driven organ.
+organ_arranger -- arrange a multi-track MIDI file for a specific solenoid organ.
 
 A file written in a DAW is written for a general instrument: real pitches on
-several tracks, GM drums on channel 10, velocities, notes anywhere on the
-keyboard. A solenoid organ is a specific instrument: a fixed set of pipes, a
-few drums, some registers, each nailed to one output slot on the driver boards.
+several tracks, velocities, notes anywhere on the keyboard. A solenoid organ
+is a specific instrument: a fixed set of pipes, a few drums, some registers,
+each nailed to one output slot on the driver boards -- and on a band organ the
+*same note number on a different track is a different pipe*.
 
-This tool turns the former into the latter -- a single-track, single-channel
-file in which every note *is* a driver-board slot -- and writes a report of
-every decision it made along the way: what it dropped, merged, stretched or
-trimmed. The source file is never modified.
+This tool turns the former into the latter: a single-track, single-channel
+file in which every note *is* a driver-board slot, plus a report of every
+decision made along the way -- what was dropped, merged, stretched or trimmed.
+The source file is never modified.
 
 Usage:
     organ_arranger.py SONG.mid --organ ORGAN.yaml [-o SONG.organ.mid]
                                                   [--report SONG.organ.txt]
                                                   [--dry-run] [--quiet]
 
-See README.md alongside this file for the organ definition format and the
-policies applied.
+The organ definition is normally generated from the instrument's layout
+spreadsheet by layout_to_organ.py. See README.md for the format and policies.
 """
 
 from __future__ import annotations
@@ -27,13 +28,13 @@ import argparse
 import bisect
 import sys
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import mido
 import yaml
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Output file parameters. Events are placed by absolute time, so the source
 # tempo map is *applied* rather than preserved: the output runs at one fixed
@@ -41,11 +42,14 @@ __version__ = "0.1.0"
 OUTPUT_TEMPO = 500_000            # microseconds per beat: 120 BPM
 OUTPUT_TICKS_PER_BEAT = 960       # about 0.52 ms per tick at that tempo
 OUTPUT_VELOCITY = 100             # the boards ignore velocity; anything non-zero
-DRUM_CHANNEL = 9                  # MIDI channel 10, as mido numbers it (0-15)
 REPORT_MAX_LINES = 200            # per section, so a bad file cannot bury you
 EPS = 1e-6                        # seconds; below any tick, above float noise
 
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+KIND_PITCHED = "pitched"          # notes keep their written duration
+KIND_PULSE = "pulse"              # each note is a strike: fixed length, written length ignored
+KIND_RESET = "reset"              # register resets added by the arranger itself
 
 
 class OrganError(Exception):
@@ -55,6 +59,18 @@ class OrganError(Exception):
 # ----------------------------------------------------------------------------
 # Organ definition
 # ----------------------------------------------------------------------------
+
+@dataclass
+class Track:
+    name: str
+    kind: str                              # KIND_PITCHED | KIND_PULSE
+    notes: dict[int, tuple[int, ...]]      # score note -> one or more slots
+    pulse_ms: int                          # used when kind is pulse
+    labels: dict[int, str] = field(default_factory=dict)   # score note -> text, for the report
+
+    def label(self, note: int) -> str:
+        return self.labels.get(note) or f"{self.name} {note_name(note)}"
+
 
 @dataclass(frozen=True)
 class Register:
@@ -68,8 +84,8 @@ class Timing:
     """All in milliseconds. See README for what each one is for."""
     min_note_ms: int = 50
     min_gap_ms: int = 30
-    percussion_pulse_ms: int = 50
-    register_pulse_ms: int = 100
+    pulse_ms: int = 50                # default for pulse tracks that do not say
+    register_pulse_ms: int = 100      # the arranger's own preamble/postamble resets
     register_stagger_ms: int = 60
     lead_in_ms: int = 1000
     settle_ms: int = 250
@@ -80,13 +96,11 @@ class Timing:
 @dataclass
 class Organ:
     name: str
-    output_channel: int                 # zero-based internally; 1-16 in the file
-    pitches: dict[int, int]             # score pitch      -> output slot
-    percussion: dict[int, int]          # GM drum note     -> output slot
-    registers: dict[int, Register]      # register note    -> set/reset slots
-    register_track: str | None          # substring of the register track's name
-    register_channel: int | None        # zero-based, or None
+    output_channel: int                    # zero-based internally; 1-16 in the file
+    tracks: dict[str, Track]               # keyed by the name as written in the definition
+    registers: list[Register]
     timing: Timing
+    slot_min_len_ms: dict[int, int] = field(default_factory=dict)   # filled in by validate()
 
     @classmethod
     def load(cls, path) -> "Organ":
@@ -101,83 +115,97 @@ class Organ:
         try:
             name = str(raw.get("name", "organ"))
             out_ch = int(raw.get("output_channel", 1))
-            pitches = {int(k): int(v) for k, v in (raw.get("pitches") or {}).items()}
-            percussion = {int(k): int(v) for k, v in (raw.get("percussion") or {}).items()}
-            registers = {}
-            for k, v in (raw.get("registers") or {}).items():
-                registers[int(k)] = Register(str(v["name"]), int(v["set"]), int(v["reset"]))
-            rt = raw.get("register_track")
-            rc = raw.get("register_channel")
             timing = Timing(**(raw.get("timing") or {}))
+
+            tracks: dict[str, Track] = {}
+            for tname, tdef in (raw.get("tracks") or {}).items():
+                tdef = tdef or {}
+                kind = str(tdef.get("kind", KIND_PITCHED)).lower()
+                if kind not in (KIND_PITCHED, KIND_PULSE):
+                    raise OrganError(f"track {tname}: kind must be '{KIND_PITCHED}' or '{KIND_PULSE}', not '{kind}'")
+                notes: dict[int, tuple[int, ...]] = {}
+                for k, v in (tdef.get("notes") or {}).items():
+                    slots = v if isinstance(v, (list, tuple)) else [v]
+                    notes[int(k)] = tuple(int(s) for s in slots)
+                labels = {int(k): str(v) for k, v in (tdef.get("labels") or {}).items()}
+                tracks[str(tname)] = Track(str(tname), kind, notes,
+                                           int(tdef.get("pulse_ms", timing.pulse_ms)), labels)
+
+            registers = []
+            for r in (raw.get("registers") or []):
+                registers.append(Register(str(r["name"]), int(r["set"]), int(r["reset"])))
+        except OrganError:
+            raise
         except (KeyError, TypeError, ValueError, AttributeError) as e:
             raise OrganError(f"malformed organ definition: {e}") from e
-        organ = cls(
-            name=name,
-            output_channel=out_ch - 1,
-            pitches=pitches,
-            percussion=percussion,
-            registers=registers,
-            register_track=str(rt) if rt is not None else None,
-            register_channel=int(rc) - 1 if rc is not None else None,
-            timing=timing,
-        )
+
+        organ = cls(name=name, output_channel=out_ch - 1, tracks=tracks,
+                    registers=registers, timing=timing)
         organ.validate()
         return organ
 
     def validate(self) -> None:
         if not 0 <= self.output_channel <= 15:
             raise OrganError("output_channel must be 1-16")
-        if self.register_channel is not None and not 0 <= self.register_channel <= 15:
-            raise OrganError("register_channel must be 1-16")
-
-        # Every slot must be a MIDI note, and no slot may serve two purposes.
-        # Several score pitches may share one slot (a substitute pipe); nothing
-        # else may share anything.
-        owner: dict[int, tuple[str, str]] = {}
-
-        def claim(slot: int, category: str, label: str) -> None:
-            if not 0 <= slot <= 127:
-                raise OrganError(f"{label}: slot {slot} is not a MIDI note number (0-127)")
-            prev = owner.get(slot)
-            if prev is not None and not (prev[0] == "pitch" and category == "pitch"):
-                raise OrganError(f"slot {slot} is used by both {prev[1]} and {label}")
-            owner[slot] = (category, label)
-
-        for pitch, slot in self.pitches.items():
-            if not 0 <= pitch <= 127:
-                raise OrganError(f"pitch {pitch} is not a MIDI note number (0-127)")
-            claim(slot, "pitch", f"pitch {pitch}")
-        for drum, slot in self.percussion.items():
-            if not 0 <= drum <= 127:
-                raise OrganError(f"percussion {drum} is not a MIDI note number (0-127)")
-            claim(slot, "percussion", f"percussion {drum}")
-        for note, reg in self.registers.items():
-            if not 0 <= note <= 127:
-                raise OrganError(f"register note {note} is not a MIDI note number (0-127)")
-            if reg.set_slot == reg.reset_slot:
-                raise OrganError(f"register {reg.name}: set and reset are the same slot")
-            claim(reg.set_slot, "register", f"register {reg.name} set")
-            claim(reg.reset_slot, "register", f"register {reg.name} reset")
-
-        if self.registers and self.register_track is None and self.register_channel is None:
-            raise OrganError("registers are defined but neither register_track nor "
-                             "register_channel says where to find them in a song")
+        if not self.tracks:
+            raise OrganError("no tracks defined; the organ would play nothing")
 
         t = self.timing
-        for fld in ("min_note_ms", "min_gap_ms", "percussion_pulse_ms", "register_pulse_ms",
+        for fld in ("min_note_ms", "min_gap_ms", "pulse_ms", "register_pulse_ms",
                     "register_stagger_ms", "lead_in_ms", "settle_ms"):
             if getattr(t, fld) < 0:
                 raise OrganError(f"timing.{fld} must not be negative")
-        if t.percussion_pulse_ms == 0 or t.register_pulse_ms == 0:
+        if t.pulse_ms == 0 or t.register_pulse_ms == 0:
             raise OrganError("pulse lengths must be greater than zero")
+
+        # A slot is one pipe, and one pipe belongs to one track. Within a track
+        # several notes may share a slot (a substitute pipe) and one note may
+        # sound several slots (a doubled rank); across tracks, never.
+        owner: dict[int, str] = {}
+        self.slot_min_len_ms = {}
+        for track in self.tracks.values():
+            if track.kind == KIND_PULSE and track.pulse_ms <= 0:
+                raise OrganError(f"track {track.name}: pulse_ms must be greater than zero")
+            for note, slots in track.notes.items():
+                if not 0 <= note <= 127:
+                    raise OrganError(f"track {track.name}: note {note} is not a MIDI note number (0-127)")
+                if len(set(slots)) != len(slots):
+                    raise OrganError(f"track {track.name}: note {note} lists the same slot twice")
+                for slot in slots:
+                    if not 0 <= slot <= 127:
+                        raise OrganError(f"track {track.name}: slot {slot} is not a MIDI note number (0-127)")
+                    prev = owner.get(slot)
+                    if prev is not None and prev != track.name:
+                        raise OrganError(f"slot {slot} is used by both track {prev} and track {track.name}")
+                    owner[slot] = track.name
+                    self.slot_min_len_ms[slot] = (track.pulse_ms if track.kind == KIND_PULSE
+                                                  else t.min_note_ms)
+
+        for reg in self.registers:
+            if reg.set_slot == reg.reset_slot:
+                raise OrganError(f"register {reg.name}: set and reset are the same slot")
+            for slot, which in ((reg.set_slot, "set"), (reg.reset_slot, "reset")):
+                if not 0 <= slot <= 127:
+                    raise OrganError(f"register {reg.name}: {which} slot {slot} is not a MIDI note number")
+                owning = owner.get(slot)
+                if owning is not None and self.tracks[owning].kind != KIND_PULSE:
+                    raise OrganError(f"register {reg.name}: {which} slot {slot} belongs to pitched "
+                                     f"track {owning}; a register coil wants a pulse track")
+                self.slot_min_len_ms.setdefault(slot, t.register_pulse_ms)
+
+    def find_track(self, midi_track_name: str) -> Track | None:
+        """Exact name match first, case-insensitively; else a unique substring."""
+        wanted = midi_track_name.strip().lower()
+        for key, track in self.tracks.items():
+            if key.strip().lower() == wanted:
+                return track
+        hits = [track for key, track in self.tracks.items()
+                if key.strip() and key.strip().lower() in wanted]
+        return hits[0] if len(hits) == 1 else None
 
     @property
     def all_slots(self) -> set[int]:
-        slots = set(self.pitches.values()) | set(self.percussion.values())
-        for reg in self.registers.values():
-            slots.add(reg.set_slot)
-            slots.add(reg.reset_slot)
-        return slots
+        return set(self.slot_min_len_ms)
 
 
 # ----------------------------------------------------------------------------
@@ -210,7 +238,7 @@ class Interval:
     start: float
     end: float
     origin: str       # human-readable, for the report
-    kind: str         # "pitch" | "percussion" | "register"
+    kind: str         # KIND_*
 
 
 class Report:
@@ -221,8 +249,9 @@ class Report:
     def __init__(self) -> None:
         self.sections: dict[str, list[tuple[float, str]]] = defaultdict(list)
         self.counts: Counter = Counter()
-        self.tracks: list[tuple[str, int]] = []            # (name, raw note count)
+        self.tracks: list[tuple[str, int]] = []            # (name, raw note count), file order
         self.track_kinds: dict[str, Counter] = defaultdict(Counter)
+        self.missing_tracks: list[str] = []                # in the organ, absent from the file
         self.notes: Counter = Counter()                    # final notes by kind
         self.lead_in_s = 0.0
         self.duration_s = 0.0
@@ -245,19 +274,28 @@ class Report:
         L.append("")
         L.append("Summary")
         L.append(f"  duration         {fmt_time(self.duration_s)}   (lead-in {self.lead_in_s * 1000:.0f} ms)")
-        L.append(f"  pitched notes    {self.notes['pitch']}")
-        L.append(f"  percussion hits  {self.notes['percussion']}")
-        L.append(f"  register pulses  {self.notes['register']}")
+        L.append(f"  pitched notes    {self.notes[KIND_PITCHED]}")
+        L.append(f"  pulses           {self.notes[KIND_PULSE]}   (drums, registers, anything struck)")
+        L.append(f"  register resets  {self.notes[KIND_RESET]}   (added before and after the music)")
         L.append(f"  dropped          {self.dropped}")
         L.append("")
         L.append("Tracks")
         for name, raw_count in self.tracks:
             kinds = self.track_kinds.get(name, Counter())
-            parts = [f"{kinds[k]} {k}" for k in ("pitch", "percussion", "register") if kinds[k]]
+            if kinds["ignored"]:
+                L.append(f"  {name}: {raw_count} notes -> ignored, no such track in the organ definition")
+                continue
+            parts = []
+            if kinds[KIND_PITCHED]:
+                parts.append(f"{kinds[KIND_PITCHED]} pitched")
+            if kinds[KIND_PULSE]:
+                parts.append(f"{kinds[KIND_PULSE]} pulses")
             if kinds["dropped"]:
                 parts.append(f"{kinds['dropped']} dropped")
             detail = ", ".join(parts) if parts else "nothing usable"
             L.append(f"  {name}: {raw_count} notes -> {detail}")
+        for name in self.missing_tracks:
+            L.append(f"  {name}: defined in the organ but not present in this file")
         for section in sorted(self.sections):
             lines = sorted(self.sections[section], key=lambda entry: entry[0])
             L.append("")
@@ -355,58 +393,41 @@ def extract_notes(mid: mido.MidiFile, clock: TickClock, report: Report) -> list[
 # Mapping onto the organ
 # ----------------------------------------------------------------------------
 
-def is_register_note(note: RawNote, organ: Organ) -> bool:
-    if organ.register_track and organ.register_track.lower() in note.track.lower():
-        return True
-    if organ.register_channel is not None and note.channel == organ.register_channel:
-        return True
-    return False
-
-
 def map_notes(raw: list[RawNote], organ: Organ, report: Report) -> list[Interval]:
-    t = organ.timing
-    reg_pulse = t.register_pulse_ms / 1000
-    perc_pulse = t.percussion_pulse_ms / 1000
     out: list[Interval] = []
+    seen_organ_tracks: set[str] = set()
 
     for n in raw:
-        where = f"{fmt_time(n.start)}  {n.track}"
-        if is_register_note(n, organ):
-            reg = organ.registers.get(n.note)
-            if reg is None:
-                report.add("Dropped: note on the register track that is not a register",
-                           n.start, f"{where}: {note_name(n.note)} ({n.note})")
-                report.track_kinds[n.track]["dropped"] += 1
-                continue
-            # A register note spans the section it is engaged for. The
-            # mechanism latches, so it gets a pulse on the way in and a pulse
-            # to the other coil on the way out.
-            out.append(Interval(reg.set_slot, n.start, n.start + reg_pulse, f"{reg.name} on", "register"))
-            out.append(Interval(reg.reset_slot, n.end, n.end + reg_pulse, f"{reg.name} off", "register"))
-            report.track_kinds[n.track]["register"] += 1
+        track = organ.find_track(n.track)
+        if track is None:
+            report.track_kinds[n.track]["ignored"] += 1
+            continue
+        seen_organ_tracks.add(track.name)
 
-        elif n.channel == DRUM_CHANNEL:
-            slot = organ.percussion.get(n.note)
-            if slot is None:
-                report.add("Dropped: percussion this organ does not have",
-                           n.start, f"{where}: GM {n.note}")
-                report.track_kinds[n.track]["dropped"] += 1
-                continue
-            # A drum is a strike, not a sustain: fixed pulse, authored length
-            # ignored. DAW drum notes are frequently one tick long anyway.
-            out.append(Interval(slot, n.start, n.start + perc_pulse, f"drum {n.note}", "percussion"))
-            report.track_kinds[n.track]["percussion"] += 1
+        slots = track.notes.get(n.note)
+        if slots is None:
+            report.add("Dropped: note not on this organ", n.start,
+                       f"{fmt_time(n.start)}  {n.track}: {note_name(n.note)} ({n.note})")
+            report.track_kinds[n.track]["dropped"] += 1
+            continue
 
+        if track.kind == KIND_PULSE:
+            # A strike, not a sustain: fixed pulse, written length ignored. DAW
+            # drum notes are frequently one tick long; register on/off notes
+            # are commands, not durations.
+            end = n.start + track.pulse_ms / 1000
         else:
-            slot = organ.pitches.get(n.note)
-            if slot is None:
-                report.add("Dropped: pitch this organ does not have",
-                           n.start, f"{where}: {note_name(n.note)} ({n.note})")
-                report.track_kinds[n.track]["dropped"] += 1
-                continue
-            out.append(Interval(slot, n.start, n.end, note_name(n.note), "pitch"))
-            report.track_kinds[n.track]["pitch"] += 1
+            end = n.end
+        for slot in slots:
+            out.append(Interval(slot, n.start, end, track.label(n.note), track.kind))
+        report.track_kinds[n.track][track.kind] += 1
 
+    # Tracks the organ knows about that never appeared: usually a renamed track
+    # in the DAW, and worth seeing before wondering why a whole rank is silent.
+    for key, track in organ.tracks.items():
+        if track.name not in seen_organ_tracks and not any(
+                organ.find_track(name) is track for name, _ in report.tracks):
+            report.missing_tracks.append(key)
     return out
 
 
@@ -488,18 +509,17 @@ def arrange(mid: mido.MidiFile, organ: Organ) -> tuple[mido.MidiFile, Report]:
     pulse = t.register_pulse_ms / 1000
     stagger = t.register_stagger_ms / 1000
 
-    # Lead-in and the register preamble. Pulsing every reset before the music
-    # starts is what makes set/reset registers stateless: whatever happened
-    # last time, they are all closed now. The music is shifted late enough
-    # that the preamble is finished, with a gap, before anything else fires.
+    # Lead-in and the register preamble. Pulsing every reset coil before the
+    # music starts is what makes set/reset registers stateless: whatever
+    # happened last time, they are all closed now. The music is shifted late
+    # enough that the preamble is finished, with a gap, before anything fires.
     lead_in = t.lead_in_ms / 1000
     preamble: list[Interval] = []
     if t.reset_registers_at_start and organ.registers:
         at = 0.0
-        for key in sorted(organ.registers):
-            reg = organ.registers[key]
+        for reg in organ.registers:
             preamble.append(Interval(reg.reset_slot, at, at + pulse,
-                                     f"{reg.name} reset (preamble)", "register"))
+                                     f"{reg.name} reset (preamble)", KIND_RESET))
             at += stagger
         preamble_end = at - stagger + pulse
         lead_in = max(lead_in, preamble_end + t.min_gap_ms / 1000)
@@ -511,30 +531,22 @@ def arrange(mid: mido.MidiFile, organ: Organ) -> tuple[mido.MidiFile, Report]:
 
     # Postamble: leave the registers closed when the song ends, too.
     if t.reset_registers_at_end and organ.registers:
-        min_for = {"pitch": t.min_note_ms, "percussion": t.percussion_pulse_ms,
-                   "register": t.register_pulse_ms}
-        last = max((max(iv.end, iv.start + min_for[iv.kind] / 1000) for iv in intervals), default=0.0)
+        last = max((max(iv.end, iv.start + organ.slot_min_len_ms.get(iv.slot, t.register_pulse_ms) / 1000)
+                    for iv in intervals), default=0.0)
         at = last + t.settle_ms / 1000
-        for key in sorted(organ.registers):
-            reg = organ.registers[key]
+        for reg in organ.registers:
             intervals.append(Interval(reg.reset_slot, at, at + pulse,
-                                      f"{reg.name} reset (postamble)", "register"))
+                                      f"{reg.name} reset (postamble)", KIND_RESET))
             at += stagger
 
     by_slot: dict[int, list[Interval]] = defaultdict(list)
     for iv in intervals:
         by_slot[iv.slot].append(iv)
 
-    min_note_for = {
-        "pitch": t.min_note_ms / 1000,
-        "percussion": t.percussion_pulse_ms / 1000,
-        "register": t.register_pulse_ms / 1000,
-    }
     final: list[Interval] = []
     for slot in sorted(by_slot):
-        ivs = by_slot[slot]
-        kind = ivs[0].kind
-        final.extend(settle_slot(ivs, min_note_for[kind], t.min_gap_ms / 1000, report,
+        min_len = organ.slot_min_len_ms.get(slot, t.register_pulse_ms) / 1000
+        final.extend(settle_slot(by_slot[slot], min_len, t.min_gap_ms / 1000, report,
                                  f"slot {slot}", time_offset=lead_in))
 
     for iv in final:
@@ -585,7 +597,7 @@ def build_output(intervals: list[Interval], organ: Organ) -> mido.MidiFile:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="organ_arranger",
-        description="Arrange a general MIDI file for a specific solenoid-driven organ.",
+        description="Arrange a multi-track MIDI file for a specific solenoid organ.",
     )
     parser.add_argument("song", help="the source .mid file, as authored in a DAW")
     parser.add_argument("--organ", required=True, help="organ definition (YAML)")
@@ -621,9 +633,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.quiet:
         print(text, end="")
 
-    if sum(report.notes.values()) == 0:
-        print("warning: the arranged file contains no notes at all -- "
-              "check the organ definition against this song", file=sys.stderr)
+    if report.notes[KIND_PITCHED] + report.notes[KIND_PULSE] == 0:
+        print("warning: nothing from the song survived arrangement -- "
+              "check the track names in the organ definition against this file", file=sys.stderr)
         return 1
     return 0
 

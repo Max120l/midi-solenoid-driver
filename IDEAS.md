@@ -167,6 +167,10 @@ It is the one output that is not a note, so using it costs nothing musically.
 Arm up on fault, down on clear, and the state of the instrument is readable
 across a room in silence. Better than any LED buried inside the case.
 
+*Confirmed:* the arm has its own solenoid — solenoid 64 in the layout, driven
+from the Drums track as note 21 ("Leader") — so it is addressable like any
+other output. Whichever board owns slot 111 is the one that can wave it.
+
 ### Constraints, so this stays fun rather than becoming a liability
 
 - **Silent by default.** Gate all of it behind a diagnostic mode the Pi enables

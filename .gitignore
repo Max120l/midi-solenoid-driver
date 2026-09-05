@@ -43,3 +43,7 @@ _autosave-*
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Arranger outputs are derived from a song and organ.yaml; regenerate, do not commit.
+*.organ.mid
+*.organ.txt
