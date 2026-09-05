@@ -24,6 +24,11 @@
 //
 //   5. Defensive handling of badly-formed MIDI. See "Robustness" below.
 //
+//   6. Runtime configuration over MIDI. The tuning parameters -- pull-in duty
+//      and duration, hold duty, watchdog, exercise passes -- are set by control
+//      changes on a dedicated channel and can be saved to EEPROM, so a board
+//      built into an instrument never needs reflashing to retune it.
+//
 // Target: ATmega328PB. MIDI arrives on the hardware UART (pin 0, RXD0), which
 // is the same pin upstream used. The transmitter is disabled so this board can
 // never drive the shared RJ12 bus.
@@ -52,6 +57,7 @@
 //     parser mishandled running status, which is common in tightly-packed files.
 
 #include <MIDI.h>
+#include <EEPROM.h>
 
 // ===================== Configuration =====================
 
@@ -177,41 +183,106 @@ const int velocitySmallDipBit = 0;
 
 #define DIAGNOSTIC_MODE DIAGNOSTIC_OFF
 
-// --- Stuck-note watchdog ---
-// Force-release any solenoid held longer than this, in milliseconds. Guards
-// against a note-off that never arrives. Set to 0 to disable, but be aware
-// that disabling it means a malformed file can leave a valve open until the
-// board is power-cycled. 30 s is longer than almost any real note; raise it if
-// your music genuinely holds notes longer than that.
-const unsigned long maxNoteDuration = 30000UL;
+// --- Tunable settings: compiled defaults, adjustable at runtime over MIDI ---
+//
+// These are the values you tune against the instrument. They start at the
+// compiled defaults below, can be changed while running with control-change
+// messages (see "Runtime configuration over MIDI" next), and can be saved to
+// EEPROM so a board comes up with its tuned values after a power cycle.
+// Nothing here needs a reflash to change.
+//
+//   peakDutyPercent  How hard to drive the pull-in, 1-100. 100 is solid DC.
+//                    Lower it when the solenoids are overspecced for their
+//                    load, which is common: a 22 W actuator seating a small
+//                    valve does not need 22 W, and at 100% it announces the
+//                    fact by slamming. The single most effective lever on
+//                    supply current, since pull-in is the only time every
+//                    energised channel draws full current at once. Too low
+//                    and notes silently fail to sound under load.
+//   holdDutyPercent  PWM duty once pulled in, 0-HOLD_DUTY_MAX_PERCENT. What
+//                    keeps a duty-limited coil inside its thermal budget on a
+//                    long note. 25% is 0.87 W on a 7 ohm coil.
+//   peakDurationMs   Pull-in window, 1-PEAK_DURATION_MAX_MS. Long enough for
+//                    the plunger to seat under real load, and no longer.
+//   maxNoteSeconds   Stuck-note watchdog, 0-127 s: force-releases anything
+//                    held longer. 0 disables it, after which a malformed file
+//                    can leave a valve open until power-cycle. 30 s outlasts
+//                    almost any real note.
+//   exerciseCycles   Power-up valve exercise passes, 0-EXERCISE_CYCLES_MAX.
+//                    See exerciseValves() for why. 0 disables it and the
+//                    short boot heartbeat runs instead.
+struct Settings {
+  byte peakDutyPercent;
+  byte holdDutyPercent;
+  byte peakDurationMs;
+  byte maxNoteSeconds;
+  byte exerciseCycles;
+};
 
-// --- Power-up valve exercise ---
-//
-// Cycles every output in turn at boot. The point is to break any adhesion
-// between valve and seat that built up while the instrument sat closed --
-// "pluck" -- so the first note of the session behaves like the hundredth. On a
-// lightly loaded valve, pluck can easily be the largest single force the
-// solenoid has to overcome, and it is worst on the first cycle after a rest.
-//
-// Run this before wind is applied. With the chest unpressurised the valves
-// move freely, the plungers break loose with nothing opposing them, and no
-// pipe speaks.
-//
-// Sequential rather than all at once, deliberately: one solenoid at a time
-// draws a sixteenth of the current, and you can hear each output fire in
-// order, so a dead channel or a swapped connector announces itself. It doubles
-// as a power-on self test.
-//
-// Driven at full power regardless of peakDutyPercent, since breaking stiction
-// is exactly the job that wants maximum force, and one-at-a-time makes the
-// current draw trivial.
-//
-// Total time is cycles x 16 x (on + off), so the defaults take about 3.8 s.
-// Set exerciseCycles to 0 to disable, in which case the shorter boot heartbeat
-// runs instead.
-const int exerciseCycles  = 2;
-const int exerciseOnTime  = 60;  // ms energised
+const Settings factoryDefaults = {
+  100,   // peakDutyPercent
+  25,    // holdDutyPercent   (500 us of a 2000 us period)
+  40,    // peakDurationMs
+  30,    // maxNoteSeconds
+  2,     // exerciseCycles
+};
+
+// Hard ceilings the runtime path cannot exceed, whatever it is sent. These
+// protect the hardware from a fat-fingered value: the boards cannot transmit,
+// so they cannot say "that would cook the coils" -- they can only refuse.
+// Raise them only for solenoids rated for it.
+const byte HOLD_DUTY_MAX_PERCENT = 40;   // 2.74 W on a 7 ohm coil: 133% of a 10% ED budget
+const byte PEAK_DURATION_MAX_MS  = 127;  // a CC value is 7 bits; a larger ceiling would be unreachable over MIDI
+const byte EXERCISE_CYCLES_MAX   = 10;
+
+const int exerciseOnTime  = 60;  // ms energised, per output, per pass
 const int exerciseOffTime = 60;  // ms released, so the valve can reseat
+
+// --- Runtime configuration over MIDI ---
+//
+// Control changes on CONFIG_CHANNEL adjust the settings above while the board
+// runs. Music arrives on the note channel; configuration lives on a channel of
+// its own so a stray CC inside a song cannot retune the organ. (Files from
+// organ-arranger contain no CCs at all.)
+//
+//   CC 20  select board     0-112: only the board whose base note equals the
+//                           value listens to what follows. 113-127: all
+//                           boards. Reverts to all after a quiet
+//                           CONFIG_SELECT_TIMEOUT_MS, so a forgotten selection
+//                           cannot strand a board.
+//   CC 21  peakDutyPercent  clamped to 1-100
+//   CC 22  holdDutyPercent  clamped to 0-HOLD_DUTY_MAX_PERCENT
+//   CC 23  peakDurationMs   clamped to 1-PEAK_DURATION_MAX_MS
+//   CC 24  maxNoteSeconds   0 disables the watchdog
+//   CC 25  exerciseCycles   clamped to 0-EXERCISE_CYCLES_MAX
+//   CC 26  command          1 = save to EEPROM, acknowledged by a click on
+//                               output 1 if that output is idle
+//                           2 = reload from EEPROM
+//                           3 = factory defaults, in RAM; save to keep them
+//
+// Changes take effect immediately, including on notes already held, which is
+// what makes tuning by ear work: drag the hold duty while a chord sounds.
+// Every value, from MIDI or from EEPROM, passes through the same clamps.
+//
+// The Pi-side tool for this is tools/organ-config. Set CONFIG_ENABLED to 0 to
+// compile all of it out.
+#define CONFIG_ENABLED 1
+#define CONFIG_CHANNEL 16
+#define CONFIG_ACK     1     // click output 1 on save; 0 for silence
+
+#define CC_SELECT_BOARD    20
+#define CC_PEAK_DUTY       21
+#define CC_HOLD_DUTY       22
+#define CC_PEAK_DURATION   23
+#define CC_MAX_NOTE        24
+#define CC_EXERCISE_CYCLES 25
+#define CC_COMMAND         26
+
+#define CMD_SAVE    1
+#define CMD_RELOAD  2
+#define CMD_FACTORY 3
+
+const unsigned long CONFIG_SELECT_TIMEOUT_MS = 60000UL;
 
 // ===================== MIDI input =====================
 //
@@ -270,35 +341,80 @@ byte solenoidState[numSolenoids];
 unsigned long noteOnTime[numSolenoids];
 byte notePeakDuration[numSolenoids];
 
-const int peakDurationMax = 40; // ms of pull-in drive, and at full velocity
-const int peakDurationMin = 15; // ms at the lowest velocity, when scaling
+const int peakDurationMin = 15;   // ms at the lowest velocity, when scaling
 const int pwmPeriod       = 2000; // us, PWM period for both phases (500 Hz)
-const int pwmOnTime       = 500;  // us, hold PWM on-time (25% duty)
 
-// How hard to drive the pull-in, as a percentage. 100 means solid DC for the
-// whole peak window, which is what a solenoid sized correctly for its load
-// wants.
+// Live values, derived from `settings` by applySettings(). The hot path reads
+// these rather than the struct so nothing is recomputed per pass. The
+// initialisers only have to be sane; applySettings() runs before loop() does.
+Settings      settings        = factoryDefaults;
+byte          peakDurationMax = 40;        // ms of pull-in drive, and at full velocity
+unsigned int  peakOnTime      = pwmPeriod; // us; equal to pwmPeriod means solid DC
+unsigned int  pwmOnTime       = 500;       // us, hold PWM on-time
+unsigned long maxNoteDuration = 30000UL;   // ms; 0 means the watchdog is off
+byte          exerciseCycles  = 2;
+
+void clampSettings(Settings &s) {
+  if (s.peakDutyPercent < 1)                   s.peakDutyPercent = 1;
+  if (s.peakDutyPercent > 100)                 s.peakDutyPercent = 100;
+  if (s.holdDutyPercent > HOLD_DUTY_MAX_PERCENT) s.holdDutyPercent = HOLD_DUTY_MAX_PERCENT;
+  if (s.peakDurationMs < 1)                    s.peakDurationMs = 1;
+  if (s.peakDurationMs > PEAK_DURATION_MAX_MS) s.peakDurationMs = PEAK_DURATION_MAX_MS;
+  if (s.exerciseCycles > EXERCISE_CYCLES_MAX)  s.exerciseCycles = EXERCISE_CYCLES_MAX;
+  // maxNoteSeconds: anything 0-127 is legitimate, 0 meaning off.
+}
+
+void applySettings() {
+  clampSettings(settings);
+  peakDurationMax = settings.peakDurationMs;
+  peakOnTime      = (unsigned int)(((unsigned long)pwmPeriod * settings.peakDutyPercent) / 100);
+  pwmOnTime       = (unsigned int)(((unsigned long)pwmPeriod * settings.holdDutyPercent) / 100);
+  maxNoteDuration = (unsigned long)settings.maxNoteSeconds * 1000UL;
+  exerciseCycles  = settings.exerciseCycles;
+}
+
+// --- EEPROM persistence ---
 //
-// Lower it when the solenoids are overspecced for what they are moving, which
-// is common -- a 22 W actuator shifting a small valve does not need all 22 W
-// to seat it. This is the single most effective lever on the current your
-// supply has to deliver, because the pull-in is the only time every energised
-// channel draws full current at once. Dropping to 60 takes a 16-channel attack
-// from 29.5 A to 17.7 A on 6.5 ohm solenoids.
-//
-// Tune it on the bench under real load: reduce until a solenoid fails to seat
-// or seats sluggishly, then back off generously. Too low and notes will
-// silently fail to sound under load, which is much harder to diagnose later
-// than a supply that runs warm.
-const int peakDutyPercent = 100;
+// A small record with a magic number, a layout version and a checksum, so a
+// blank or stale EEPROM is recognised and ignored rather than trusted. Written
+// only on an explicit save, never on every change: EEPROM wears out, and live
+// tuning would otherwise chew through it.
+struct StoredSettings {
+  uint16_t magic;
+  uint8_t  version;
+  Settings s;
+  uint8_t  checksum;
+};
+const uint16_t SETTINGS_MAGIC   = 0x0C9A;
+const uint8_t  SETTINGS_VERSION = 1;
+const int      SETTINGS_ADDRESS = 0;
 
-// Derived. Equals pwmPeriod at 100%, which the loop treats as solid DC.
-const int peakOnTime = ((long)pwmPeriod * peakDutyPercent) / 100;
+uint8_t settingsChecksum(const Settings &s) {
+  const uint8_t *p = (const uint8_t *)&s;
+  uint8_t sum = 0x5A;
+  for (size_t i = 0; i < sizeof(Settings); i++) sum = (uint8_t)(sum * 31 + p[i]);
+  return sum;
+}
 
-static_assert(peakDutyPercent >= 1 && peakDutyPercent <= 100,
-              "peakDutyPercent must be between 1 and 100");
-static_assert(pwmOnTime < pwmPeriod,
-              "pwmOnTime must be shorter than pwmPeriod");
+// Applies the stored settings and returns true if EEPROM holds a valid record.
+bool loadSettings() {
+  StoredSettings st;
+  EEPROM.get(SETTINGS_ADDRESS, st);
+  if (st.magic != SETTINGS_MAGIC || st.version != SETTINGS_VERSION) return false;
+  if (settingsChecksum(st.s) != st.checksum) return false;
+  settings = st.s;
+  applySettings();
+  return true;
+}
+
+void saveSettings() {
+  StoredSettings st;
+  st.magic    = SETTINGS_MAGIC;
+  st.version  = SETTINGS_VERSION;
+  st.s        = settings;
+  st.checksum = settingsChecksum(settings);
+  EEPROM.put(SETTINGS_ADDRESS, st);   // put() rewrites only the bytes that changed
+}
 
 // Each channel's hold PWM is offset in time from the one before it, so that
 // simultaneously-held solenoids do not all switch on at the same instant.
@@ -343,9 +459,23 @@ void releaseAll() {
   }
 }
 
-// Fire every output in turn at full power. See exerciseCycles above for why.
-// Blocking on purpose: this runs once in setup(), before the board is doing
-// anything else.
+// Power-up valve exercise: fire every output in turn, at full power.
+//
+// The point is to break any adhesion between valve and seat that built up
+// while the instrument sat closed -- "pluck" -- so the first note of the
+// session behaves like the hundredth. On a lightly loaded valve, pluck can be
+// the largest single force the solenoid has to overcome, and it is worst on
+// the first cycle after a rest. Run before wind is applied: unpressurised, the
+// valves move freely and no pipe speaks.
+//
+// Sequential rather than all at once, deliberately. One solenoid at a time
+// draws a sixteenth of the current, and you hear each output fire in order, so
+// a dead channel or a swapped connector announces itself. It doubles as a
+// power-on self test. Full power regardless of peakDutyPercent, since breaking
+// stiction is precisely the job that wants maximum force.
+//
+// Total time is cycles x 16 x (on + off): about 3.8 s at the defaults.
+// Blocking on purpose: this runs once in setup(), before anything else.
 void exerciseValves() {
   for (int c = 0; c < exerciseCycles; c++) {
     for (int i = 0; i < numSolenoids; i++) {
@@ -361,7 +491,17 @@ void exerciseValves() {
 
 void handleNoteOff(byte channel, byte pitch, byte velocity);
 
+// The library is opened omni so that configuration can arrive on a channel of
+// its own; notes are filtered here against the channel this board is set to.
+byte noteChannel = 1;   // 1-16, or MIDI_CHANNEL_OMNI; assigned in setup()
+
+bool forThisBoard(byte channel) {
+  return noteChannel == MIDI_CHANNEL_OMNI || channel == noteChannel;
+}
+
 void handleNoteOn(byte channel, byte pitch, byte velocity) {
+  if (!forThisBoard(channel)) return;
+
   // Note-on with zero velocity is note-off by another name.
   if (velocity == 0) {
     handleNoteOff(channel, pitch, velocity);
@@ -395,18 +535,75 @@ void handleNoteOn(byte channel, byte pitch, byte velocity) {
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity) {
+  if (!forThisBoard(channel)) return;
   if (pitch >= baseNote && pitch < baseNote + numSolenoids) {
     releaseSolenoid(pitch - baseNote);
   }
 }
 
+#if CONFIG_ENABLED
+// -1: every board listens. Otherwise only the board with this base note does.
+int selectedBase = -1;
+unsigned long lastConfigMs = 0;
+
+void acknowledgeSave() {
+#if CONFIG_ACK
+  // One short click on output 1, provided nothing is playing on it. Under
+  // wind that is a brief chirp from the board's lowest pipe -- and four boards
+  // saving together answer as a four-note chord, which is as good a "done" as
+  // hardware that cannot transmit can give you.
+  if (solenoidState[0] != 0) return;
+  digitalWrite(solenoidPins[0], HIGH);
+  delay(60);
+  digitalWrite(solenoidPins[0], LOW);
+#endif
+}
+
+void handleConfig(byte number, byte value) {
+  lastConfigMs = millis();
+
+  if (number == CC_SELECT_BOARD) {
+    selectedBase = (value <= 112) ? (int)value : -1;
+    return;
+  }
+  if (selectedBase >= 0 && selectedBase != baseNote) return;   // addressed to another board
+
+  switch (number) {
+    case CC_PEAK_DUTY:       settings.peakDutyPercent = value; break;
+    case CC_HOLD_DUTY:       settings.holdDutyPercent = value; break;
+    case CC_PEAK_DURATION:   settings.peakDurationMs  = value; break;
+    case CC_MAX_NOTE:        settings.maxNoteSeconds  = value; break;
+    case CC_EXERCISE_CYCLES: settings.exerciseCycles  = value; break;
+    case CC_COMMAND:
+      if (value == CMD_SAVE) {
+        applySettings();            // clamp first, so what is saved is what runs
+        saveSettings();
+        acknowledgeSave();
+      } else if (value == CMD_RELOAD) {
+        if (!loadSettings()) settings = factoryDefaults;
+      } else if (value == CMD_FACTORY) {
+        settings = factoryDefaults;
+      }
+      break;
+    default:
+      return;                       // not a configuration CC
+  }
+  applySettings();
+}
+#endif
+
 void handleControlChange(byte channel, byte number, byte value) {
   // 120 = All Sound Off, 123 = All Notes Off. Both mean "release everything",
   // and honouring them is the difference between a clean stop and a stuck
-  // valve when a sequencer stops mid-phrase.
+  // valve when a sequencer stops mid-phrase. Accepted on any channel at all:
+  // a panic must never be filtered out.
   if (number == 120 || number == 123) {
     releaseAll();
+    return;
   }
+#if CONFIG_ENABLED
+  if (channel == CONFIG_CHANNEL) handleConfig(number, value);
+#endif
 }
 
 void handleStop() {
@@ -487,7 +684,10 @@ void setup() {
     notePeakDuration[i] = peakDurationMax;
   }
 
-  MIDI.begin(selectedChannel());
+  // Opened omni so configuration can arrive on CONFIG_CHANNEL; the note
+  // handlers filter against noteChannel themselves.
+  noteChannel = selectedChannel();
+  MIDI.begin(MIDI_CHANNEL_OMNI);
   MIDI.setHandleNoteOn(handleNoteOn);
   MIDI.setHandleNoteOff(handleNoteOff);
   MIDI.setHandleControlChange(handleControlChange);
@@ -539,6 +739,11 @@ void setup() {
                       + (unsigned long)i * pwmPhaseStep) % pwmPeriod);
   }
 
+  // Tuned values from EEPROM where a valid record exists, else the compiled
+  // defaults. Before the exercise routine, since exerciseCycles is one of them.
+  settings = factoryDefaults;
+  if (!loadSettings()) applySettings();
+
   if (exerciseCycles > 0) {
     exerciseValves();
     // The UART has been unattended for several seconds. Discard whatever
@@ -571,6 +776,14 @@ void loop() {
   MIDI.read();
 
   unsigned long currentMillis = millis();
+
+#if CONFIG_ENABLED
+  // A forgotten board selection must not strand a board: back to "all" after
+  // a quiet minute.
+  if (selectedBase >= 0 && currentMillis - lastConfigMs >= CONFIG_SELECT_TIMEOUT_MS) {
+    selectedBase = -1;
+  }
+#endif
   // The one 32-bit modulo per pass. Everything below stays 16-bit.
   unsigned int cycleBase = (unsigned int)(micros() % pwmPeriod);
 

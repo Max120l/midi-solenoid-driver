@@ -114,6 +114,14 @@ Worth separating two things that got conflated:
 So if this gets built, do the tuning parameters first and treat the switches as
 a separate question that may not need answering at all.
 
+*Update:* built, the moment the chest was live and reflashing four buried
+boards became a real risk. The tuning parameters are now control changes on a
+dedicated configuration channel, applied through hard clamps and saveable to
+EEPROM; the Pi side is [`tools/organ-config/`](tools/organ-config/). CC rather
+than SysEx because the values are all 7-bit anyway, a slider on a phone maps
+onto a CC directly, and any MIDI controller can drive it. The switches stayed
+exactly where they were.
+
 ## Audible diagnostics: a read-back channel out of the instrument itself
 
 The boards cannot transmit, so configuration is write-only and there is no way

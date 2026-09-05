@@ -135,7 +135,14 @@ Flashing over the bootloader still works normally.
 
 ## Configuration
 
-Everything configurable sits in one block at the top of the sketch.
+Everything configurable sits in one block at the top of the sketch. It comes
+in two kinds: **build-time choices** — which switches mean what, where the MIDI
+channel comes from, input polarity — that describe the hardware and need a
+reflash to change; and **tuning parameters** — pull-in and hold drive, the
+watchdog, the exercise routine — that describe the instrument and are
+**adjustable at runtime over MIDI**, see
+[Runtime configuration over MIDI](#runtime-configuration-over-midi). The values
+in the sketch for the second kind are compiled defaults, not the last word.
 
 ### Note offset — which 16 notes this board plays
 
@@ -215,7 +222,7 @@ flashing cleanly and behaving strangely on the bench.
 ### Stuck-note watchdog
 
 ```cpp
-const unsigned long maxNoteDuration = 30000UL;
+30,    // maxNoteSeconds   -- in factoryDefaults; runtime: CC 24, 0 disables
 ```
 
 Any solenoid held longer than this is force-released. Set to `0` to disable —
@@ -227,7 +234,7 @@ holds notes longer than that.
 ### Power-up valve exercise
 
 ```cpp
-const int exerciseCycles  = 2;   // 0 disables
+2,     // exerciseCycles   -- in factoryDefaults; runtime: CC 25, 0 disables
 const int exerciseOnTime  = 60;  // ms energised
 const int exerciseOffTime = 60;  // ms released
 ```
@@ -255,6 +262,58 @@ during that time, so the receive buffer is discarded afterwards to stop a
 part-received message sounding a note the instant the loop opens. Set
 `exerciseCycles` to 0 to disable, in which case the shorter boot heartbeat runs
 instead and the whole routine is optimised out of the build.
+
+### Runtime configuration over MIDI
+
+The tuning parameters are adjustable while the boards run, by control changes
+on a **dedicated configuration channel**, and can be saved to each board's
+EEPROM so they survive a power cycle. A board built into an instrument never
+needs reflashing to retune it. The Pi-side tool is
+[`tools/organ-config/`](tools/organ-config/):
+
+```bash
+python organ_config.py --port "USB MIDI" --peak 60 --hold 25 --save
+```
+
+| CC | Setting | Range on the wire | Firmware clamps to |
+|---|---|---|---|
+| 20 | select board | 0–112 = the board with that base note; 113–127 = all | |
+| 21 | `peakDutyPercent` | 0–127 | 1–100 |
+| 22 | `holdDutyPercent` | 0–127 | 0–`HOLD_DUTY_MAX_PERCENT` (40) |
+| 23 | `peakDurationMs` | 0–127 | 1–`PEAK_DURATION_MAX_MS` (127) |
+| 24 | `maxNoteSeconds` | 0–127 | as sent; 0 disables the watchdog |
+| 25 | `exerciseCycles` | 0–127 | 0–`EXERCISE_CYCLES_MAX` (10) |
+| 26 | command | 1 save · 2 reload · 3 factory | |
+
+All on `CONFIG_CHANNEL`, which is **16**; music is on channel 1. That
+separation is what stops a stray CC inside a song from retuning the organ
+mid-piece — and the arranger's output contains no CCs at all regardless.
+Panic messages (CC 120 and 123) are honoured on *every* channel.
+
+**Changes take effect immediately, including on notes already sounding.** That
+is deliberate, and it is what makes tuning by ear possible: hold a chord and
+step the hold duty down until a valve drops out, back off, save.
+
+**The clamps are the safety.** The boards cannot transmit, so they cannot
+report that a value would cook the coils — they can only refuse it. Every
+value, whether it arrives by MIDI or is read back from EEPROM, passes through
+the same clamps, and the ceilings are compile-time constants sized for
+duty-limited solenoids. Raise them only for coils rated for it.
+
+**Save is explicit, and acknowledged.** Settings live in RAM until command 1
+writes them to EEPROM — EEPROM has a finite number of writes and live tuning
+would otherwise chew through it. A save is acknowledged by a click on output 1
+if that output is idle; under wind, a chirp from the board's lowest pipe, and
+four boards saving together answer as a four-note chord. Set `CONFIG_ACK` to 0
+for silence. At power-up a board loads its EEPROM record if the magic number,
+layout version and checksum all agree, and the compiled defaults otherwise.
+
+**A board selection expires.** CC 20 with a base note makes only that board
+listen; it reverts to all boards after a quiet minute, so a forgotten selection
+cannot strand one. In practice, with identical solenoids on every board, you
+address all of them.
+
+`CONFIG_ENABLED 0` compiles the whole layer out, saving about 650 bytes.
 
 ## Daisy-chaining several boards
 
@@ -369,11 +428,20 @@ for 150 ms as a heartbeat.
 ## Tuning peak-and-hold
 
 ```cpp
-const int peakDurationMax = 40;   // ms at full current
-const int peakDurationMin = 15;   // ms at lowest velocity, when scaling
-const int pwmPeriod       = 2000; // us, hold PWM period (500 Hz)
-const int pwmOnTime       = 800;  // us, hold PWM on-time (40% duty)
+const Settings factoryDefaults = {
+  100,   // peakDutyPercent   runtime: CC 21
+  25,    // holdDutyPercent   runtime: CC 22   (500 us of the 2000 us period)
+  40,    // peakDurationMs    runtime: CC 23
+  30,    // maxNoteSeconds    runtime: CC 24
+  2,     // exerciseCycles    runtime: CC 25
+};
+const int peakDurationMin = 15;   // ms at lowest velocity, when scaling; build-time
+const int pwmPeriod       = 2000; // us, PWM period for both phases (500 Hz); build-time
 ```
+
+These are compiled defaults. Once the boards are in the instrument, tune them
+over MIDI and save — see
+[Runtime configuration over MIDI](#runtime-configuration-over-midi).
 
 `peakDurationMax` needs to be long enough for the solenoid to physically pull
 in — too short and it will buzz or fail to seat under load. `pwmOnTime` needs
@@ -389,7 +457,7 @@ These values are a working starting point, not a universal answer.
 ### Driving the pull-in less hard
 
 ```cpp
-const int peakDutyPercent = 100;
+100,   // peakDutyPercent   -- in factoryDefaults; runtime: CC 21
 ```
 
 100 means solid DC for the whole peak window. Lower values PWM the pull-in as
@@ -614,6 +682,12 @@ physically playable — merging overlaps, enforcing minimum note lengths and
 re-articulation gaps — pulses every register reset before and after the music
 so their state is always known, and writes a report of every note it dropped,
 merged, stretched or trimmed. Python, on `mido`; see its README.
+
+[`tools/organ-config/`](tools/organ-config/) retunes the boards over MIDI —
+pull-in duty and duration, hold duty, watchdog, exercise passes — from the Pi
+or anything with a MIDI output, and saves the result to each board's EEPROM.
+No reflashing once the boards are in the instrument. See
+[Runtime configuration over MIDI](#runtime-configuration-over-midi).
 
 ## Ideas and open questions
 
