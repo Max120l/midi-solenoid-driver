@@ -2,7 +2,8 @@
 # A single-track file with the bass riff and the tune interleaved in one
 # monophonic line: everything below C4 is the bass, everything from C4 up is
 # the tune. Split by pitch: tune on Melody, bass on Accompaniment. Up 3 into
-# C major: 100% coverage, nothing snapped. Two ranks installed.
+# D minor: nothing snapped in the tune, 3 bass notes nudged. Down 4 (G minor)
+# moves the nudges into the tune instead (9), so D minor it is. Two ranks installed.
 transpose: 3
 voices:
 - {source: Elec. Piano (Classic)#0, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, lowest: 60}
