@@ -261,20 +261,42 @@ class Voice:
     # the verses -- by listing it twice with different windows and ranks.
     start: float | None = None
     end: float | None = None
+    # Optional pitch bounds, inclusive, in the source's own note numbers
+    # (before transposition). A single-track file that interleaves a bass riff
+    # and a tune in one line is split by listing it twice: `highest: 59` for
+    # the bass, `lowest: 60` for the tune.
+    lowest: int | None = None
+    highest: int | None = None
+
+    @property
+    def windowed(self) -> bool:
+        return any(x is not None for x in (self.start, self.end, self.lowest, self.highest))
 
     @property
     def key(self) -> str:
         """Unique within a plan even when a source is listed more than once."""
-        if self.start is None and self.end is None:
-            return self.source
-        return f"{self.source}[{self.start if self.start is not None else ''}:{self.end if self.end is not None else ''}]"
+        return self.source + (fmt_window(self) if self.windowed else "")
 
     def select(self, notes: list["Note"]) -> list["Note"]:
-        if self.start is None and self.end is None:
+        if not self.windowed:
             return notes
-        lo = self.start if self.start is not None else float("-inf")
-        hi = self.end if self.end is not None else float("inf")
-        return [n for n in notes if lo <= n.start < hi]
+        t0 = self.start if self.start is not None else float("-inf")
+        t1 = self.end if self.end is not None else float("inf")
+        p0 = self.lowest if self.lowest is not None else -1
+        p1 = self.highest if self.highest is not None else 128
+        return [n for n in notes if t0 <= n.start < t1 and p0 <= n.pitch <= p1]
+
+
+def fmt_window(v: "Voice") -> str:
+    """'[10s..45s]', '[..59]', '[10s..45s 60..]' -- what a voice was limited to."""
+    parts = []
+    if v.start is not None or v.end is not None:
+        parts.append(f"{v.start:g}s" if v.start is not None else "")
+        parts[-1] += ".." + (f"{v.end:g}s" if v.end is not None else "")
+    if v.lowest is not None or v.highest is not None:
+        parts.append((f"{note_name(v.lowest)}" if v.lowest is not None else "") + ".."
+                     + (f"{note_name(v.highest)}" if v.highest is not None else ""))
+    return "[" + " ".join(parts) + "]"
 
 
 @dataclass
@@ -291,7 +313,8 @@ class Plan:
             "transpose": self.transpose,
             "voices": [{k: val for k, val in (("source", v.source), ("rank", v.rank), ("role", v.role),
                                                ("max_poly", v.max_poly), ("weight", v.weight),
-                                               ("fallback", v.fallback), ("from", v.start), ("until", v.end))
+                                               ("fallback", v.fallback), ("from", v.start), ("until", v.end),
+                                               ("lowest", v.lowest), ("highest", v.highest))
                         if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
@@ -306,11 +329,15 @@ class Plan:
                             float(v.get("weight", ROLE_WEIGHT.get(v.get("role", ROLE_COUNTER), 1.0))),
                             str(v["fallback"]) if v.get("fallback") else None,
                             float(v["from"]) if v.get("from") is not None else None,
-                            float(v["until"]) if v.get("until") is not None else None)
+                            float(v["until"]) if v.get("until") is not None else None,
+                            int(v["lowest"]) if v.get("lowest") is not None else None,
+                            int(v["highest"]) if v.get("highest") is not None else None)
                       for v in d.get("voices", [])]
             for v in voices:
                 if v.start is not None and v.end is not None and v.end <= v.start:
                     raise ValueError(f"voice {v.source}: 'until' ({v.end}) must be after 'from' ({v.start})")
+                if v.lowest is not None and v.highest is not None and v.highest < v.lowest:
+                    raise ValueError(f"voice {v.source}: 'highest' ({v.highest}) is below 'lowest' ({v.lowest})")
             drums = d.get("drums") or {}
             t = d.get("transpose", "auto")
             transpose = "auto" if str(t).lower() == "auto" else int(t)
@@ -797,12 +824,6 @@ def build_output(placed: list[Placed], organ: oa.Organ, tempo_map: list[tuple[fl
 # Report
 # ----------------------------------------------------------------------------
 
-def fmt_window(start: float | None, end: float | None) -> str:
-    a = f"{start:g}" if start is not None else ""
-    b = f"{end:g}" if end is not None else ""
-    return f"[{a}s..{b}s]"
-
-
 def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: str, output: str) -> str:
     L = [f"organ_transcribe {__version__}", f"source : {source}", f"output : {output}", f"organ  : {organ.name}", ""]
     L.append("Ranks (what the organ can play)")
@@ -825,7 +846,7 @@ def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: st
     for v in r.plan.voices:
         s = by_key.get(v.source)
         st = r.voice_stats.get(v.key)
-        window = f" {fmt_window(v.start, v.end)}" if (v.start is not None or v.end is not None) else ""
+        window = f" {fmt_window(v)}" if v.windowed else ""
         if s is None or st is None:
             L.append(f"  {v.source + window:<32} -> {v.rank:<12} {v.role:<8} (not used)")
             continue
@@ -924,6 +945,8 @@ def main(argv: list[str] | None = None) -> int:
             "# Plan for organ_transcribe. Edit and re-run with --plan.\n"
             "# rank: one of the ranks listed in the report, or 'drop'.\n"
             "# role: melody | bass | counter | accomp.  transpose: semitones or auto.\n"
+            "# from / until (seconds) and lowest / highest (note numbers) limit a voice to\n"
+            "# part of its track; list a source twice with different limits to split it.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:

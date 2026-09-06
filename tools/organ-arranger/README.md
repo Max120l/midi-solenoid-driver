@@ -266,6 +266,8 @@ voices:
   - { source: "Organ 2#2",     rank: drop,        role: counter }      # silence a voice
   - { source: "Synth#3", rank: "Main:Melody", role: counter, until: 45 }          # only the first 45 s
   - { source: "Synth#3", rank: drop,          from: 45 }                          # and nothing after
+  - { source: "Piano#1", rank: "Main:Melody", role: melody, lowest: 60 }          # one line, split by pitch:
+  - { source: "Piano#1", rank: "Main:Base",   role: bass,   highest: 59 }         # tune above, bass below
 drums:
   source: "Drums#10"
   map: { 35: bass, 36: bass, 38: snare, 40: snare, 37: snare }

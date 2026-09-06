@@ -414,9 +414,35 @@ def test_a_voice_window_lets_one_source_play_two_roles():
     assert high and max(high) < mido.second2tick(4.0, r.mid.ticks_per_beat, 500_000)   # nothing after 4 s
     assert r.voice_stats[plan.voices[0].key].kept == 16
     text = ot.render_report(r, org, ranks, "s", "d")
-    assert "[s..4s]" in text and "[4s..s]" in text
+    assert "[..4s]" in text and "[4s..]" in text
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
     assert (again.voices[0].start, again.voices[0].end) == (None, 4.0)
     assert (again.voices[1].start, again.voices[1].end) == (4.0, None)
     with pytest.raises(ot.TranscribeError):
         ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "from": 5, "until": 2}]})
+
+
+def test_a_pitch_window_splits_one_line_into_bass_and_tune():
+    # A single track that alternates a low riff and a high tune, as type-0
+    # files often do: below C4 is the bass, C4 and up is the melody.
+    org = organ()
+    line = []
+    for i in range(8):
+        line += notes(0, [36], start=i * BEAT, length=BEAT // 2, step=BEAT // 2)
+        line += notes(0, [79], start=i * BEAT + BEAT // 2, length=BEAT // 2, step=BEAT // 2)
+    mid = tune(track("Piano", line))
+    plan = ot.Plan.from_dict({
+        "transpose": 0,
+        "voices": [
+            {"source": "Piano#1", "rank": "Main:high", "role": "melody", "lowest": 60},
+            {"source": "Piano#1", "rank": "Main:low", "role": "bass", "highest": 59},
+        ],
+        "drums": {"source": None, "map": {}}, "registration": [],
+    })
+    r = ot.transcribe(mid, org, plan)
+    main = out_notes(r.mid, "Main")
+    pitches = sorted({n for _, _, n in main})
+    assert len(pitches) == 2 and pitches[0] % 12 == 0 and pitches[0] < 72 and pitches[1] == 79   # C folded within the bass rank, G on the tune rank
+    assert r.voice_stats["Piano#1[C4..]"].kept == 8 and r.voice_stats["Piano#1[..B3]"].kept == 8
+    with pytest.raises(ot.TranscribeError):
+        ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "lowest": 70, "highest": 60}]})
