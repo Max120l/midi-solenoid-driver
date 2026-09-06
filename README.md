@@ -672,9 +672,11 @@ Things this fork does not yet do. Contributions welcome.
 - **The per-board PWM offset is below `loop()` resolution**, as described above.
 - **Verified with four daisy-chained boards** playing arranged music from a
   Raspberry Pi over one single-ended MIDI line, at base notes 0/16/32/48,
-  driving 64 solenoids on a common star ground. Supply draw peaked around
-  3 A at 60% pull-in duty. Untested: longer chains, and chains without a
-  common ground — see [Daisy-chaining several boards](#daisy-chaining-several-boards).
+  driving 64 solenoids on a common star ground. Supply draw at 60% pull-in
+  and 25% hold: about 1 A averaged over a tune, peaks around 3 A, across a
+  dozen arrangements with no valve failing to open or to close. Untested:
+  longer chains, and chains without a common ground — see
+  [Daisy-chaining several boards](#daisy-chaining-several-boards).
 - **Four `unused parameter` warnings** under `-Wall -Wextra`, from MIDI library
   callback signatures that require arguments this firmware doesn't read. They
   do not appear in a default build.
