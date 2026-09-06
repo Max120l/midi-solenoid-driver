@@ -1,0 +1,27 @@
+# Plan for organ_transcribe: Madonna, Material Girl (General MIDI file, unnamed tracks).
+# Two ranks installed. Track 5 (ch3) is the vocal line, an octave C4-C5, and
+# goes on Melody; Track 4 (ch2) is the synth hook that plays whenever the
+# voice rests, so it shares the Melody rank at lower priority. Track 3 (ch1)
+# is the synth bass and goes on Accompaniment. The chord stabs (tracks 12 and
+# 13, identical), the chorus synth doubling (6, 7) and the fills are dropped:
+# nine accompaniment pipes cannot hold a bass line and chords at once.
+transpose: 0
+voices:
+- {source: Track 5#4, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: Track 4#3, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: Track 3#2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: Track 6#5, rank: drop}
+- {source: Track 7#6, rank: drop}
+- {source: Track 8#7, rank: drop}
+- {source: Track 9#8, rank: drop}
+- {source: Track 10#9, rank: drop}
+- {source: Track 12#11, rank: drop}
+- {source: Track 13#12, rank: drop}
+- {source: Track 14#13, rank: drop}
+drums:
+  source: Track 11#10
+  map: {36: bass, 35: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
