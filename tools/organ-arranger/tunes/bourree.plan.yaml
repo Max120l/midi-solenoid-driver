@@ -1,9 +1,9 @@
 # Plan for organ_transcribe: Bach, Bourree in E minor (BWV 996), two voices.
 # Voice 1 on the Melody rank, Voice 2 on the Accompaniment rank, no bass pipes;
-# D minor (-2) leaves the fewest notes without a pipe. Edit and re-run with --plan.
+# G minor (+3) chosen by ear; D minor (-2) snaps a few fewer notes but sounded less well.
 # rank: one of the ranks listed in the report, or 'drop'.
 # role: melody | bass | counter | accomp.  transpose: semitones or auto.
-transpose: -2
+transpose: 3
 voices:
 - {source: Voice 2#2, rank: 'Main:Accompainment', role: accompaniment, max_poly: 1, weight: 2.0}
 - {source: Voice 1#1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
