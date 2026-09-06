@@ -1,0 +1,24 @@
+# Plan for organ_transcribe: Thomas the Tank Engine theme (WinJammer demo).
+# Only the Melody and Accompaniment ranks are installed, so everything goes on
+# those two. Honkytonk carries the tune (9.6-42.6 s); Jazzinet plays the intro
+# figure and the outro riff when the tune is silent; Flute is the intro
+# flourish; Train Whistle is the whistle. Double Bass and the piano chords
+# share the Accompaniment rank. Brass stabs and effects are dropped.
+transpose: -3
+voices:
+- {source: WinJammer Demo#6, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: WinJammer Demo#5, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: WinJammer Demo#4, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 0.5}
+- {source: WinJammer Demo#10, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 0.5}
+- {source: WinJammer Demo#7, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: WinJammer Demo#1, rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.0}
+- {source: WinJammer Demo#2, rank: drop}
+- {source: WinJammer Demo#8, rank: drop}
+- {source: WinJammer Demo#9, rank: drop}
+drums:
+  source: WinJammer Demo#3
+  map: {36: bass, 38: snare, 40: snare, 37: snare}   # the kit doubles 35+36 on every kick; one is enough
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
