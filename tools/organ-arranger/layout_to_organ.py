@@ -29,10 +29,11 @@ Other columns are used when present:
     single-column form, "Trombone on" / "Trombone off", is still accepted.
   - `note` on a pulse track (Bass, Snare, Leader) becomes its label.
 
-Each solenoid row has exactly one (track, note) entry. Solenoid N drives
-driver-board slot base_note + N - 1. This instrument's four boards sit at base
-notes 0, 16, 32 and 48 -- board 1 with every switch open -- so solenoid 1 is
-slot 0 and solenoid 64 is slot 63, and 0 is the default.
+Each solenoid row has exactly one (track, note) entry, and the definition keeps
+the sheet's solenoid numbers, 1 upwards. Which MIDI note fires solenoid 1 is a
+single line in the output, `solenoid_1_note`: this instrument's four boards
+sit at base notes 0, 16, 32 and 48 -- board 1 with every switch open -- so
+solenoid 1 is note 0, solenoid 64 is note 63, and 0 is the default.
 
 Tracks named like "drums" or "registers" become pulse tracks (a note is a
 strike); everything else is pitched.
@@ -54,7 +55,7 @@ from pathlib import Path
 import openpyxl
 import yaml
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 DEFAULT_PULSE_TRACKS = {"drum": 50, "regist": 100}    # name substring -> pulse ms
 ACTION_RE = re.compile(r"^\s*(?P<name>.*?)\s+(?P<state>on|off)\s*$", re.IGNORECASE)
@@ -180,17 +181,17 @@ def register_label(e: Entry) -> str | None:
     return e.get("action", "note", "name", "instrument")
 
 
-def pair_registers(entries: list[Entry], slot_of) -> tuple[list[dict], list[str]]:
+def pair_registers(entries: list[Entry]) -> tuple[list[dict], list[str]]:
     """Set/reset pairs, one per register name."""
     warnings: list[str] = []
-    by_name: dict[str, list[tuple[int, str, int]]] = defaultdict(list)   # name -> (note, state, slot)
+    by_name: dict[str, list[tuple[int, str, int]]] = defaultdict(list)   # name -> (note, state, solenoid)
     for e in entries:
         ident = register_identity(e)
         if ident is None:
             warnings.append(f"register solenoid {e.solenoid}: cannot tell what '{register_label(e)}' switches "
                             f"on or off; it will be a plain pulse with no reset pairing")
             continue
-        by_name[ident[0]].append((e.note, ident[1], slot_of(e.solenoid)))
+        by_name[ident[0]].append((e.note, ident[1], e.solenoid))
 
     registers: list[dict] = []
     for name, items in by_name.items():
@@ -200,27 +201,27 @@ def pair_registers(entries: list[Entry], slot_of) -> tuple[list[dict], list[str]
         ons = [i for i in items if i[1] == "on"]
         offs = [i for i in items if i[1] == "off"]
         if len(ons) == 1 and len(offs) == 1:
-            set_slot, reset_slot = ons[0][2], offs[0][2]
+            set_sol, reset_sol = ons[0][2], offs[0][2]
         else:
             # Both say the same thing -- a typo in the sheet. The layout's
             # convention is that the higher note is "on"; assume that and say so.
             hi, lo = sorted(items, key=lambda i: i[0], reverse=True)
-            set_slot, reset_slot = hi[2], lo[2]
+            set_sol, reset_sol = hi[2], lo[2]
             warnings.append(f"register '{name}': both labelled '{items[0][1]}'; assuming note {hi[0]} is on "
                             f"and note {lo[0]} is off -- check the sheet")
-        registers.append({"name": name, "set": set_slot, "reset": reset_slot})
+        registers.append({"name": name, "set": set_sol, "reset": reset_sol})
     return registers, warnings
 
 
-def build_organ(track_order: list[str], entries: list[Entry], base_note: int, name: str,
+def build_organ(track_order: list[str], entries: list[Entry], solenoid_1_note: int, name: str,
                 pulse_overrides: dict[str, int]) -> tuple[dict, list[str]]:
     warnings: list[str] = []
-
-    def slot_of(solenoid: int) -> int:
-        slot = base_note + solenoid - 1
-        if not 0 <= slot <= 127:
-            raise LayoutError(f"solenoid {solenoid} would be slot {slot}, outside 0-127; check --base-note")
-        return slot
+    if not 0 <= solenoid_1_note <= 127:
+        raise LayoutError(f"--solenoid-1-note {solenoid_1_note} is not a MIDI note number")
+    for e in entries:
+        if e.solenoid < 1 or solenoid_1_note + e.solenoid - 1 > 127:
+            raise LayoutError(f"solenoid {e.solenoid} would be MIDI note {solenoid_1_note + e.solenoid - 1}, "
+                              f"outside 0-127; check --solenoid-1-note")
 
     by_track: dict[str, list[Entry]] = defaultdict(list)
     for e in entries:
@@ -238,17 +239,17 @@ def build_organ(track_order: list[str], entries: list[Entry], base_note: int, na
         labels: dict[int, str] = {}
         sections: dict[str, list[int]] = defaultdict(list)
         for e in sorted(tentries, key=lambda e: e.solenoid):
-            notes[e.note].append(slot_of(e.solenoid))
+            notes[e.note].append(e.solenoid)
             label = register_label(e) if is_registers else e.get("note", "name", "label")
             if label and (pulse is not None):          # pitched tracks' note names are not worth a label
                 labels[e.note] = label
             section = e.get("section")
             if section and pulse is None and e.note not in sections[section]:
                 sections[section].append(e.note)
-        for note, slots in notes.items():
-            if len(slots) > 1:
-                warnings.append(f"track '{track}': note {note} drives {len(slots)} solenoids "
-                                f"({', '.join(str(s - base_note + 1) for s in slots)}); "
+        for note, sols in notes.items():
+            if len(sols) > 1:
+                warnings.append(f"track '{track}': note {note} drives {len(sols)} solenoids "
+                                f"({', '.join(str(s) for s in sols)}); "
                                 f"kept as a doubled note -- if that is a typo, fix the sheet")
         tdef: dict = {"kind": "pulse" if pulse is not None else "pitched"}
         if pulse is not None:
@@ -263,13 +264,14 @@ def build_organ(track_order: list[str], entries: list[Entry], base_note: int, na
     registers: list[dict] = []
     for track in tracks:
         if "regist" in track.lower():
-            regs, w = pair_registers(by_track[track], slot_of)
+            regs, w = pair_registers(by_track[track])
             registers.extend(regs)
             warnings.extend(w)
 
     organ = {
         "name": name,
         "output_channel": 1,
+        "solenoid_1_note": solenoid_1_note,
         "tracks": tracks,
         "registers": registers,
         "timing": {
@@ -287,17 +289,19 @@ def build_organ(track_order: list[str], entries: list[Entry], base_note: int, na
     return organ, warnings
 
 
-def render_yaml(organ: dict, source: Path, base_note: int) -> str:
+def render_yaml(organ: dict, source: Path) -> str:
     header = (
         f"# Organ definition for organ_arranger.\n"
         f"#\n"
         f"# GENERATED from {source.name} by layout_to_organ.py -- edit the spreadsheet\n"
         f"# and re-run rather than editing this file, or your changes will be lost.\n"
         f"#\n"
-        f"# Slots are the MIDI notes the driver boards listen for: solenoid N is slot\n"
-        f"# {base_note} + N - 1. Under each track, `notes` maps the note as written on\n"
-        f"# that track in the DAW to the slot(s) it sounds. A pulse track treats every\n"
-        f"# note as a strike of fixed length; a pitched track keeps written durations.\n"
+        f"# Solenoids are numbered 1 upwards, exactly as on the sheet. On the wire,\n"
+        f"# solenoid N is MIDI note solenoid_1_note + N - 1; the arranger does that\n"
+        f"# arithmetic, nothing else needs to. Under each track, `notes` maps the note\n"
+        f"# as written on that track in the DAW to the solenoid(s) it sounds. A pulse\n"
+        f"# track treats every note as a strike of fixed length; a pitched track keeps\n"
+        f"# written durations.\n"
         f"# `sections` divides a pitched track into the ranks the transcriber arranges\n"
         f"# for. `registers` lists set/reset coil pairs so the arranger can close every\n"
         f"# register before and after the music.\n"
@@ -312,9 +316,8 @@ def main(argv: list[str] | None = None) -> int:
                                 description="Generate organ.yaml from the layout spreadsheet.")
     p.add_argument("layout", help="the .xlsx layout, one row per solenoid")
     p.add_argument("-o", "--output", help="organ.yaml to write (default: alongside the sheet)")
-    p.add_argument("--base-note", type=int, default=0,
-                   help="slot of solenoid 1; solenoid N is base + N - 1 (default 0: board 1 "
-                        "with every switch open)")
+    p.add_argument("--solenoid-1-note", "--base-note", dest="solenoid_1_note", type=int, default=0,
+                   help="the MIDI note that fires solenoid 1 (default 0: board 1 with every switch open)")
     p.add_argument("--name", help="organ name for the definition (default: the sheet's file name)")
     p.add_argument("--sheet", help="worksheet name (default: the first)")
     p.add_argument("--pulse-track", action="append", default=[], metavar="NAME=MS",
@@ -334,13 +337,13 @@ def main(argv: list[str] | None = None) -> int:
     source = Path(a.layout)
     try:
         order, entries, warnings = read_layout(source, a.sheet)
-        organ, more = build_organ(order, entries, a.base_note, a.name or source.stem, overrides)
+        organ, more = build_organ(order, entries, a.solenoid_1_note, a.name or source.stem, overrides)
         warnings += more
     except (LayoutError, OSError, KeyError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    text = render_yaml(organ, source, a.base_note)
+    text = render_yaml(organ, source)
     for w in warnings:
         print(f"warning: {w}", file=sys.stderr)
 
@@ -349,9 +352,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     out = Path(a.output) if a.output else source.with_name("organ.yaml")
     out.write_text(text, encoding="utf-8")
-    n_slots = sum(len(v) if isinstance(v, list) else 1
-                  for t in organ["tracks"].values() for v in t["notes"].values())
-    print(f"wrote {out}: {len(organ['tracks'])} tracks, {n_slots} solenoids, "
+    n_sol = sum(len(v) if isinstance(v, list) else 1
+                for t in organ["tracks"].values() for v in t["notes"].values())
+    print(f"wrote {out}: {len(organ['tracks'])} tracks, {n_sol} solenoids, "
           f"{len(organ['registers'])} registers, {len(warnings)} warnings")
     return 0
 

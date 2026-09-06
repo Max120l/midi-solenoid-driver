@@ -287,7 +287,7 @@ def sectioned_organ() -> oa.Organ:
 
 
 def organ_dict_sectioned() -> dict:
-    base = {36: 0, 41: 1, 43: 2, 46: 3}
+    base = {36: 1, 41: 2, 43: 3, 46: 4}   # solenoids are 1-based
     acc = {48: 4, 50: 5, 52: 6, 53: 7, 55: 8, 57: 9, 58: 10, 60: 11}
     mel = {72: 20, 74: 21, 76: 22, 77: 23, 79: 24, 81: 25, 84: 26}
     return {

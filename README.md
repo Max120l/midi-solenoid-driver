@@ -332,9 +332,11 @@ one board's worth, so four boards tile without gaps:
 | 4 | 96 | 96-111 | 2, 3 |
 
 This instrument's chain sits one step lower than that table: board 1 with
-every switch open at base note **0**, then 16, 32 and 48, so its 64 solenoids
-are slots 0–63. That is what `tools/organ-arranger/instrument/organ.yaml` is
-generated for; the table above is the same idea shifted up three octaves.
+every switch open at base note **0**, then 16, 32 and 48, so solenoid *N*
+(numbered 1–64, as on the layout sheet) fires on MIDI note *N − 1*. The
+arranger's definition, `tools/organ-arranger/instrument/organ.yaml`, records
+that as `solenoid_1_note: 0` and does the subtraction itself; the table above
+is the same idea shifted up three octaves.
 
 The same chain under `OFFSET_FULL7`, where any base note is reachable — here
 placed at 36-99 (C2 to D#7) instead:
@@ -681,11 +683,11 @@ Things this fork does not yet do. Contributions welcome.
 
 [`tools/organ-arranger/`](tools/organ-arranger/) turns a multi-track MIDI file
 authored in a DAW into the single-track, single-channel file these boards
-play, where every note is a driver-board slot. The mapping is per track —
+play, where every note is one solenoid. The mapping is per track —
 on a band organ the same note number on a different track is a different
 pipe — and comes from the instrument's **layout spreadsheet**, which
 `layout_to_organ.py` turns into the organ definition; the sheet is the source
-of truth. The arranger then makes each slot physically playable — merging
+of truth. The arranger then makes each solenoid physically playable — merging
 overlaps, enforcing minimum note lengths and re-articulation gaps — pulses
 every register reset before and after the music so their state is always
 known, and writes a report of every note it dropped, merged, stretched or

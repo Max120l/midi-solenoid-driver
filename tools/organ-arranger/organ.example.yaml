@@ -1,9 +1,9 @@
 # EXAMPLE organ definition -- a placeholder layout, not a real instrument.
 #
 # In practice this file is GENERATED from the layout spreadsheet by
-# layout_to_organ.py; this example exists to show the shape. Every slot value
-# is the MIDI note the driver boards listen for. With four boards under
-# OFFSET_COARSE3 at base notes 48, 64, 80 and 96, solenoid N is slot 48 + N - 1.
+# layout_to_organ.py; this example exists to show the shape. Solenoids are
+# numbered 1 upwards as on the sheet; on the wire, solenoid N is MIDI note
+# solenoid_1_note + N - 1, and the arranger does that arithmetic on output.
 #
 # The organising idea: the mapping is PER TRACK. On a band organ the same note
 # number on a different track is a different pipe -- Main 60 and TenorCM 60
@@ -15,11 +15,15 @@ name: Example band organ
 # with fixedChannel = 1.
 output_channel: 1
 
+# The MIDI note that fires solenoid 1. Board 1 with every switch open listens
+# from note 0; a chain at OFFSET_COARSE3 base 48 would say 48.
+solenoid_1_note: 0
+
 tracks:
   # A pitched track keeps each note's written duration.
   Main:
     kind: pitched
-    notes:           # note as written on this track -> slot it sounds
+    notes:           # note as written on this track -> solenoid it sounds (1-based)
       48: 60
       50: 61
       52: 62
@@ -69,7 +73,7 @@ tracks:
       119: Clarinet on
       118: Clarinet off
 
-# The set/reset coil pairs, as slots, so the arranger can pulse every reset
+# The set/reset coil pairs, as solenoid numbers, so the arranger can pulse every reset
 # before the music starts (whatever state the registers were left in, they are
 # closed now) and again after it ends.
 registers:
@@ -79,7 +83,7 @@ registers:
 # All in milliseconds. Starting points to tune against the chest.
 timing:
   min_note_ms: 50            # shorter pitched notes are stretched to this
-  min_gap_ms: 30             # silence needed between two notes on one slot
+  min_gap_ms: 30             # silence needed between two notes on one solenoid
   pulse_ms: 50               # default for pulse tracks that do not say
   register_pulse_ms: 100     # the arranger's own preamble/postamble resets
   register_stagger_ms: 60    # spacing between those resets

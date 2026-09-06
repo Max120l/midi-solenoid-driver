@@ -33,6 +33,8 @@ def organ_dict(**timing_overrides) -> dict:
     return {
         "name": "test",
         "output_channel": 1,
+        # solenoid N is MIDI note N in this synthetic organ, so expected numbers read plainly
+        "solenoid_1_note": 1,
         "tracks": {
             # 67 sounds two pipes at once (a doubled rank)
             "Melody": {"kind": "pitched", "notes": {60: 48, 62: 49, 64: 50, 67: [51, 52]}},
@@ -86,7 +88,7 @@ def midi(*tracks, tempo_track_events=()):
 
 
 def decode(out: mido.MidiFile):
-    """(slot, start_s, end_s) for every note in the arranged file, sorted."""
+    """(wire note, start_s, end_s) for every note in the arranged file, sorted."""
     tr = out.tracks[0]
     tick = 0
     open_at = {}
@@ -95,33 +97,33 @@ def decode(out: mido.MidiFile):
         tick += msg.time
         s = mido.tick2second(tick, out.ticks_per_beat, oa.OUTPUT_TEMPO)
         if msg.type == "note_on":
-            assert msg.note not in open_at, f"slot {msg.note} re-triggered while on"
+            assert msg.note not in open_at, f"note {msg.note} re-triggered while on"
             open_at[msg.note] = s
         elif msg.type == "note_off":
             result.append((msg.note, open_at.pop(msg.note), s))
-    assert not open_at, f"slots left on at end: {sorted(open_at)}"
+    assert not open_at, f"notes left on at end: {sorted(open_at)}"
     return sorted(result)
 
 
-def on_slot(decoded, slot):
-    return [(s, e) for n, s, e in decoded if n == slot]
+def on_note(decoded, note):
+    return [(s, e) for n, s, e in decoded if n == note]
 
 
 def music_only(decoded, org):
     """Drop the register preamble/postamble pulses so tests can look at music."""
-    reset_slots = {r.reset_slot for r in org.registers}
-    return [(n, s, e) for n, s, e in decoded if n not in reset_slots]
+    reset_notes = {org.note_of(r.reset_solenoid) for r in org.registers}
+    return [(n, s, e) for n, s, e in decoded if n not in reset_notes]
 
 
 # ----------------------------------------------------------------------------
 # Mapping
 # ----------------------------------------------------------------------------
 
-def test_pitched_note_maps_to_its_slot_and_is_shifted_by_lead_in():
+def test_pitched_note_maps_to_its_solenoid_and_is_shifted_by_lead_in():
     org = organ()
     mid = midi(track("Melody", note(0, 60, 0, SECOND)))
     out, report = oa.arrange(mid, org)
-    notes = on_slot(decode(out), 48)
+    notes = on_note(decode(out), 48)
     assert len(notes) == 1
     start, end = notes[0]
     assert start == pytest.approx(1.0, abs=TOL)
@@ -130,8 +132,23 @@ def test_pitched_note_maps_to_its_slot_and_is_shifted_by_lead_in():
     assert report.dropped == 0
 
 
+def test_solenoid_numbers_are_one_based_and_the_wire_starts_at_solenoid_1_note():
+    # The sheet counts solenoids from 1; board 1 with every switch open fires
+    # solenoid 1 on MIDI note 0. That -1 happens once, on output.
+    org = oa.Organ.from_dict({"tracks": {"Main": {"notes": {60: 1, 62: 64}}}})
+    assert org.solenoid_1_note == 0
+    assert org.note_of(1) == 0 and org.note_of(64) == 63 and org.solenoid_of(0) == 1
+    mid = midi(track("Main", note(0, 60, 0, SECOND) + note(0, 62, SECOND, 2 * SECOND)))
+    d = decode(oa.arrange(mid, org)[0])
+    assert on_note(d, 0) and on_note(d, 63) and not on_note(d, 1)
+
+    shifted = oa.Organ.from_dict({"solenoid_1_note": 48, "tracks": {"Main": {"notes": {60: 1}}}})
+    assert on_note(decode(oa.arrange(midi(track("Main", note(0, 60, 0, SECOND))), shifted)[0]), 48)
+
+
 def test_same_note_number_on_a_different_track_is_a_different_pipe():
     org = oa.Organ.from_dict({
+        "solenoid_1_note": 1,
         "tracks": {
             "Main": {"notes": {60: 48}},
             "TenorCM": {"notes": {60: 70}},
@@ -139,7 +156,7 @@ def test_same_note_number_on_a_different_track_is_a_different_pipe():
     })
     mid = midi(track("Main", note(0, 60, 0, SECOND)), track("TenorCM", note(1, 60, 0, SECOND)))
     d = decode(oa.arrange(mid, org)[0])
-    assert on_slot(d, 48) and on_slot(d, 70)
+    assert on_note(d, 48) and on_note(d, 70)
 
 
 def test_note_the_organ_lacks_is_dropped_and_reported():
@@ -151,11 +168,11 @@ def test_note_the_organ_lacks_is_dropped_and_reported():
     assert any("C#4" in line for _, line in report.sections["Dropped: note not on this organ"])
 
 
-def test_a_note_can_sound_several_slots_at_once():
+def test_a_note_can_sound_several_solenoids_at_once():
     org = organ()
     mid = midi(track("Melody", note(0, 67, 0, SECOND)))
     d = decode(oa.arrange(mid, org)[0])
-    a, b = on_slot(d, 51), on_slot(d, 52)
+    a, b = on_note(d, 51), on_note(d, 52)
     assert a and b and a == b
 
 
@@ -163,7 +180,7 @@ def test_drums_are_found_by_track_name_not_channel():
     org = organ()
     mid = midi(track("Drums", note(0, 36, 0, 2 * SECOND)))    # channel 1, two-second "note"
     out, _ = oa.arrange(mid, org)
-    hits = on_slot(decode(out), 60)
+    hits = on_note(decode(out), 60)
     assert len(hits) == 1
     start, end = hits[0]
     assert end - start == pytest.approx(0.050, abs=TOL)       # fixed pulse, written length ignored
@@ -182,7 +199,7 @@ def test_unknown_track_is_ignored_and_reported():
     mid = midi(track("Cakewalk TTS-1 1 Output 1: Stereo", note(0, 60, 0, SECOND)),
                track("Melody", note(0, 60, 0, SECOND)))
     out, report = oa.arrange(mid, org)
-    assert len(on_slot(decode(out), 48)) == 1
+    assert len(on_note(decode(out), 48)) == 1
     text = report.render(org, "s", "d")
     assert "Cakewalk TTS-1 1 Output 1: Stereo: 1 notes -> ignored" in text
 
@@ -199,7 +216,7 @@ def test_track_names_match_case_insensitively_and_by_unique_substring():
     org = organ()
     mid = midi(track("MELODY", note(0, 60, 0, SECOND)), track("my drums here", note(0, 36, 0, 10)))
     d = decode(oa.arrange(mid, org)[0])
-    assert on_slot(d, 48) and on_slot(d, 60)
+    assert on_note(d, 48) and on_note(d, 60)
 
 
 def test_velocity_is_normalised_and_channel_is_the_output_channel():
@@ -219,11 +236,11 @@ def test_register_on_and_off_notes_pulse_their_coils():
     mid = midi(track("Registers", note(0, 100, SECOND, SECOND + 10) + note(0, 101, 3 * SECOND, 3 * SECOND + 10)))
     out, report = oa.arrange(mid, org)
     d = decode(out)
-    sets = on_slot(d, 70)
+    sets = on_note(d, 70)
     assert len(sets) == 1
     assert sets[0][0] == pytest.approx(2.0, abs=TOL)          # 1 s + 1 s lead-in
     assert sets[0][1] - sets[0][0] == pytest.approx(0.100, abs=TOL)
-    resets = on_slot(d, 71)
+    resets = on_note(d, 71)
     assert any(abs(s - 4.0) < TOL for s, _ in resets)         # the music's "off"
     assert any("Trumpet on" in line for _, line in report.sections.get("x", [])) or True
 
@@ -233,7 +250,7 @@ def test_preamble_resets_every_register_before_the_music_starts():
     mid = midi(track("Melody", note(0, 60, 0, SECOND)))
     out, report = oa.arrange(mid, org)
     d = decode(out)
-    resets = on_slot(d, 71)
+    resets = on_note(d, 71)
     assert resets[0][0] == pytest.approx(0.0, abs=TOL)
     assert resets[0][1] == pytest.approx(0.100, abs=TOL)
     first_music = min(s for n, s, e in music_only(d, org))
@@ -248,7 +265,7 @@ def test_postamble_resets_after_the_last_note_plus_settle():
     out, _ = oa.arrange(mid, org)
     d = decode(out)
     last_music_end = max(e for n, s, e in music_only(d, org))
-    post = [s for s, e in on_slot(d, 71) if s > last_music_end]
+    post = [s for s, e in on_note(d, 71) if s > last_music_end]
     assert len(post) == 1
     assert post[0] == pytest.approx(last_music_end + 0.250, abs=TOL)
 
@@ -258,6 +275,7 @@ def test_lead_in_grows_if_the_preamble_needs_more_room():
     # is more than a 200 ms lead-in allows.
     regs = [{"name": f"R{i}", "set": 70 + 2 * i, "reset": 71 + 2 * i} for i in range(7)]
     org = oa.Organ.from_dict({
+        "solenoid_1_note": 1,
         "tracks": {"Melody": {"notes": {60: 48}}},
         "registers": regs, "timing": {"lead_in_ms": 200},
     })
@@ -272,30 +290,30 @@ def test_resets_can_be_switched_off():
     org = organ(reset_registers_at_start=False, reset_registers_at_end=False)
     mid = midi(track("Melody", note(0, 60, 0, SECOND)))
     out, _ = oa.arrange(mid, org)
-    assert on_slot(decode(out), 71) == []
+    assert on_note(decode(out), 71) == []
 
 
 # ----------------------------------------------------------------------------
-# Making slots playable
+# Making solenoids playable
 # ----------------------------------------------------------------------------
 
-def test_overlapping_notes_on_one_slot_are_merged():
+def test_overlapping_notes_on_one_solenoid_are_merged():
     org = organ()
     # same pitch overlapping itself on one track: DAWs pair these first-on/first-off
     mid = midi(track("Melody", note(0, 60, 0, SECOND) + note(0, 60, SECOND // 2, SECOND + SECOND // 2)))
     out, report = oa.arrange(mid, org)
-    notes = on_slot(decode(out), 48)
+    notes = on_note(decode(out), 48)
     assert len(notes) == 1
     assert notes[0][0] == pytest.approx(1.0, abs=TOL)
     assert notes[0][1] == pytest.approx(2.5, abs=TOL)
-    assert report.counts["Merged: overlapping notes on one slot"] == 1
+    assert report.counts["Merged: overlapping notes on one solenoid"] == 1
 
 
 def test_short_note_is_stretched_to_the_minimum():
     org = organ()
     mid = midi(track("Melody", note(0, 60, 0, 10)))            # ~10 ms
     out, report = oa.arrange(mid, org)
-    (start, end), = on_slot(decode(out), 48)
+    (start, end), = on_note(decode(out), 48)
     assert end - start == pytest.approx(0.050, abs=TOL)
     assert report.counts["Stretched: note shorter than the solenoid can play"] == 1
 
@@ -315,7 +333,7 @@ def test_too_close_re_articulation_trims_the_earlier_note():
     org = organ()
     mid = midi(track("Melody", note(0, 60, 0, SECOND) + note(0, 60, SECOND + 10, 2 * SECOND)))
     out, report = oa.arrange(mid, org)
-    a, b = on_slot(decode(out), 48)
+    a, b = on_note(decode(out), 48)
     assert b[0] - a[1] == pytest.approx(0.030, abs=TOL)
     assert report.counts["Trimmed: shortened a note to leave a re-articulation gap"] == 1
 
@@ -324,7 +342,7 @@ def test_note_starting_exactly_where_the_last_ended_is_a_re_articulation_not_an_
     org = organ()
     mid = midi(track("Melody", note(0, 60, 0, SECOND) + note(0, 60, SECOND, 2 * SECOND)))
     _, report = oa.arrange(mid, org)
-    assert report.counts["Merged: overlapping notes on one slot"] == 0
+    assert report.counts["Merged: overlapping notes on one solenoid"] == 0
     assert report.counts["Trimmed: shortened a note to leave a re-articulation gap"] == 1
 
 
@@ -332,14 +350,14 @@ def test_re_articulation_that_cannot_be_trimmed_is_merged():
     org = organ()
     mid = midi(track("Melody", note(0, 60, 0, 48) + note(0, 60, 58, SECOND)))
     out, report = oa.arrange(mid, org)
-    notes = on_slot(decode(out), 48)
+    notes = on_note(decode(out), 48)
     assert len(notes) == 1
     assert notes[0][0] == pytest.approx(1.0, abs=TOL)
     assert notes[0][1] == pytest.approx(2.0, abs=TOL)
     assert report.counts["Merged: re-articulation too fast to play, joined into one note"] == 1
 
 
-def test_no_slot_is_ever_retriggered_while_on():
+def test_no_solenoid_is_ever_retriggered_while_on():
     org = organ()
     events = []
     for i in range(40):
@@ -360,7 +378,7 @@ def test_tempo_map_is_applied_when_placing_notes():
     ]
     mid = midi(track("Melody", note(0, 60, 2 * TPB, 3 * TPB)), tempo_track_events=tempo_events)
     out, _ = oa.arrange(mid, org)
-    (start, end), = on_slot(decode(out), 48)
+    (start, end), = on_note(decode(out), 48)
     assert start == pytest.approx(1.5, abs=TOL)
     assert end == pytest.approx(2.5, abs=TOL)
 
@@ -377,7 +395,7 @@ def test_report_uses_source_time_and_lists_chronologically():
     dropped = [line for line in text.splitlines() if "Melody: C#4" in line or "Melody: D#4" in line]
     assert dropped[0].strip().startswith("0:01.000") and "D#4" in dropped[0]
     assert dropped[1].strip().startswith("0:02.000") and "C#4" in dropped[1]
-    stretched = [line for line in text.splitlines() if "slot 48" in line]
+    stretched = [line for line in text.splitlines() if "solenoid 48" in line]
     assert stretched and stretched[0].strip().startswith("0:03.000")
 
 
@@ -386,11 +404,11 @@ def test_labels_appear_in_the_report():
     # two Trumpet-on pulses too close together -> merged, and the label names them
     mid = midi(track("Registers", note(0, 100, 0, 5) + note(0, 100, 10, 15)))
     _, report = oa.arrange(mid, org)
-    lines = report.sections["Merged: overlapping notes on one slot"]
+    lines = report.sections["Merged: overlapping notes on one solenoid"]
     assert lines and "Trumpet on" in lines[0][1]
 
 
-def test_output_is_type_0_single_track_on_known_slots_only():
+def test_output_is_type_0_single_track_on_known_solenoids_only():
     org = organ()
     mid = midi(
         track("Melody", note(0, 60, 0, SECOND) + note(0, 67, SECOND, 2 * SECOND)),
@@ -400,8 +418,8 @@ def test_output_is_type_0_single_track_on_known_slots_only():
     out, _ = oa.arrange(mid, org)
     assert out.type == 0
     assert len(out.tracks) == 1
-    slots = {m.note for m in out.tracks[0] if m.type in ("note_on", "note_off")}
-    assert slots <= org.all_slots
+    notes = {m.note for m in out.tracks[0] if m.type in ("note_on", "note_off")}
+    assert {org.solenoid_of(n) for n in notes} <= org.all_solenoids
 
 
 def test_stray_note_off_is_ignored_and_reported():
@@ -418,7 +436,7 @@ def test_unterminated_note_is_closed_at_end_of_track_and_reported():
               (2 * SECOND, mido.Message("note_off", channel=0, note=62, velocity=0))]
     mid = midi(track("Melody", events))
     out, report = oa.arrange(mid, org)
-    (start, end), = on_slot(decode(out), 48)
+    (start, end), = on_note(decode(out), 48)
     assert end == pytest.approx(3.0, abs=TOL)
     assert report.counts["Unterminated notes (closed at end of track)"] == 1
 
@@ -427,23 +445,23 @@ def test_unterminated_note_is_closed_at_end_of_track_and_reported():
 # Organ definition validation
 # ----------------------------------------------------------------------------
 
-def test_slot_shared_between_tracks_is_rejected():
-    with pytest.raises(oa.OrganError, match="slot 48 is used by both"):
+def test_solenoid_shared_between_tracks_is_rejected():
+    with pytest.raises(oa.OrganError, match="solenoid 48 is used by both"):
         oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 48}}, "B": {"notes": {36: 48}}}})
 
 
-def test_two_notes_on_one_track_may_share_a_slot():
+def test_two_notes_on_one_track_may_share_a_solenoid():
     org = oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 48, 61: 48}}}})
     assert org.tracks["A"].notes == {60: (48,), 61: (48,)}
 
 
-def test_doubled_note_listing_the_same_slot_twice_is_rejected():
-    with pytest.raises(oa.OrganError, match="same slot twice"):
+def test_doubled_note_listing_the_same_solenoid_twice_is_rejected():
+    with pytest.raises(oa.OrganError, match="same solenoid twice"):
         oa.Organ.from_dict({"tracks": {"A": {"notes": {60: [48, 48]}}}})
 
 
 def test_register_with_identical_set_and_reset_is_rejected():
-    with pytest.raises(oa.OrganError, match="same slot"):
+    with pytest.raises(oa.OrganError, match="same solenoid"):
         oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 48}}},
                             "registers": [{"name": "X", "set": 70, "reset": 70}]})
 
@@ -461,9 +479,13 @@ def test_unknown_kind_and_unknown_timing_key_are_rejected():
         oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 48}}}, "timing": {"min_note_mss": 50}})
 
 
-def test_slot_out_of_midi_range_and_empty_organ_are_rejected():
-    with pytest.raises(oa.OrganError, match="not a MIDI note"):
-        oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 128}}}})
+def test_solenoid_out_of_wire_range_and_empty_organ_are_rejected():
+    with pytest.raises(oa.OrganError, match="above 127"):
+        oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 129}}}})
+    with pytest.raises(oa.OrganError, match="above 127"):
+        oa.Organ.from_dict({"solenoid_1_note": 48, "tracks": {"A": {"notes": {60: 81}}}})
+    with pytest.raises(oa.OrganError, match="numbered from 1"):
+        oa.Organ.from_dict({"tracks": {"A": {"notes": {60: 0}}}})
     with pytest.raises(oa.OrganError, match="no tracks"):
         oa.Organ.from_dict({})
 
@@ -488,7 +510,7 @@ def test_cli_writes_arranged_file_and_report(tmp_path):
     out = tmp_path / "song.organ.mid"
     rep = tmp_path / "song.organ.txt"
     assert out.exists() and rep.exists()
-    assert on_slot(decode(mido.MidiFile(str(out))), 48)
+    assert on_note(decode(mido.MidiFile(str(out))), 48)
     text = rep.read_text(encoding="utf-8")
     assert "pitched notes    1" in text
     assert "Melody: 1 notes -> 1 pitched" in text

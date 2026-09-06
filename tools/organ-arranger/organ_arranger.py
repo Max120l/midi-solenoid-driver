@@ -34,7 +34,7 @@ from pathlib import Path
 import mido
 import yaml
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Output file parameters. Events are placed by absolute time, so the source
 # tempo map is *applied* rather than preserved: the output runs at one fixed
@@ -64,7 +64,7 @@ class OrganError(Exception):
 class Track:
     name: str
     kind: str                              # KIND_PITCHED | KIND_PULSE
-    notes: dict[int, tuple[int, ...]]      # score note -> one or more slots
+    notes: dict[int, tuple[int, ...]]      # score note -> one or more solenoids (1-based, as on the sheet)
     pulse_ms: int                          # used when kind is pulse
     labels: dict[int, str] = field(default_factory=dict)   # score note -> text, for the report
     # Optional: section name -> the track's notes in it. Divides one track into
@@ -79,8 +79,8 @@ class Track:
 @dataclass(frozen=True)
 class Register:
     name: str
-    set_slot: int
-    reset_slot: int
+    set_solenoid: int
+    reset_solenoid: int
 
 
 @dataclass
@@ -104,7 +104,10 @@ class Organ:
     tracks: dict[str, Track]               # keyed by the name as written in the definition
     registers: list[Register]
     timing: Timing
-    slot_min_len_ms: dict[int, int] = field(default_factory=dict)   # filled in by validate()
+    # The MIDI note that fires solenoid 1; solenoid N is note solenoid_1_note + N - 1.
+    # Board 1 with every switch open listens from note 0, so 0 is the default.
+    solenoid_1_note: int = 0
+    solenoid_min_len_ms: dict[int, int] = field(default_factory=dict)   # filled in by validate()
 
     @classmethod
     def load(cls, path) -> "Organ":
@@ -119,6 +122,7 @@ class Organ:
         try:
             name = str(raw.get("name", "organ"))
             out_ch = int(raw.get("output_channel", 1))
+            first = int(raw.get("solenoid_1_note", 0))
             timing = Timing(**(raw.get("timing") or {}))
 
             tracks: dict[str, Track] = {}
@@ -129,8 +133,8 @@ class Organ:
                     raise OrganError(f"track {tname}: kind must be '{KIND_PITCHED}' or '{KIND_PULSE}', not '{kind}'")
                 notes: dict[int, tuple[int, ...]] = {}
                 for k, v in (tdef.get("notes") or {}).items():
-                    slots = v if isinstance(v, (list, tuple)) else [v]
-                    notes[int(k)] = tuple(int(s) for s in slots)
+                    sols = v if isinstance(v, (list, tuple)) else [v]
+                    notes[int(k)] = tuple(int(s) for s in sols)
                 labels = {int(k): str(v) for k, v in (tdef.get("labels") or {}).items()}
                 sections = {str(k): [int(x) for x in (v or [])]
                             for k, v in (tdef.get("sections") or {}).items()}
@@ -146,13 +150,15 @@ class Organ:
             raise OrganError(f"malformed organ definition: {e}") from e
 
         organ = cls(name=name, output_channel=out_ch - 1, tracks=tracks,
-                    registers=registers, timing=timing)
+                    registers=registers, timing=timing, solenoid_1_note=first)
         organ.validate()
         return organ
 
     def validate(self) -> None:
         if not 0 <= self.output_channel <= 15:
             raise OrganError("output_channel must be 1-16")
+        if not 0 <= self.solenoid_1_note <= 127:
+            raise OrganError("solenoid_1_note must be a MIDI note number (0-127)")
         if not self.tracks:
             raise OrganError("no tracks defined; the organ would play nothing")
 
@@ -164,28 +170,27 @@ class Organ:
         if t.pulse_ms == 0 or t.register_pulse_ms == 0:
             raise OrganError("pulse lengths must be greater than zero")
 
-        # A slot is one pipe, and one pipe belongs to one track. Within a track
-        # several notes may share a slot (a substitute pipe) and one note may
-        # sound several slots (a doubled rank); across tracks, never.
+        # A solenoid is one pipe, and one pipe belongs to one track. Within a
+        # track several notes may share a solenoid (a substitute pipe) and one
+        # note may sound several (a doubled rank); across tracks, never.
         owner: dict[int, str] = {}
-        self.slot_min_len_ms = {}
+        self.solenoid_min_len_ms = {}
         for track in self.tracks.values():
             if track.kind == KIND_PULSE and track.pulse_ms <= 0:
                 raise OrganError(f"track {track.name}: pulse_ms must be greater than zero")
-            for note, slots in track.notes.items():
+            for note, sols in track.notes.items():
                 if not 0 <= note <= 127:
                     raise OrganError(f"track {track.name}: note {note} is not a MIDI note number (0-127)")
-                if len(set(slots)) != len(slots):
-                    raise OrganError(f"track {track.name}: note {note} lists the same slot twice")
-                for slot in slots:
-                    if not 0 <= slot <= 127:
-                        raise OrganError(f"track {track.name}: slot {slot} is not a MIDI note number (0-127)")
-                    prev = owner.get(slot)
+                if len(set(sols)) != len(sols):
+                    raise OrganError(f"track {track.name}: note {note} lists the same solenoid twice")
+                for sol in sols:
+                    self.check_solenoid(sol, f"track {track.name}")
+                    prev = owner.get(sol)
                     if prev is not None and prev != track.name:
-                        raise OrganError(f"slot {slot} is used by both track {prev} and track {track.name}")
-                    owner[slot] = track.name
-                    self.slot_min_len_ms[slot] = (track.pulse_ms if track.kind == KIND_PULSE
-                                                  else t.min_note_ms)
+                        raise OrganError(f"solenoid {sol} is used by both track {prev} and track {track.name}")
+                    owner[sol] = track.name
+                    self.solenoid_min_len_ms[sol] = (track.pulse_ms if track.kind == KIND_PULSE
+                                                     else t.min_note_ms)
             for section, sec_notes in track.sections.items():
                 for n in sec_notes:
                     if n not in track.notes:
@@ -193,16 +198,29 @@ class Organ:
                                          f"which the track does not have")
 
         for reg in self.registers:
-            if reg.set_slot == reg.reset_slot:
-                raise OrganError(f"register {reg.name}: set and reset are the same slot")
-            for slot, which in ((reg.set_slot, "set"), (reg.reset_slot, "reset")):
-                if not 0 <= slot <= 127:
-                    raise OrganError(f"register {reg.name}: {which} slot {slot} is not a MIDI note number")
-                owning = owner.get(slot)
+            if reg.set_solenoid == reg.reset_solenoid:
+                raise OrganError(f"register {reg.name}: set and reset are the same solenoid")
+            for sol, which in ((reg.set_solenoid, "set"), (reg.reset_solenoid, "reset")):
+                self.check_solenoid(sol, f"register {reg.name}: {which}")
+                owning = owner.get(sol)
                 if owning is not None and self.tracks[owning].kind != KIND_PULSE:
-                    raise OrganError(f"register {reg.name}: {which} slot {slot} belongs to pitched "
+                    raise OrganError(f"register {reg.name}: {which} solenoid {sol} belongs to pitched "
                                      f"track {owning}; a register coil wants a pulse track")
-                self.slot_min_len_ms.setdefault(slot, t.register_pulse_ms)
+                self.solenoid_min_len_ms.setdefault(sol, t.register_pulse_ms)
+
+    def check_solenoid(self, sol: int, where: str) -> None:
+        if sol < 1:
+            raise OrganError(f"{where}: solenoid {sol}; solenoids are numbered from 1, as on the sheet")
+        if self.note_of(sol) > 127:
+            raise OrganError(f"{where}: solenoid {sol} would be MIDI note {self.note_of(sol)}, above 127 "
+                             f"(solenoid_1_note is {self.solenoid_1_note})")
+
+    def note_of(self, solenoid: int) -> int:
+        """The MIDI note that fires this solenoid on the wire."""
+        return self.solenoid_1_note + solenoid - 1
+
+    def solenoid_of(self, note: int) -> int:
+        return note - self.solenoid_1_note + 1
 
     def find_track(self, midi_track_name: str) -> Track | None:
         """Exact name match first, case-insensitively; else a unique substring."""
@@ -215,8 +233,8 @@ class Organ:
         return hits[0] if len(hits) == 1 else None
 
     @property
-    def all_slots(self) -> set[int]:
-        return set(self.slot_min_len_ms)
+    def all_solenoids(self) -> set[int]:
+        return set(self.solenoid_min_len_ms)
 
 
 # ----------------------------------------------------------------------------
@@ -244,8 +262,8 @@ class RawNote:
 
 @dataclass
 class Interval:
-    """A note as the organ will play it: one slot, on at start, off at end."""
-    slot: int
+    """A note as the organ will play it: one solenoid, on at start, off at end."""
+    solenoid: int
     start: float
     end: float
     origin: str       # human-readable, for the report
@@ -415,8 +433,8 @@ def map_notes(raw: list[RawNote], organ: Organ, report: Report) -> list[Interval
             continue
         seen_organ_tracks.add(track.name)
 
-        slots = track.notes.get(n.note)
-        if slots is None:
+        sols = track.notes.get(n.note)
+        if sols is None:
             report.add("Dropped: note not on this organ", n.start,
                        f"{fmt_time(n.start)}  {n.track}: {note_name(n.note)} ({n.note})")
             report.track_kinds[n.track]["dropped"] += 1
@@ -429,8 +447,8 @@ def map_notes(raw: list[RawNote], organ: Organ, report: Report) -> list[Interval
             end = n.start + track.pulse_ms / 1000
         else:
             end = n.end
-        for slot in slots:
-            out.append(Interval(slot, n.start, end, track.label(n.note), track.kind))
+        for sol in sols:
+            out.append(Interval(sol, n.start, end, track.label(n.note), track.kind))
         report.track_kinds[n.track][track.kind] += 1
 
     # Tracks the organ knows about that never appeared: usually a renamed track
@@ -443,12 +461,12 @@ def map_notes(raw: list[RawNote], organ: Organ, report: Report) -> list[Interval
 
 
 # ----------------------------------------------------------------------------
-# Making each slot physically playable
+# Making each solenoid physically playable
 # ----------------------------------------------------------------------------
 
-def settle_slot(intervals: list[Interval], min_note: float, min_gap: float,
+def settle_solenoid(intervals: list[Interval], min_note: float, min_gap: float,
                 report: Report, label: str, time_offset: float = 0.0) -> list[Interval]:
-    """Turn everything aimed at one slot into a clean, playable sequence.
+    """Turn everything aimed at one solenoid into a clean, playable sequence.
 
     Two passes. First, genuinely overlapping notes are merged, because one pipe
     cannot sound twice at once and a naive note-off from one voice would cut
@@ -472,11 +490,11 @@ def settle_slot(intervals: list[Interval], min_note: float, min_gap: float,
     for iv in ordered:
         if merged and iv.start < merged[-1].end - EPS:
             prev = merged[-1]
-            report.add("Merged: overlapping notes on one slot", src(iv.start),
+            report.add("Merged: overlapping notes on one solenoid", src(iv.start),
                        f"{fmt_time(src(iv.start))}  {label}: {prev.origin} + {iv.origin}")
             prev.end = max(prev.end, iv.end)
             continue
-        merged.append(Interval(iv.slot, iv.start, iv.end, iv.origin, iv.kind))
+        merged.append(Interval(iv.solenoid, iv.start, iv.end, iv.origin, iv.kind))
 
     out: list[Interval] = []
     for iv in merged:
@@ -529,7 +547,7 @@ def arrange(mid: mido.MidiFile, organ: Organ) -> tuple[mido.MidiFile, Report]:
     if t.reset_registers_at_start and organ.registers:
         at = 0.0
         for reg in organ.registers:
-            preamble.append(Interval(reg.reset_slot, at, at + pulse,
+            preamble.append(Interval(reg.reset_solenoid, at, at + pulse,
                                      f"{reg.name} reset (preamble)", KIND_RESET))
             at += stagger
         preamble_end = at - stagger + pulse
@@ -542,23 +560,23 @@ def arrange(mid: mido.MidiFile, organ: Organ) -> tuple[mido.MidiFile, Report]:
 
     # Postamble: leave the registers closed when the song ends, too.
     if t.reset_registers_at_end and organ.registers:
-        last = max((max(iv.end, iv.start + organ.slot_min_len_ms.get(iv.slot, t.register_pulse_ms) / 1000)
+        last = max((max(iv.end, iv.start + organ.solenoid_min_len_ms.get(iv.solenoid, t.register_pulse_ms) / 1000)
                     for iv in intervals), default=0.0)
         at = last + t.settle_ms / 1000
         for reg in organ.registers:
-            intervals.append(Interval(reg.reset_slot, at, at + pulse,
+            intervals.append(Interval(reg.reset_solenoid, at, at + pulse,
                                       f"{reg.name} reset (postamble)", KIND_RESET))
             at += stagger
 
-    by_slot: dict[int, list[Interval]] = defaultdict(list)
+    by_sol: dict[int, list[Interval]] = defaultdict(list)
     for iv in intervals:
-        by_slot[iv.slot].append(iv)
+        by_sol[iv.solenoid].append(iv)
 
     final: list[Interval] = []
-    for slot in sorted(by_slot):
-        min_len = organ.slot_min_len_ms.get(slot, t.register_pulse_ms) / 1000
-        final.extend(settle_slot(by_slot[slot], min_len, t.min_gap_ms / 1000, report,
-                                 f"slot {slot}", time_offset=lead_in))
+    for sol in sorted(by_sol):
+        min_len = organ.solenoid_min_len_ms.get(sol, t.register_pulse_ms) / 1000
+        final.extend(settle_solenoid(by_sol[sol], min_len, t.min_gap_ms / 1000, report,
+                                     f"solenoid {sol}", time_offset=lead_in))
 
     for iv in final:
         report.notes[iv.kind] += 1
@@ -570,16 +588,18 @@ def arrange(mid: mido.MidiFile, organ: Organ) -> tuple[mido.MidiFile, Report]:
 def build_output(intervals: list[Interval], organ: Organ) -> mido.MidiFile:
     tpb, tempo, channel = OUTPUT_TICKS_PER_BEAT, OUTPUT_TEMPO, organ.output_channel
 
-    # (tick, 0 for off / 1 for on, slot). Offs sort before ons at the same
-    # tick, so a slot can never see its next on before its previous off.
+    # (tick, 0 for off / 1 for on, note). Offs sort before ons at the same
+    # tick, so a solenoid can never see its next on before its previous off.
+    # This is the one place solenoid numbers become wire notes.
     events: list[tuple[int, int, int]] = []
     for iv in intervals:
         start = int(round(mido.second2tick(iv.start, tpb, tempo)))
         end = int(round(mido.second2tick(iv.end, tpb, tempo)))
         if end <= start:
             end = start + 1
-        events.append((start, 1, iv.slot))
-        events.append((end, 0, iv.slot))
+        note = organ.note_of(iv.solenoid)
+        events.append((start, 1, note))
+        events.append((end, 0, note))
     events.sort()
 
     mid = mido.MidiFile(type=0, ticks_per_beat=tpb)
@@ -588,12 +608,12 @@ def build_output(intervals: list[Interval], organ: Organ) -> mido.MidiFile:
     track.append(mido.MetaMessage("track_name", name=f"{organ.name} (arranged)", time=0))
     track.append(mido.MetaMessage("set_tempo", tempo=tempo, time=0))
     prev = 0
-    for tick, is_on, slot in events:
+    for tick, is_on, note in events:
         if is_on:
-            msg = mido.Message("note_on", channel=channel, note=slot,
+            msg = mido.Message("note_on", channel=channel, note=note,
                                velocity=OUTPUT_VELOCITY, time=tick - prev)
         else:
-            msg = mido.Message("note_off", channel=channel, note=slot,
+            msg = mido.Message("note_off", channel=channel, note=note,
                                velocity=0, time=tick - prev)
         track.append(msg)
         prev = tick

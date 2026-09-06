@@ -48,11 +48,14 @@ def test_reads_tracks_in_sheet_order_and_strips_header_whitespace(tmp_path):
     assert any("solenoid 9" in w and "unused" in w for w in warnings)
 
 
-def test_slots_are_base_plus_solenoid_minus_one(tmp_path):
+def test_definition_keeps_the_sheets_solenoid_numbers_and_records_the_wire_offset(tmp_path):
     order, entries, _ = lo.read_layout(sample(tmp_path))
-    organ, _ = lo.build_organ(order, entries, base_note=48, name="t", pulse_overrides={})
-    assert organ["tracks"]["TenorCM"]["notes"][60] == 48 + 6 - 1
-    assert organ["tracks"]["Main"]["notes"][60] == 48 + 10 - 1
+    organ, _ = lo.build_organ(order, entries, solenoid_1_note=48, name="t", pulse_overrides={})
+    assert organ["tracks"]["TenorCM"]["notes"][60] == 6
+    assert organ["tracks"]["Main"]["notes"][60] == 10
+    assert organ["solenoid_1_note"] == 48
+    with pytest.raises(lo.LayoutError, match="outside 0-127"):
+        lo.build_organ(order, entries, solenoid_1_note=120, name="t", pulse_overrides={})
 
 
 def test_same_note_number_on_two_tracks_stays_separate(tmp_path):
@@ -64,7 +67,7 @@ def test_same_note_number_on_two_tracks_stays_separate(tmp_path):
 def test_doubled_note_becomes_a_list_and_is_warned_about(tmp_path):
     order, entries, _ = lo.read_layout(sample(tmp_path))
     organ, warnings = lo.build_organ(order, entries, 48, "t", {})
-    assert organ["tracks"]["Main"]["notes"][55] == [48 + 7 - 1, 48 + 8 - 1]
+    assert organ["tracks"]["Main"]["notes"][55] == [7, 8]
     assert any("note 55 drives 2 solenoids" in w for w in warnings)
 
 
@@ -80,9 +83,9 @@ def test_register_pairs_come_from_the_action_labels(tmp_path):
     order, entries, _ = lo.read_layout(sample(tmp_path))
     organ, warnings = lo.build_organ(order, entries, 48, "t", {})
     regs = {r["name"]: r for r in organ["registers"]}
-    assert regs["Trombone"] == {"name": "Trombone", "set": 48, "reset": 49}
+    assert regs["Trombone"] == {"name": "Trombone", "set": 1, "reset": 2}
     # both rows said "on": the higher note is assumed on, and it is flagged
-    assert regs["Trumpet"] == {"name": "Trumpet", "set": 50, "reset": 51}
+    assert regs["Trumpet"] == {"name": "Trumpet", "set": 3, "reset": 4}
     assert any("Trumpet" in w and "both labelled" in w for w in warnings)
 
 
@@ -96,9 +99,9 @@ def test_labels_are_carried_through_for_the_report(tmp_path):
 def test_generated_definition_loads_in_the_arranger(tmp_path):
     order, entries, _ = lo.read_layout(sample(tmp_path))
     organ, _ = lo.build_organ(order, entries, 48, "t", {})
-    text = lo.render_yaml(organ, tmp_path / "layout.xlsx", 48)
+    text = lo.render_yaml(organ, tmp_path / "layout.xlsx")
     loaded = oa.Organ.from_dict(yaml.safe_load(text))
-    assert loaded.find_track("Main").notes[55] == (54, 55)
+    assert loaded.find_track("Main").notes[55] == (7, 8)
     assert loaded.registers[0].name == "Trombone"
 
 
@@ -166,9 +169,9 @@ def test_v2_registers_pair_by_instrument_and_section(tmp_path):
     order, entries, _ = lo.read_layout(sample_v2(tmp_path))
     organ, _ = lo.build_organ(order, entries, 0, "t", {})
     regs = {r["name"]: r for r in organ["registers"]}
-    assert regs["Trombone Base"] == {"name": "Trombone Base", "set": 0, "reset": 1}
-    assert regs["Violin Accompainment"] == {"name": "Violin Accompainment", "set": 2, "reset": 3}
-    assert regs["Violin Melody"] == {"name": "Violin Melody", "set": 4, "reset": 5}
+    assert regs["Trombone Base"] == {"name": "Trombone Base", "set": 1, "reset": 2}
+    assert regs["Violin Accompainment"] == {"name": "Violin Accompainment", "set": 3, "reset": 4}
+    assert regs["Violin Melody"] == {"name": "Violin Melody", "set": 5, "reset": 6}
     assert organ["tracks"]["Registers"]["labels"][110] == "Violin Accompainment on"
 
 
@@ -176,7 +179,7 @@ def test_v2_definition_loads_and_yields_section_ranks(tmp_path):
     import organ_transcribe as ot
     order, entries, _ = lo.read_layout(sample_v2(tmp_path))
     organ, _ = lo.build_organ(order, entries, 0, "t", {})
-    loaded = oa.Organ.from_dict(yaml.safe_load(lo.render_yaml(organ, tmp_path / "x.xlsx", 0)))
+    loaded = oa.Organ.from_dict(yaml.safe_load(lo.render_yaml(organ, tmp_path / "x.xlsx")))
     ranks = ot.derive_ranks(loaded)
     assert {"Main:Base", "Main:Accompainment", "Main:Melody", "TenorCM"} == set(ranks)
     assert ranks["Main:Base"].notes == [36, 41]

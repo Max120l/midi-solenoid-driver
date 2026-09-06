@@ -4,7 +4,7 @@ make_scale -- a test file that plays one organ track's notes in order.
 
 For commissioning: every pipe of a rank, one after another, long enough to
 hear each speak and stop. Writes an organ-format multi-track file, so it goes
-through organ_arranger like any song and comes out addressed to the slots.
+through organ_arranger like any song and comes out addressed to the solenoids.
 
     make_scale.py --organ instrument/organ.yaml --track Main -o scale-main.mid
     make_scale.py --organ instrument/organ.yaml --track Main --section Accompainment --section Melody
@@ -94,8 +94,21 @@ def main(argv: list[str] | None = None) -> int:
     title = f"{track.name} scale" + (f" ({', '.join(a.section)})" if a.section else "")
     out = Path(a.output) if a.output else Path(f"scale-{track.name.lower()}.mid")
     build(track.name, notes, a.note_s, a.gap_s, title).save(str(out))
-    print(f"wrote {out}: {len(notes)} notes on {track.name}, {a.note_s:g} s each: {notes}")
+    print(f"wrote {out}: {len(notes)} notes on {track.name}, {a.note_s:g} s each")
+    print(checklist(track, notes, a.note_s + a.gap_s))
     return 0
+
+
+def checklist(track: oa.Track, notes: list[int], step_s: float) -> str:
+    """One line per note in playing order: when, what, which solenoid. The
+    tubing checklist -- if a pipe speaks out of turn, this says whose tube."""
+    lines = []
+    for i, n in enumerate(notes):
+        sols = ", ".join(str(s) for s in track.notes[n])
+        section = next((name for name, ns in track.sections.items() if n in ns), "")
+        label = track.labels.get(n) or oa.note_name(n)
+        lines.append(f"  {i * step_s:6.1f} s  {label:<5} ({n:3d})  {section:<14} solenoid {sols}")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

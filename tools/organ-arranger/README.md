@@ -5,7 +5,7 @@ Arrange a multi-track MIDI file for a specific solenoid organ.
 A file authored in a DAW is written for a *general* instrument: real pitches
 on several tracks, velocities, notes anywhere on the keyboard. The organ is a
 *specific* instrument: a fixed set of pipes, a few drums, some registers, each
-nailed to one output slot on the driver boards — and on a band organ **the
+nailed to one solenoid on the driver boards — and on a band organ **the
 same note number on a different track is a different pipe.** Getting from one
 to the other is arrangement, not format conversion, and it belongs here, on a
 machine with a screen and a text editor, not spread across four write-only
@@ -16,7 +16,7 @@ Two tools:
 - **`layout_to_organ.py`** turns the instrument's layout spreadsheet into
   `organ.yaml`. The spreadsheet is the source of truth; edit it and re-run.
 - **`organ_arranger.py`** reads `song.mid` and `organ.yaml`, writes
-  `song.organ.mid` — one track, one channel, every note a driver-board slot —
+  `song.organ.mid` — one track, one channel, every note one solenoid —
   and `song.organ.txt`, a report of every decision it made. The source is
   never modified. Your `mido`-based player plays the output unchanged.
 
@@ -42,16 +42,20 @@ One row per solenoid; one column pair per DAW track:
 | 16 | | 60 · C | | |
 | 28 | 60 · C | | | |
 
-Each solenoid has exactly one `(track, note)` entry. Solenoid *N* drives slot
-`base + N − 1`. This instrument's four boards sit at base notes 0, 16, 32 and
-48 — board 1 with every switch open — so solenoid 1 is slot 0, solenoid 64 is
-slot 63, and 0 is the default:
+Each solenoid has exactly one `(track, note)` entry, and the definition keeps
+the sheet's numbering: solenoids are **1 to 64**, in every file and every
+report. The only place that is not true is the wire, where the boards as
+flashed fire solenoid *N* on MIDI note *N − 1* — board 1 with every switch
+open listens from note 0. That offset is one line in the definition,
+`solenoid_1_note: 0`, and the arranger applies it when it writes the output
+file; nothing else needs to know.
 
 ```bash
 python layout_to_organ.py instrument/layout.xlsx -o instrument/organ.yaml
 ```
 
-A chain set up at 48, 64, 80 and 96 instead would use `--base-note 48`.
+A chain set up at 48, 64, 80 and 96 instead would use `--solenoid-1-note 48`;
+boards reflashed so that note 1 fires solenoid 1 would use `1`.
 
 Each track heads a group of columns that runs until the next track name; the
 row beneath names them. `number` is required; the rest are used when present:
@@ -87,10 +91,11 @@ placeholder layout, not a real instrument.
 
 ```yaml
 output_channel: 1
+solenoid_1_note: 0             # MIDI note that fires solenoid 1 on the wire
 tracks:
   Main:                        # matched to the DAW track by name
     kind: pitched              # notes keep their written duration
-    notes: { 48: 60, 55: [64, 65] }   # note on this track -> slot(s)
+    notes: { 48: 60, 55: [64, 65] }   # note on this track -> solenoid(s), 1-based
     sections: { Base: [48], Melody: [55] }   # optional: the ranks a transcriber arranges for
   Drums:
     kind: pulse                # every note is a strike of fixed length
@@ -101,15 +106,15 @@ tracks:
     kind: pulse
     pulse_ms: 100
     notes: { 122: 104, 121: 105 }
-registers:                     # set/reset pairs, as slots
+registers:                     # set/reset pairs, as solenoid numbers
   - { name: Trombone, set: 104, reset: 105 }
 timing: { ... }
 ```
 
 Track names match the DAW's exactly, case-insensitively, or by unique
-substring. Within a track, several notes may share a slot (a substitute pipe)
-and one note may sound several slots (a doubled rank); a slot may never belong
-to two tracks. A register coil must be on a pulse track. The tool refuses to
+substring. Within a track, several notes may share a solenoid (a substitute
+pipe) and one note may sound several (a doubled rank); a solenoid may never
+belong to two tracks. A register coil must be on a pulse track. The tool refuses to
 run otherwise.
 
 ## What it does, in order
@@ -121,7 +126,7 @@ pair first-on/first-off, as every DAW does.
 
 **Maps each note through its track**, or drops it:
 
-- A note the track's map knows goes to its slot(s). On a pitched track it
+- A note the track's map knows goes to its solenoid(s). On a pitched track it
   keeps its written duration; on a pulse track it becomes a **fixed-length
   strike** — a drum is a hit, a register note is a command, and DAW drum notes
   are often one tick long anyway.
@@ -133,7 +138,7 @@ pair first-on/first-off, as every DAW does.
   track in the DAW, and worth seeing before wondering why a rank is silent.
 - Velocity is discarded; pipes have no dynamics and the boards ignore it.
 
-**Makes every slot physically playable.** Per slot:
+**Makes every solenoid physically playable.** Per solenoid:
 
 - Genuinely **overlapping notes are merged** — the same pipe asked to sound
   twice at once. Without this, one note-off silences the other's sustain,
@@ -294,8 +299,9 @@ python organ_arranger.py scale-main.mid --organ instrument/organ.yaml
 `--track` alone plays the whole track; `--section` (repeatable) narrows it;
 `--note-s` and `--gap-s` set the length of each note and the silence between
 (defaults 1 s and 0.1 s); `--descend` comes back down after the top. Drums and
-registers are struck once each whatever the length. The arranger's report
-lists which slot sounds at which second, which is the checklist for tubing.
+registers are struck once each whatever the length. The tool prints a
+checklist — when each note plays, its section and its solenoid number — so a
+pipe speaking out of turn points straight at the tube to move.
 
 ## Tests
 
@@ -305,4 +311,4 @@ pytest tests/
 
 All three tools are deterministic and tested end to end: a synthetic organ, a
 miniature of the real spreadsheet including its quirks, and a small tune in
-the wrong key — with assertions on exactly which slot sounds when.
+the wrong key — with assertions on exactly which solenoid sounds when.
