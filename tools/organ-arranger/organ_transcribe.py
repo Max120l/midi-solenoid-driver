@@ -532,6 +532,19 @@ def thin_chords(notes: list[Note], max_poly: int, role: str) -> tuple[list[Note]
     return sorted(out, key=lambda n: (n.start, n.pitch)), removed
 
 
+def clip_legato(notes: list[Note]) -> list[Note]:
+    """A one-voice line plays one pipe at a time: end each note where the next
+    begins. Sustain-pedal pianos and legato synths hold notes across their
+    successors; after octave folding those overlaps land on one pipe and the
+    arranger would have to merge them into a single long note."""
+    ordered = sorted(notes, key=lambda n: (n.start, n.pitch))
+    out: list[Note] = []
+    for n, nxt in zip(ordered, ordered[1:] + [None]):
+        end = n.end if nxt is None else min(n.end, max(nxt.start, n.start + 0.001))
+        out.append(Note(n.start, end, n.pitch))
+    return out
+
+
 def place_in_rank(p: int, prev: float, rank: Rank) -> tuple[int, bool]:
     """Where pitch p lands on a rank, and whether it lands on a pipe.
 
@@ -760,6 +773,8 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
         stats = VoiceStats()
         selected = v.select(src.notes)
         notes, thinned = thin_chords(selected, v.max_poly, v.role)
+        if v.max_poly == 1:
+            notes = clip_legato(notes)
         stats.thinned = thinned
         placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
                                  fallback=ranks.get(v.fallback) if v.fallback else None))

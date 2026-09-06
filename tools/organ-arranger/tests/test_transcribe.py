@@ -504,3 +504,24 @@ def test_a_humanised_octave_double_counts_as_part_of_the_chord():
         line += notes(0, [67], start=i * BEAT + late, length=BEAT // 2)
     thinned, removed = ot.thin_chords(ot.read_source(tune(track("Lead", line)))[0][0].notes, 1, "melody")
     assert removed == 4 and [n.pitch for n in thinned] == [79] * 4
+
+
+def test_a_one_voice_line_is_clipped_to_legato_so_folded_overlaps_do_not_merge():
+    # A pedalled piano bass: each note held across the next. Folded onto one
+    # rank, the overlaps would land on one pipe; clipped, they re-articulate.
+    held = [ot.Note(i * 0.5, i * 0.5 + 1.2, 36 + 12 * (i % 2)) for i in range(6)]   # C2, C3, C2, ... each 1.2 s
+    clipped = ot.clip_legato(held)
+    assert [round(n.end - n.start, 3) for n in clipped] == [0.5] * 5 + [1.2]
+    assert [n.pitch for n in clipped] == [n.pitch for n in held]
+    org = organ()
+    line = []
+    for i in range(6):
+        line += notes(0, [36 + 12 * (i % 2)], start=i * BEAT, length=int(2.4 * BEAT))
+    mid = tune(track("Piano", line))
+    plan = ot.Plan.from_dict({"transpose": 0,
+                              "voices": [{"source": "Piano#1", "rank": "Main:low", "role": "bass", "max_poly": 1}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    r = ot.transcribe(mid, org, plan)
+    _, check = oa.arrange(r.mid, org)
+    assert check.counts["Merged: overlapping notes on one solenoid"] == 0
+    assert check.notes[oa.KIND_PITCHED] == 6
