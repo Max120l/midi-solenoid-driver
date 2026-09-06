@@ -53,7 +53,7 @@ __version__ = "0.1.0"
 
 DRUM_CHANNEL = 9
 RANK_GAP = 7                       # semitones of silence that split one track into two ranks
-ONSET_GROUP_S = 0.010              # notes starting within this are one chord
+ONSET_GROUP_S = 0.030              # notes starting within this are one chord (humanised doublings land 10-15 ms late)
 LEADER_PULSE_S = 0.060
 REGISTER_PULSE_S = 0.100
 OUTPUT_TPB = 480
@@ -312,7 +312,7 @@ def fmt_window(v: "Voice") -> str:
 class Plan:
     transpose: int | str                  # int or "auto"
     voices: list[Voice]
-    drums_source: str | None
+    drums_source: str | list[str] | None      # one track, or several (kick and snare on separate tracks)
     drum_map: dict[int, str]              # GM note -> label fragment
     leader: str                           # "downbeat" | "none"
     registration: list[dict]              # [{"at": "start"|"melody"|seconds, "on": [...], "off": [...]}]
@@ -350,7 +350,12 @@ class Plan:
             drums = d.get("drums") or {}
             t = d.get("transpose", "auto")
             transpose = "auto" if str(t).lower() == "auto" else int(t)
-            return cls(transpose, voices, drums.get("source"),
+            drum_source = drums.get("source")
+            if isinstance(drum_source, list):
+                drum_source = [str(x) for x in drum_source]
+            elif drum_source is not None:
+                drum_source = str(drum_source)
+            return cls(transpose, voices, drum_source,
                        {int(k): str(v) for k, v in (drums.get("map") or DEFAULT_DRUM_MAP).items()},
                        str(drums.get("leader", "downbeat")), list(d.get("registration") or []))
         except (KeyError, TypeError, ValueError) as e:
@@ -766,7 +771,18 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
     music_first = min((p.start for p in placed), default=0.0)
     music_last = max((p.end for p in placed), default=0.0)
 
-    drum_src = by_key.get(plan.drums_source) if plan.drums_source else None
+    # Some files put every drum on its own track; several sources merge into one.
+    drum_keys = plan.drums_source if isinstance(plan.drums_source, list) else (
+        [plan.drums_source] if plan.drums_source else [])
+    for k in drum_keys:
+        if k not in by_key:
+            lines.append(f"plan: drum source '{k}' is not in this file; ignored")
+    drum_srcs = [by_key[k] for k in drum_keys if k in by_key]
+    if len(drum_srcs) <= 1:
+        drum_src = drum_srcs[0] if drum_srcs else None
+    else:
+        drum_src = Source("+".join(s.key for s in drum_srcs), " + ".join(s.name for s in drum_srcs), -1, DRUM_CHANNEL,
+                          sorted((n for s in drum_srcs for n in s.notes), key=lambda n: (n.start, n.pitch)))
     drums, drum_counts = map_drums(drum_src, plan, organ, lines)
     placed.extend(drums)
 

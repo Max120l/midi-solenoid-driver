@@ -1,0 +1,30 @@
+# Plan for organ_transcribe: Cyndi Lauper, Girls Just Want to Have Fun
+# (the "LAUPER ... K" type 0 file, one track, fourteen channels).
+# Two ranks installed. Channel 4 is the vocal line and goes on Melody; the
+# intro synth riff on channel 14 returns between phrases and shares the rank;
+# the synth solo on channel 12 takes the Melody rank during the break only.
+# Channel 2 is the bass, on Accompaniment. The eighth-note chord synths
+# (3 and 5, identical), the guitar riff (9), backing vocals (8, 16), pads
+# (6, 7) and the odds and ends (11, 13) are dropped. Drums on channel 10.
+transpose: 1
+voices:
+- {source: 'GIRLSJUS#0/ch4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'GIRLSJUS#0/ch14', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: 'GIRLSJUS#0/ch12', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.2, from: 75, until: 115}
+- {source: 'GIRLSJUS#0/ch2', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'GIRLSJUS#0/ch3', rank: drop}
+- {source: 'GIRLSJUS#0/ch5', rank: drop}
+- {source: 'GIRLSJUS#0/ch6', rank: drop}
+- {source: 'GIRLSJUS#0/ch7', rank: drop}
+- {source: 'GIRLSJUS#0/ch8', rank: drop}
+- {source: 'GIRLSJUS#0/ch9', rank: drop}
+- {source: 'GIRLSJUS#0/ch11', rank: drop}
+- {source: 'GIRLSJUS#0/ch13', rank: drop}
+- {source: 'GIRLSJUS#0/ch16', rank: drop}
+drums:
+  source: 'GIRLSJUS#0/ch10'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

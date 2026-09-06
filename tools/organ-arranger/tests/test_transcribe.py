@@ -474,3 +474,33 @@ def test_track_names_are_cleaned_of_nuls_and_padding():
     tr = track("vocals \x00", notes(0, [79] * 4))
     sources, _, _ = ot.read_source(tune(tr))
     assert sources[0].key == "vocals#1" and sources[0].name == "vocals"
+
+
+def test_several_drum_tracks_merge_into_one_drum_source():
+    # Kick and snare on separate tracks, as some files do.
+    org = organ()
+    mid = tune(track("Lead", notes(0, [79] * 8, length=BEAT, step=BEAT)),
+               track("Kick", notes(9, [36] * 8, length=10, step=BEAT)),
+               track("Snare", notes(9, [38] * 4, start=BEAT // 2, length=10, step=2 * BEAT)))
+    plan = ot.Plan.from_dict({
+        "transpose": 0,
+        "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody"}],
+        "drums": {"source": ["Kick#2", "Snare#3", "Nope#9"], "map": {36: "bass", 38: "snare"}},
+        "registration": [],
+    })
+    r = ot.transcribe(mid, org, plan)
+    assert r.drum_counts["bass"] == 8 and r.drum_counts["snare"] == 4
+    assert any("Nope#9" in line for line in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.drums_source == ["Kick#2", "Snare#3", "Nope#9"]
+
+
+def test_a_humanised_octave_double_counts_as_part_of_the_chord():
+    # Sequencers offset doubled voices by 10-15 ms; that is still one chord.
+    late = int(round(0.012 * TPB * 2))                      # 12 ms in ticks at 120 BPM
+    line = []
+    for i in range(4):
+        line += notes(0, [79], start=i * BEAT, length=BEAT // 2)
+        line += notes(0, [67], start=i * BEAT + late, length=BEAT // 2)
+    thinned, removed = ot.thin_chords(ot.read_source(tune(track("Lead", line)))[0][0].notes, 1, "melody")
+    assert removed == 4 and [n.pitch for n in thinned] == [79] * 4
