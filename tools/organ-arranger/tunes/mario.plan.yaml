@@ -1,0 +1,18 @@
+# Plan for organ_transcribe: Super Mario Bros. overworld theme (four-voice chiptune).
+# Two ranks installed: the square wave is the tune and goes on Melody; the
+# triangle is the bass and goes on Accompaniment; the sawtooth harmony line
+# would crowd the same pipes, so it is dropped. The drum track is one hi-hat
+# note, which no drum here plays; the leader keeps the downbeats.
+# Up 5 (F major) folds the bass least and snaps fewest notes; original C is the runner-up.
+transpose: 5
+voices:
+- {source: 8-Bit Square#0, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 8-Bit Triangle#2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 8-Bit Sawtooth#1, rank: drop}
+drums:
+  source: 8-Bit Drum Kit#3
+  map: {35: bass, 36: bass, 38: snare, 40: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

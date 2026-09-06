@@ -377,3 +377,17 @@ def test_cli_writes_output_report_and_plan(tmp_path):
     text = (tmp_path / "tune.fororgan.txt").read_text(encoding="utf-8")
     assert "Transposition: -2 semitones" in text
     assert "Arranger check: 0 dropped" in text
+
+
+def test_registration_never_lands_before_zero_when_the_melody_starts_on_tick_zero():
+    # Regression: a tune whose melody starts on the first tick put the "at
+    # melody" register pulse at -0.25 s, and mido refused to save the file.
+    org = organ()
+    mid = tune(track("Lead", notes(0, [74, 76, 78, 79] * 4, start=0)),
+               track("Bass", notes(1, [38] * 16, length=BEAT, step=BEAT)))
+    r = ot.transcribe(mid, org)
+    assert all(m.time >= 0 for t in r.mid.tracks for m in t)
+    regs = out_notes(r.mid, "Registers")
+    assert min(s for s, _, _ in regs) == 0
+    import io
+    r.mid.save(file=io.BytesIO())                      # what actually failed before

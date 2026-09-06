@@ -1,0 +1,16 @@
+# Plan for organ_transcribe: Daisy Bell (Bicycle Built for Two).
+# Two ranks installed: the square-wave tune on Melody, the piano's oom-pah
+# (bass note + chord) on Accompaniment. The sine descant would sit on top of
+# the tune on the same 13 pipes, so it is dropped for now.
+transpose: 0
+voices:
+- {source: 8-Bit Square#1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: Grand Piano (Classic)#0, rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.5}
+- {source: 8-Bit Sine#2, rank: drop}
+drums:
+  source: null
+  map: {}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Violin Melody]

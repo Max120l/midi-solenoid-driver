@@ -601,12 +601,16 @@ def registration_events(plan: Plan, organ: oa.Organ, first: float, melody_first:
     engaged: list[str] = []
     for step in plan.registration:
         at = step.get("at", "start")
+        # Never before zero: a tune whose melody starts on the first tick
+        # would otherwise put the pulse at negative time, which no MIDI file
+        # can hold. The arranger adds its own lead-in, so a pulse at 0 is
+        # still comfortably ahead of the first note.
         if at == "start":
             t = max(0.0, first - 0.5)
         elif at == "melody":
-            t = (melody_first if melody_first is not None else first) - 0.25
+            t = max(0.0, (melody_first if melody_first is not None else first) - 0.25)
         else:
-            t = float(at)
+            t = max(0.0, float(at))
         for name in step.get("on", []):
             hit = register_note(organ, name, "on")
             if hit is None:
