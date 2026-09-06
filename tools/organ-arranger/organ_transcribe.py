@@ -190,34 +190,41 @@ def read_source(mid: mido.MidiFile) -> tuple[list[Source], list[tuple[float, int
     for index, track in enumerate(mid.tracks):
         tick = 0
         opens: dict[tuple[int, int], list[float]] = defaultdict(list)
-        notes: list[Note] = []
-        chans: Counter = Counter()
+        by_channel: dict[int, list[Note]] = defaultdict(list)
         for msg in track:
             tick += msg.time
             if msg.type == "note_on" and msg.velocity > 0:
                 opens[(msg.channel, msg.note)].append(clock.seconds(tick))
-                chans[msg.channel] += 1
             elif msg.type == "note_off" or (msg.type == "note_on" and msg.velocity == 0):
                 key = (msg.channel, msg.note)
                 if opens[key]:
-                    notes.append(Note(opens[key].pop(0), clock.seconds(tick), msg.note))
+                    by_channel[msg.channel].append(Note(opens[key].pop(0), clock.seconds(tick), msg.note))
         end = clock.seconds(tick)
-        for (_, pitch), starts in opens.items():
+        for (channel, pitch), starts in opens.items():
             for s in starts:
-                notes.append(Note(s, end, pitch))
-        if not notes:
+                by_channel[channel].append(Note(s, end, pitch))
+        if not by_channel:
             continue
         name = track.name or f"Track {index + 1}"
-        src = Source(f"{name}#{index}", name, index, chans.most_common(1)[0][0], sorted(notes, key=lambda n: (n.start, n.pitch)))
-        src.median = statistics.median(n.pitch for n in notes)
-        src.mean_dur = statistics.mean(n.end - n.start for n in notes)
-        events = sorted([(n.start, 1) for n in notes] + [(n.end, -1) for n in notes], key=lambda e: (e[0], e[1]))
-        cur = mx = 0
-        for _, d in events:
-            cur += d
-            mx = max(mx, cur)
-        src.poly = mx
-        sources.append(src)
+        # A type 0 file is one track carrying every channel; a DAW export is
+        # one track per channel. Either way a source is one instrument, so a
+        # track with several channels becomes one source per channel, named
+        # "Track#index/chN" so plans can tell them apart.
+        split = len(by_channel) > 1
+        for channel in sorted(by_channel):
+            notes = sorted(by_channel[channel], key=lambda n: (n.start, n.pitch))
+            key = f"{name}#{index}" + (f"/ch{channel + 1}" if split else "")
+            label = name + (f" ch{channel + 1}" if split else "")
+            src = Source(key, label, index, channel, notes)
+            src.median = statistics.median(n.pitch for n in notes)
+            src.mean_dur = statistics.mean(n.end - n.start for n in notes)
+            events = sorted([(n.start, 1) for n in notes] + [(n.end, -1) for n in notes], key=lambda e: (e[0], e[1]))
+            cur = mx = 0
+            for _, d in events:
+                cur += d
+                mx = max(mx, cur)
+            src.poly = mx
+            sources.append(src)
 
     # Identical tracks (a doubled lead, a copy left in by the DAW) are noise.
     seen: dict[tuple, str] = {}

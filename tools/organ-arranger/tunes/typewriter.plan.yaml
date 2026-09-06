@@ -1,0 +1,22 @@
+# Plan for organ_transcribe: Leroy Anderson, The Typewriter.
+# A type 0 file: one track, six channels. Channel 1 (strings) is the tune and
+# channel 5 (xylophone) doubles it, so ch1 goes on Melody and ch5 is dropped;
+# channel 2 is the bass, on Accompaniment; channels 3 and 4 are the inner
+# string parts, dropped until more ranks are in. Channel 10 is the typewriter
+# itself: the keystrokes (wood block, note 76) become snare taps and the
+# carriage-return bell (triangle, 81) the bass drum. Two ranks installed.
+# Up 5: five notes nudged and a third of the octave folding of any other key.
+transpose: 5
+voices:
+- {source: D_2728#0/ch1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: D_2728#0/ch2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: D_2728#0/ch3, rank: drop}
+- {source: D_2728#0/ch4, rank: drop}
+- {source: D_2728#0/ch5, rank: drop}
+drums:
+  source: D_2728#0/ch10
+  map: {76: snare, 81: bass}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

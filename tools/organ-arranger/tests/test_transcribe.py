@@ -446,3 +446,25 @@ def test_a_pitch_window_splits_one_line_into_bass_and_tune():
     assert r.voice_stats["Piano#1[C4..]"].kept == 8 and r.voice_stats["Piano#1[..B3]"].kept == 8
     with pytest.raises(ot.TranscribeError):
         ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "lowest": 70, "highest": 60}]})
+
+
+def test_a_track_carrying_several_channels_becomes_one_source_per_channel():
+    # Type 0 files put every instrument on one track, told apart by channel.
+    org = organ()
+    line = (notes(0, [79, 81, 83, 84] * 4, start=0)                       # a tune on channel 1
+            + notes(1, [36] * 8, start=0, length=BEAT, step=BEAT)          # a bass on channel 2
+            + notes(9, [38] * 8, start=0, length=10, step=BEAT))           # drums on channel 10
+    mid = tune(track("Everything", line))
+    sources, _, _ = ot.read_source(mid)
+    assert [s.key for s in sources] == ["Everything#1/ch1", "Everything#1/ch2", "Everything#1/ch10"]
+    assert [s.channel for s in sources] == [0, 1, 9]
+    ranks = ot.derive_ranks(org)
+    plan = ot.auto_plan(sources, ranks, org)
+    roles = {v.source: v.role for v in plan.voices}
+    assert roles["Everything#1/ch1"] == "melody" and roles["Everything#1/ch2"] == "bass"
+    assert plan.drums_source == "Everything#1/ch10"
+    r = ot.transcribe(mid, org, plan)
+    assert r.check_dropped == 0 and r.drum_counts["snare"] == 8
+    # a single-channel track keeps its plain key, so existing plans still match
+    single, _, _ = ot.read_source(tune(track("Lead", notes(0, [79] * 4))))
+    assert single[0].key == "Lead#1"

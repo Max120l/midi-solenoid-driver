@@ -278,7 +278,9 @@ registration:
   - { at: 45.0,   off: [Trumpet] }                                     # seconds
 ```
 
-Sources are `name#index` so two tracks with the same name stay distinct.
+Sources are `name#index` so two tracks with the same name stay distinct; a
+track carrying several channels (a type 0 file) is split into one source per
+channel, `name#index/ch3`, so each instrument can be placed on its own.
 
 Plans that have been settled by ear live in [`tunes/`](tunes/), one per tune,
 with the decision and the rebuild commands in a comment at the top. The tune's
