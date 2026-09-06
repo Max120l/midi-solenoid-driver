@@ -1,0 +1,22 @@
+# Plan for organ_transcribe: Queen, Don't Stop Me Now.
+# Two ranks installed. The Alto Sax track is the vocal line and goes on
+# Melody; the Overdrive guitar solo shares the rank for the solo section.
+# The Fretless bass goes on Accompaniment. The piano was tried alongside it for
+# the opening 40 s, where the song is voice and piano alone, but even there it
+# collided too often on nine pipes, so it waits for TenorCM.
+# The choir pads are dropped. The song modulates, so a few dozen notes are
+# nudged in any key; up 2 is the best fit.
+transpose: 2
+voices:
+- {source: 'ALTO SAX#4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'OVERDRIVE#3', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 128, until: 160}
+- {source: 'FRETLESS#2', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'A.PIANO 1#1', rank: drop}
+- {source: 'CHOIR AAHS#5', rank: drop}
+drums:
+  source: 'DRUMS#6'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
