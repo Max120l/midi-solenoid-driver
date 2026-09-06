@@ -4,6 +4,7 @@
 # figure and the outro riff when the tune is silent; Flute is the intro
 # flourish; Train Whistle is the whistle. Double Bass and the piano chords
 # share the Accompaniment rank. Brass stabs and effects are dropped.
+# Down 3 semitones, confirmed by ear against the up-4 alternative.
 transpose: -3
 voices:
 - {source: WinJammer Demo#6, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
