@@ -1,0 +1,24 @@
+# Plan for organ_transcribe: a-ha, Take On Me.
+# Two ranks installed. The Grand Piano track is the vocal line written in
+# octaves (the top note is kept) and goes on Melody. The Synth Pluck is two
+# things: the famous hook in the intro, the instrumental break and the outro,
+# and a low ostinato under the verses. Windowed, the hook shares the Melody
+# rank; the ostinato is dropped. Slap Bass goes on Accompaniment. The pad,
+# guitar and electric piano are dropped. Up 3 into C: 100% coverage, nothing snapped.
+transpose: 3
+voices:
+- {source: Grand Piano (Classic)#6, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 45}
+- {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 105, until: 165}
+- {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 205}
+- {source: Slap Bass#2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: Smooth Synth (Classic)#3, rank: drop}
+- {source: Electric Guitar#7, rank: drop}
+- {source: Elec. Piano (Classic)#4, rank: drop}
+drums:
+  source: Electric Drum Kit#0
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

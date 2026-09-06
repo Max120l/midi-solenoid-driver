@@ -255,6 +255,26 @@ class Voice:
     # band-organ arrangement does with a bass rank of four pipes: the notes it
     # cannot play spill over to the accompaniment an octave up.
     fallback: str | None = None
+    # Optional window, in source seconds: only notes starting at or after
+    # `start` and before `end` belong to this voice. Lets one DAW track play
+    # two roles -- a synth that is the hook in the intro and a low ostinato in
+    # the verses -- by listing it twice with different windows and ranks.
+    start: float | None = None
+    end: float | None = None
+
+    @property
+    def key(self) -> str:
+        """Unique within a plan even when a source is listed more than once."""
+        if self.start is None and self.end is None:
+            return self.source
+        return f"{self.source}[{self.start if self.start is not None else ''}:{self.end if self.end is not None else ''}]"
+
+    def select(self, notes: list["Note"]) -> list["Note"]:
+        if self.start is None and self.end is None:
+            return notes
+        lo = self.start if self.start is not None else float("-inf")
+        hi = self.end if self.end is not None else float("inf")
+        return [n for n in notes if lo <= n.start < hi]
 
 
 @dataclass
@@ -271,7 +291,8 @@ class Plan:
             "transpose": self.transpose,
             "voices": [{k: val for k, val in (("source", v.source), ("rank", v.rank), ("role", v.role),
                                                ("max_poly", v.max_poly), ("weight", v.weight),
-                                               ("fallback", v.fallback)) if val is not None}
+                                               ("fallback", v.fallback), ("from", v.start), ("until", v.end))
+                        if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
             "registration": self.registration,
@@ -283,8 +304,13 @@ class Plan:
             voices = [Voice(str(v["source"]), str(v["rank"]), str(v.get("role", ROLE_COUNTER)),
                             int(v.get("max_poly", ROLE_POLY.get(v.get("role", ROLE_COUNTER), 2))),
                             float(v.get("weight", ROLE_WEIGHT.get(v.get("role", ROLE_COUNTER), 1.0))),
-                            str(v["fallback"]) if v.get("fallback") else None)
+                            str(v["fallback"]) if v.get("fallback") else None,
+                            float(v["from"]) if v.get("from") is not None else None,
+                            float(v["until"]) if v.get("until") is not None else None)
                       for v in d.get("voices", [])]
+            for v in voices:
+                if v.start is not None and v.end is not None and v.end <= v.start:
+                    raise ValueError(f"voice {v.source}: 'until' ({v.end}) must be after 'from' ({v.start})")
             drums = d.get("drums") or {}
             t = d.get("transpose", "auto")
             transpose = "auto" if str(t).lower() == "auto" else int(t)
@@ -412,7 +438,10 @@ def choose_transposition(plan: Plan, sources: dict[str, Source], ranks: dict[str
         for v in plan.voices:
             if v.rank == ROLE_DROP or v.source not in sources or v.rank not in ranks:
                 continue
-            score += v.weight * coverage(sources[v.source].notes, ranks[v.rank], shift,
+            notes = v.select(sources[v.source].notes)
+            if not notes:
+                continue
+            score += v.weight * coverage(notes, ranks[v.rank], shift,
                                          ranks.get(v.fallback) if v.fallback else None)
             wsum += v.weight
         scored.append((shift, score / wsum if wsum else 0.0))
@@ -688,13 +717,15 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
         if src is None or v.rank == ROLE_DROP:
             continue
         stats = VoiceStats()
-        notes, thinned = thin_chords(src.notes, v.max_poly, v.role)
+        selected = v.select(src.notes)
+        notes, thinned = thin_chords(selected, v.max_poly, v.role)
         stats.thinned = thinned
         placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
                                  fallback=ranks.get(v.fallback) if v.fallback else None))
-        voice_stats[v.source] = stats
-        if v.role == ROLE_MELODY:
-            melody_first = src.first if melody_first is None else min(melody_first, src.first)
+        voice_stats[v.key] = stats
+        if v.role == ROLE_MELODY and selected:
+            first = min(n.start for n in selected)
+            melody_first = first if melody_first is None else min(melody_first, first)
 
     music_first = min((p.start for p in placed), default=0.0)
     music_last = max((p.end for p in placed), default=0.0)
@@ -766,6 +797,12 @@ def build_output(placed: list[Placed], organ: oa.Organ, tempo_map: list[tuple[fl
 # Report
 # ----------------------------------------------------------------------------
 
+def fmt_window(start: float | None, end: float | None) -> str:
+    a = f"{start:g}" if start is not None else ""
+    b = f"{end:g}" if end is not None else ""
+    return f"[{a}s..{b}s]"
+
+
 def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: str, output: str) -> str:
     L = [f"organ_transcribe {__version__}", f"source : {source}", f"output : {output}", f"organ  : {organ.name}", ""]
     L.append("Ranks (what the organ can play)")
@@ -787,12 +824,14 @@ def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: st
     by_key = {s.key: s for s in r.sources}
     for v in r.plan.voices:
         s = by_key.get(v.source)
-        st = r.voice_stats.get(v.source)
+        st = r.voice_stats.get(v.key)
+        window = f" {fmt_window(v.start, v.end)}" if (v.start is not None or v.end is not None) else ""
         if s is None or st is None:
-            L.append(f"  {v.source:<32} -> {v.rank:<12} {v.role:<8} (not used)")
+            L.append(f"  {v.source + window:<32} -> {v.rank:<12} {v.role:<8} (not used)")
             continue
         where = v.rank + (f" (+{v.fallback})" if v.fallback else "")
-        L.append(f"  {s.name:<24} -> {where:<32} {v.role:<7} kept {st.kept:>4}  thinned {st.thinned:>3}  "
+        name = s.name + window
+        L.append(f"  {name:<24} -> {where:<32} {v.role:<7} kept {st.kept:>4}  thinned {st.thinned:>3}  "
                  f"folded {st.folded:>4}  spilled {st.spilled:>3}  snapped {st.snapped:>3}  dropped {st.dropped:>3}")
     if r.drum_counts:
         L.append("")

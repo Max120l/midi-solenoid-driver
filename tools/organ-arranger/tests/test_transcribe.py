@@ -391,3 +391,32 @@ def test_registration_never_lands_before_zero_when_the_melody_starts_on_tick_zer
     assert min(s for s, _, _ in regs) == 0
     import io
     r.mid.save(file=io.BytesIO())                      # what actually failed before
+
+
+def test_a_voice_window_lets_one_source_play_two_roles():
+    # A synth that is the hook for the first 4 s and a low ostinato after:
+    # windowed twice, the hook goes to the melody rank and the rest is dropped.
+    org = organ()
+    hook = notes(0, [74, 76, 78, 79] * 4, start=0)                     # 0-4 s
+    ostinato = notes(0, [38, 45] * 8, start=8 * BEAT)                  # 4-8 s
+    mid = tune(track("Synth", hook + ostinato), track("Bass", notes(1, [38] * 16, length=BEAT, step=BEAT)))
+    sources, _, _ = ot.read_source(mid)
+    ranks = ot.derive_ranks(org)
+    plan = ot.auto_plan(sources, ranks, org)
+    synth = next(v for v in plan.voices if v.source.startswith("Synth"))
+    plan.voices.remove(synth)
+    plan.voices.insert(0, ot.Voice(synth.source, "Main:high", "melody", 1, 3.0, None, None, 4.0))
+    plan.voices.insert(1, ot.Voice(synth.source, "drop", "counter", 1, 1.0, None, 4.0, None))
+    plan.transpose = 0
+    r = ot.transcribe(mid, org, plan)
+    main = out_notes(r.mid, "Main")
+    high = [s for s, e, n in main if n >= 72]
+    assert high and max(high) < mido.second2tick(4.0, r.mid.ticks_per_beat, 500_000)   # nothing after 4 s
+    assert r.voice_stats[plan.voices[0].key].kept == 16
+    text = ot.render_report(r, org, ranks, "s", "d")
+    assert "[s..4s]" in text and "[4s..s]" in text
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert (again.voices[0].start, again.voices[0].end) == (None, 4.0)
+    assert (again.voices[1].start, again.voices[1].end) == (4.0, None)
+    with pytest.raises(ot.TranscribeError):
+        ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "from": 5, "until": 2}]})

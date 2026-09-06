@@ -264,6 +264,8 @@ voices:
       fallback: "Main:Accompainment" }                                 # spill-over rank
   - { source: "Marimba#5",     rank: TenorCM,     role: accomp, max_poly: 3, weight: 1.0 }
   - { source: "Organ 2#2",     rank: drop,        role: counter }      # silence a voice
+  - { source: "Synth#3", rank: "Main:Melody", role: counter, until: 45 }          # only the first 45 s
+  - { source: "Synth#3", rank: drop,          from: 45 }                          # and nothing after
 drums:
   source: "Drums#10"
   map: { 35: bass, 36: bass, 38: snare, 40: snare, 37: snare }
