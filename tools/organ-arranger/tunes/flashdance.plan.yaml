@@ -1,0 +1,26 @@
+# Plan for organ_transcribe: Irene Cara, Flashdance... What a Feeling (type 0, eleven channels).
+# Two ranks installed. Channel 1 is the vocal line, which sits almost entirely
+# inside the Melody rank once transposed; channel 3 is a sparse high figure in
+# the intro and bridge and shares the rank. Channel 2 is the bass (channel 7 is
+# an exact duplicate) on Accompaniment. The famous piano arpeggio, channel 6,
+# opens the song alone on the Melody rank until the voice comes in at 12 s;
+# under the bass on the Accompaniment rank it collided 78 times, so not there.
+# The pads (4, 5, 8, 9) and the counter line (11) are dropped. Drums on 10.
+transpose: 2
+voices:
+- {source: 'HitBit#0/ch1', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'HitBit#0/ch3', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.0}
+- {source: 'HitBit#0/ch2', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'HitBit#0/ch6', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 12}
+- {source: 'HitBit#0/ch4', rank: drop}
+- {source: 'HitBit#0/ch5', rank: drop}
+- {source: 'HitBit#0/ch8', rank: drop}
+- {source: 'HitBit#0/ch9', rank: drop}
+- {source: 'HitBit#0/ch11', rank: drop}
+drums:
+  source: 'HitBit#0/ch10'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
