@@ -239,6 +239,47 @@ that is two regulators contending for one rail.
 Since tuning is done over MIDI (see the README), reflashing is rare, which is
 the best mitigation of all.
 
+## Remote reset from the Pi
+
+`/RESET` is on **pin 5 of the ISP header, with GND on pin 6** beside it,
+pulled up on the board by R2 (10k). Pulling it low resets the board; every
+MCU pin goes high-impedance, the gate pull-downs turn all sixteen outputs off,
+and on release the board reloads its saved settings and runs the exercise
+routine. That makes a reset line the right tool for recovering a hung board
+without opening the case.
+
+**Do not run a bare wire from a Pi GPIO.** It would tie the Pi's ground to
+the organ's -- the ground plane that sinks the solenoid current -- which is
+exactly what the optocoupler on the MIDI input exists to prevent. Isolate the
+reset line the same way:
+
+```
+Pi GPIO ──[330 Ω]──► PC817 pin 1 (anode)         Pi side
+Pi GND ────────────── PC817 pin 2 (cathode)
+                      ────────────────────────── isolation barrier
+                      PC817 pin 4 (collector) ── ISP header pin 5 (RESET)
+                      PC817 pin 3 (emitter)   ── ISP header pin 6 (GND)
+```
+
+One opto and one resistor per board, or a quad package (LTV-847, TLP281-4)
+for four. The LED draws about 6 mA from the 3.3 V GPIO; the output transistor
+sinks the pull-up's 0.5 mA with ease and saturates near 0.2 V, well under the
+AVR's reset threshold of about 1 V. The output is open-collector, so it does
+not interfere with an ISP programmer -- simply do not assert it while
+flashing.
+
+Place the opto at the **board** end. The long wire then carries LED drive,
+which needs over a volt and milliamps to do anything, and the sensitive
+`/RESET` trace -- which has no capacitor on it -- stays a centimetre long.
+
+Suggested GPIOs: 17, 27, 22, 23 (physical pins 11, 13, 15, 16), one per board.
+All four default to pull-down at boot, so a booting Pi cannot hold the organ
+in reset by accident. `tools/organ-config/organ_reset.py` drives them.
+
+A reset with wind on plays a scale, since the exercise routine fires every
+coil. Set exerciseCycles to 0 over MIDI first if remote resets need to be
+silent.
+
 ## The schematic includes an RS485 transceiver that shipped boards may not have
 
 The schematic in this repository has **U3, an SN75LBC176D** RS485 transceiver at

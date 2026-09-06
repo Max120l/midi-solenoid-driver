@@ -92,6 +92,23 @@ RAM and vanish at power-off; that is the right mode for tuning. EEPROM has a
 finite number of writes, so save when you have settled on values, not on every
 tweak.
 
+## Resetting boards from the Pi
+
+`organ_reset.py` pulses each board's RESET through an optocoupler wired to a
+Pi GPIO — see the hardware notes for the circuit. The Pi and the organ share
+no ground; the reset line is isolated for the same reason the MIDI line is.
+
+```bash
+pip install gpiozero lgpio
+python organ_reset.py --all
+python organ_reset.py --board 2
+```
+
+Default GPIOs are 17, 27, 22 and 23 (physical pins 11, 13, 15, 16), one per
+board in order; `--pins` changes that. A reset reloads the board's saved
+settings and runs its exercise routine, so under wind it plays a scale — set
+`--exercise 0 --save` with `organ_config` first if that matters.
+
 ## Tests
 
 ```bash

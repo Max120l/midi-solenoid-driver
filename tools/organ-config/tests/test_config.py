@@ -125,6 +125,40 @@ def test_port_and_serial_are_mutually_exclusive():
         oc.main(["--port", "x", "--serial", "/dev/null", "--peak", "60"])
 
 
+import organ_reset as orst  # noqa: E402
+
+
+def test_reset_pin_parsing_and_target_selection():
+    pins = orst.parse_pins("17,27,22,23")
+    assert pins == [17, 27, 22, 23]
+    assert orst.select_targets(pins, None, False) == [1, 2, 3, 4]
+    assert orst.select_targets(pins, [3, 1, 3], False) == [3, 1]
+    with pytest.raises(ValueError, match="out of range"):
+        orst.select_targets(pins, [5], False)
+    with pytest.raises(ValueError):
+        orst.parse_pins("17,17")
+
+
+def test_reset_pulse_drives_high_then_low_and_releases():
+    events = []
+
+    class FakeDevice:
+        def __init__(self, pin, active_high, initial_value):
+            events.append(("open", pin, active_high, initial_value))
+
+        def on(self):
+            events.append("on")
+
+        def off(self):
+            events.append("off")
+
+        def close(self):
+            events.append("close")
+
+    orst.pulse(17, 0.0, device_factory=FakeDevice)
+    assert events == [("open", 17, True, False), "on", "off", "close"]
+
+
 def test_dry_run_sends_nothing_and_reports(capsys):
     rc = oc.main(["--dry-run", "--peak", "60", "--hold", "25", "--save"])
     assert rc == 0
