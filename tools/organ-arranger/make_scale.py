@@ -102,12 +102,13 @@ def main(argv: list[str] | None = None) -> int:
 def checklist(track: oa.Track, notes: list[int], step_s: float) -> str:
     """One line per note in playing order: when, what, which solenoid. The
     tubing checklist -- if a pipe speaks out of turn, this says whose tube."""
+    labels = [track.labels.get(n) or oa.note_name(n) for n in notes]
+    sections = [next((name for name, ns in track.sections.items() if n in ns), "") for n in notes]
+    lw, sw = max(map(len, labels)), max(map(len, sections))
     lines = []
-    for i, n in enumerate(notes):
+    for i, (n, label, section) in enumerate(zip(notes, labels, sections)):
         sols = ", ".join(str(s) for s in track.notes[n])
-        section = next((name for name, ns in track.sections.items() if n in ns), "")
-        label = track.labels.get(n) or oa.note_name(n)
-        lines.append(f"  {i * step_s:6.1f} s  {label:<5} ({n:3d})  {section:<14} solenoid {sols}")
+        lines.append(f"  {i * step_s:6.1f} s  {label:<{lw}} ({n:3d})  {section:<{sw}}  solenoid {sols}")
     return "\n".join(lines)
 
 

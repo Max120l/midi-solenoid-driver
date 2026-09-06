@@ -13,7 +13,7 @@
 # for. `registers` lists set/reset coil pairs so the arranger can close every
 # register before and after the music.
 
-name: layout
+name: Band organ
 output_channel: 1
 solenoid_1_note: 0
 tracks:
