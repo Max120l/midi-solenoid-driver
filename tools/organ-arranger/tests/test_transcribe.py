@@ -468,3 +468,9 @@ def test_a_track_carrying_several_channels_becomes_one_source_per_channel():
     # a single-channel track keeps its plain key, so existing plans still match
     single, _, _ = ot.read_source(tune(track("Lead", notes(0, [79] * 4))))
     assert single[0].key == "Lead#1"
+
+
+def test_track_names_are_cleaned_of_nuls_and_padding():
+    tr = track("vocals \x00", notes(0, [79] * 4))
+    sources, _, _ = ot.read_source(tune(tr))
+    assert sources[0].key == "vocals#1" and sources[0].name == "vocals"

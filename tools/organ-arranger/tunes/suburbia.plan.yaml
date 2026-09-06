@@ -1,0 +1,20 @@
+# Plan for organ_transcribe: Pet Shop Boys, Suburbia.
+# Two ranks installed. "Words" is the vocal line and goes on Melody. The
+# sequenced Bassline goes on Accompaniment. The Synth hook overlaps the vocal
+# for most of the song and the "Chords" stabs fight the bass for nine pipes:
+# with either in, the arranger merged 80-odd collisions; without, none. Both
+# dropped, with the Piano, until more ranks are in.
+transpose: 2
+voices:
+- {source: 'Words#6', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'Synth#5', rank: drop}
+- {source: 'Bassline#1', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'Chords#3', rank: drop}
+- {source: 'Piano#4', rank: drop}
+drums:
+  source: 'Drums#2'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

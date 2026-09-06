@@ -1,0 +1,29 @@
+# Plan for organ_transcribe: Limahl, The NeverEnding Story.
+# Two ranks installed. The vocals go on Melody. The signature synth arpeggio
+# runs through the whole song in sixteenths and would sit on top of the
+# vocal, so it gets the Melody rank only where the voice is silent: the
+# intro and the instrumental in the middle. The sitar counter-line plays in
+# the vocal gaps too. Bass guitar on Accompaniment. Organ and horn pads,
+# guitars, church organ and the effects are dropped. Drums: kick and snare.
+# Down 5: the bass line is chromatic and 68 of its 880 notes are nudged in any key.
+transpose: -5
+voices:
+- {source: 'vocals#2', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'arpegio#7', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.0, until: 12}
+- {source: 'arpegio#7', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.0, from: 120, until: 150}
+- {source: 'sitar#8', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: 'bassguitar#5', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'organ#3', rank: drop}
+- {source: 'horns#4', rank: drop}
+- {source: 'funky guitar#6', rank: drop}
+- {source: 'guitar#9', rank: drop}
+- {source: 'church#10', rank: drop}
+- {source: 'wind#15', rank: drop}
+- {source: 'seashore#16', rank: drop}
+drums:
+  source: 'basssnare#11'
+  map: {36: bass, 38: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

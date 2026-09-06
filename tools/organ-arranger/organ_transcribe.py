@@ -205,7 +205,9 @@ def read_source(mid: mido.MidiFile) -> tuple[list[Source], list[tuple[float, int
                 by_channel[channel].append(Note(s, end, pitch))
         if not by_channel:
             continue
-        name = track.name or f"Track {index + 1}"
+        # Track names arrive with NULs, trailing spaces and other junk from
+        # old sequencers; a plan should not have to reproduce that.
+        name = "".join(ch for ch in track.name if ch.isprintable()).strip() or f"Track {index + 1}"
         # A type 0 file is one track carrying every channel; a DAW export is
         # one track per channel. Either way a source is one instrument, so a
         # track with several channels becomes one source per channel, named

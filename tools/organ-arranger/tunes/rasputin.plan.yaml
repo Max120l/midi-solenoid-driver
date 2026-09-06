@@ -1,0 +1,24 @@
+# Plan for organ_transcribe: Boney M., Rasputin (a shortened arrangement, 95 s).
+# Two ranks installed. The Koto carries the famous string riff for the first
+# 40 s and the Violin carries the vocal line after that; they never overlap,
+# so both go on Melody. Bass Guitar on Accompaniment. The chord tracks (Jazz
+# Guitar, Elec. Piano, Grand Piano, Slap Bass, Acoustic Gtr) and the
+# duplicate tracks the file carries (Sitar, Smooth Synth, Pizzicato) are
+# dropped. Of the two drum tracks the Electric Drum Kit covers the song.
+transpose: 3
+voices:
+- {source: 'Violin (Classic)#6', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'Koto#2', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 2.0}
+- {source: 'Bass Guitar (Classic)#3', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'Acoustic Gtr (Classic)#5', rank: drop}
+- {source: 'Jazz Guitar#7', rank: drop}
+- {source: 'Grand Piano (Classic)#8', rank: drop}
+- {source: 'Elec. Piano (Classic)#9', rank: drop}
+- {source: 'Slap Bass#10', rank: drop}
+drums:
+  source: 'Electric Drum Kit#4'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
