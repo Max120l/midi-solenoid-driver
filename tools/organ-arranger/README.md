@@ -280,6 +280,23 @@ What the tool cannot do is hear. Its output is *correct* for the organ long
 before it is *good*; the first listen will say more than the report, and the
 plan is where that judgement goes.
 
+## Testing the pipes one at a time
+
+`make_scale.py` writes a commissioning file: one track's notes in ascending
+order, each held long enough to hear it speak and stop. It comes out in the
+organ format, so it goes through the arranger like any song.
+
+```bash
+python make_scale.py --organ instrument/organ.yaml --track Main --section Accompainment --section Melody -o scale-main.mid
+python organ_arranger.py scale-main.mid --organ instrument/organ.yaml
+```
+
+`--track` alone plays the whole track; `--section` (repeatable) narrows it;
+`--note-s` and `--gap-s` set the length of each note and the silence between
+(defaults 1 s and 0.1 s); `--descend` comes back down after the top. Drums and
+registers are struck once each whatever the length. The arranger's report
+lists which slot sounds at which second, which is the checklist for tubing.
+
 ## Tests
 
 ```bash
