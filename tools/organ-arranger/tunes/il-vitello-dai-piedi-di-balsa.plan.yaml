@@ -1,0 +1,28 @@
+# Plan for organ_transcribe: Elio e le Storie Tese, Il vitello dai piedi di balsa
+# (type 0, twelve channels). Two ranks installed. Channel 4 is the vocal line
+# and goes on Melody; the intro figure on channel 12 opens the song there
+# before the voice enters. Channel 2 is the bass, on Accompaniment. The keys
+# (11), guitars (3, 8, 9), the solos (14), and the small parts (5, 13, 16) are
+# dropped until more ranks are in. Drums on channel 10. The song changes key
+# often, so a few dozen notes are nudged whatever the transposition. Up 5 and
+# down 2 tie on the melody (27 nudged); up 5 folds it less than half as much.
+transpose: 5
+voices:
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch12', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 10}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch2', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch3', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch5', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch8', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch9', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch11', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch13', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch14', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch16', rank: drop}
+drums:
+  source: 'IL VITELLO DAI PIEDI DI BA#0/ch10'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
