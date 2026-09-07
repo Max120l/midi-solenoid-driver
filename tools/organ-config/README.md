@@ -109,6 +109,41 @@ board in order; `--pins` changes that. A reset reloads the board's saved
 settings and runs its exercise routine, so under wind it plays a scale — set
 `--exercise 0 --save` with `organ_config` first if that matters.
 
+## Playing solenoids from the keyboard
+
+`organ_keys.py` is the commissioning screen: the 64 solenoids drawn as four
+boards, numbered as on the layout sheet, with the key that fires each one and,
+given the organ definition, what it is.
+
+```bash
+python organ_keys.py --serial /dev/serial0 --organ ../organ-arranger/instrument/organ.yaml
+```
+
+```
+ board 2   solenoids 17-32   <-- keys
+ 17 1     18 2     19 3     20 4     21 5     22 6     23 7     24 8
+ Tn E4    Tn F#4   Tn A4    Tn B4    Tr C6    Tr E6    Tr F#6   Tr A6
+*25 q     26 w     27 e     28 r     29 t     30 y     31 u     32 i
+ Tr B6    F2 Bas   C2 Bas   C4 Acc   E6 Mel   A#3 Acc  C6 Mel   G3 Acc
+```
+
+| Key | Does |
+|---|---|
+| `1`–`8`, `q`–`i` | fire solenoids 1–8 and 9–16 of the selected board |
+| `z` `x` `c` `v`, `Tab` | select board 1–4 |
+| `h` | hold mode: a key opens a valve until pressed again (leaving hold mode closes everything) |
+| `a` | play the selected board's sixteen in a row |
+| `-` `=` | tap length down / up (default 150 ms) |
+| `space`, `0` | everything off, plus an all-notes-off on the channel |
+| `Q`, `Esc` | quit, everything off first |
+
+A tap is a pulse, because a terminal cannot see a key being released. Hold
+mode is for tuning a pipe or finding a tube that goes nowhere. `--dry-run`
+shows the screen with no output; `--port` uses a MIDI interface instead of
+the UART; `--solenoid-1-note` overrides what the definition says about the
+wire. Labels are `Tn`/`Tr` for TenorCM and TrebCM, the note, and `Bas`/`Acc`/
+`Mel` for Main's sections; registers show as `Trom B+` (Trombone Base on).
+
 ## Tests
 
 ```bash
@@ -116,4 +151,5 @@ pip install pytest
 pytest tests/
 ```
 
-Message construction and port matching are tested; nothing opens a real port.
+Message construction, port matching and the keyboard console's model are
+tested; nothing opens a real port or a screen.
