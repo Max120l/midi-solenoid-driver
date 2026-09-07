@@ -5,7 +5,8 @@
 # (11), guitars (3, 8, 9), the solos (14), and the small parts (5, 13, 16) are
 # dropped until more ranks are in. Drums on channel 10. The song changes key
 # often, so a few dozen notes are nudged whatever the transposition. Up 5 and
-# down 2 tie on the melody (27 nudged); up 5 folds it less than half as much.
+# down 2 tie on the melody (27 nudged); up 5 folds it less than half as much,
+# and the ear agreed.
 transpose: 5
 voices:
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
