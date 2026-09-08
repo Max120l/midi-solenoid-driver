@@ -756,6 +756,15 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
             raise TranscribeError(f"plan: rank '{v.rank}' does not exist; ranks are {sorted(ranks)}")
         elif v.fallback and v.fallback not in ranks:
             raise TranscribeError(f"plan: fallback rank '{v.fallback}' does not exist; ranks are {sorted(ranks)}")
+    # A plan whose melody, or whose every voice, names sources this file does
+    # not have would quietly produce a near-empty arrangement. Track names
+    # change when a file is re-exported; say so instead.
+    live = [v for v in plan.voices if v.rank != ROLE_DROP]
+    unmatched = [v for v in live if v.source not in by_key]
+    if live and (len(unmatched) == len(live) or any(v.role == ROLE_MELODY for v in unmatched)):
+        what = ("none of the plan's voices" if len(unmatched) == len(live)
+                else "the plan's melody voice " + ", ".join(f"'{v.source}'" for v in unmatched if v.role == ROLE_MELODY))
+        raise TranscribeError(f"{what} match this file; its sources are {sorted(by_key)}")
 
     if plan.transpose == "auto":
         shift, shifts = choose_transposition(plan, by_key, ranks)

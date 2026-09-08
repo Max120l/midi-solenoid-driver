@@ -525,3 +525,21 @@ def test_a_one_voice_line_is_clipped_to_legato_so_folded_overlaps_do_not_merge()
     _, check = oa.arrange(r.mid, org)
     assert check.counts["Merged: overlapping notes on one solenoid"] == 0
     assert check.notes[oa.KIND_PITCHED] == 6
+
+
+def test_a_plan_whose_melody_matches_no_source_is_refused_not_silently_emptied():
+    org = organ()
+    mid = d_major_tune()
+    good = ot.Plan.from_dict({"transpose": 0, "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody"}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    assert ot.transcribe(mid, org, good).check_dropped == 0
+    renamed = ot.Plan.from_dict({"transpose": 0,
+                                 "voices": [{"source": "Lead#1/ch1", "rank": "Main:high", "role": "melody"},
+                                            {"source": "Bass#2", "rank": "Main:low", "role": "bass"}],
+                                 "drums": {"source": None, "map": {}}, "registration": []})
+    with pytest.raises(ot.TranscribeError, match="melody voice 'Lead#1/ch1'"):
+        ot.transcribe(mid, org, renamed)
+    nothing = ot.Plan.from_dict({"transpose": 0, "voices": [{"source": "Nope#7", "rank": "Main:low", "role": "bass"}],
+                                 "drums": {"source": None, "map": {}}, "registration": []})
+    with pytest.raises(ot.TranscribeError, match="none of the plan's voices"):
+        ot.transcribe(mid, org, nothing)
