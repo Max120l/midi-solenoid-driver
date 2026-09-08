@@ -1,4 +1,5 @@
-# Plan for organ_transcribe: Madonna, Material Girl (General MIDI file, unnamed tracks).
+# Plan for organ_transcribe: Madonna, Material Girl (General MIDI file, unnamed tracks;
+# each track also carries a stray channel 16, so sources are named per channel).
 # Two ranks installed. Track 5 (ch3) is the vocal line, an octave C4-C5, and
 # goes on Melody; Track 4 (ch2) is the synth hook that plays whenever the
 # voice rests, so it shares the Melody rank at lower priority. Track 3 (ch1)
@@ -7,19 +8,19 @@
 # nine accompaniment pipes cannot hold a bass line and chords at once.
 transpose: 0
 voices:
-- {source: Track 5#4, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: Track 4#3, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
-- {source: Track 3#2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
-- {source: Track 6#5, rank: drop}
-- {source: Track 7#6, rank: drop}
-- {source: Track 8#7, rank: drop}
-- {source: Track 9#8, rank: drop}
-- {source: Track 10#9, rank: drop}
-- {source: Track 12#11, rank: drop}
-- {source: Track 13#12, rank: drop}
-- {source: Track 14#13, rank: drop}
+- {source: Track 5#4/ch4, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: Track 4#3/ch3, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: Track 3#2/ch2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: Track 6#5/ch5, rank: drop}
+- {source: Track 7#6/ch6, rank: drop}
+- {source: Track 8#7/ch7, rank: drop}
+- {source: Track 9#8/ch8, rank: drop}
+- {source: Track 10#9/ch9, rank: drop}
+- {source: Track 12#11/ch11, rank: drop}
+- {source: Track 13#12/ch12, rank: drop}
+- {source: Track 14#13/ch13, rank: drop}
 drums:
-  source: Track 11#10
+  source: Track 11#10/ch10
   map: {36: bass, 35: bass, 38: snare, 40: snare, 37: snare, 39: snare}
   leader: downbeat
 registration:

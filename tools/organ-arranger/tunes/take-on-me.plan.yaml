@@ -11,7 +11,7 @@ voices:
 - {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 45}
 - {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 105, until: 165}
 - {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 205}
-- {source: Slap Bass#2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: Slap Bass#2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: Smooth Synth (Classic)#3, rank: drop}
 - {source: Electric Guitar#7, rank: drop}
 - {source: Elec. Piano (Classic)#4, rank: drop}

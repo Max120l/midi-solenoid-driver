@@ -7,7 +7,7 @@
 transpose: 5
 voices:
 - {source: 8-Bit Square#0, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: 8-Bit Triangle#2, rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 8-Bit Triangle#2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 8-Bit Sawtooth#1, rank: drop}
 drums:
   source: 8-Bit Drum Kit#3

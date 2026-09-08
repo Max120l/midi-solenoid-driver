@@ -8,7 +8,7 @@ transpose: 2
 voices:
 - {source: 'Words#6', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
 - {source: 'Synth#5', rank: drop}
-- {source: 'Bassline#1', rank: 'Main:Accompainment', role: bass, max_poly: 1, weight: 2.0}
+- {source: 'Bassline#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'Chords#3', rank: drop}
 - {source: 'Piano#4', rank: drop}
 drums:
