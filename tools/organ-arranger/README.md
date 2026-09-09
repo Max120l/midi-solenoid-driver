@@ -291,6 +291,21 @@ What the tool cannot do is hear. Its output is *correct* for the organ long
 before it is *good*; the first listen will say more than the report, and the
 plan is where that judgement goes.
 
+## Previewing a tune on a computer
+
+The transcriber's `TUNE.fororgan.mid` is the multi-track score, but through a
+General MIDI synth every track is a piano and the drums are piano notes too.
+`preview_gm.py` writes `TUNE.preview.mid` with a sound per rank (accordion for
+Main, clarinet for TenorCM, piccolo for TrebCM), the drums on channel 10 as
+kick, snare and wood block, and the register commands left out:
+
+```bash
+python preview_gm.py tune.fororgan.mid --organ instrument/organ.yaml
+```
+
+It is a preview, not the organ: the arranger's merges, stretches and trims
+are not applied, and pipes do not sound like GM patches.
+
 ## Testing the pipes one at a time
 
 `make_scale.py` writes a commissioning file: one track's notes in ascending

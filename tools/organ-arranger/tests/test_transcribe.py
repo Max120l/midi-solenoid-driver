@@ -543,3 +543,20 @@ def test_a_plan_whose_melody_matches_no_source_is_refused_not_silently_emptied()
                                  "drums": {"source": None, "map": {}}, "registration": []})
     with pytest.raises(ot.TranscribeError, match="none of the plan's voices"):
         ot.transcribe(mid, org, nothing)
+
+
+def test_preview_gm_assigns_sounds_and_moves_drums_to_channel_10():
+    import preview_gm as pg
+    org = organ()
+    r = ot.transcribe(d_major_tune(), org)
+    pv = pg.preview(r.mid, {25: "Bass", 22: "Snare", 23: "Snare", 21: "Leader"})
+    names = [t.name for t in pv.tracks]
+    assert "Registers" not in names and "Drums" in names and "Main" in names
+    main = next(t for t in pv.tracks if t.name == "Main")
+    assert main[0].type == "program_change" and main[0].program == pg.PROGRAMS["Main"]
+    drums = next(t for t in pv.tracks if t.name == "Drums")
+    ons = [m for m in drums if m.type == "note_on"]
+    assert ons and all(m.channel == 9 for m in ons)
+    assert {m.note for m in ons} <= {36, 38, 76}
+    import io
+    pv.save(file=io.BytesIO())
