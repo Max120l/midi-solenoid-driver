@@ -1,0 +1,30 @@
+# Plan for organ_transcribe: Star Trek: The Next Generation, main title (Goldsmith).
+# Track names are the sequencer's credits. "Star Trek" (and its duplicate,
+# "Copyright (c)") is the piano-style reduction: its top line is the theme
+# and goes on Melody with fast alternations held as tremolos. "Sequenced" is
+# the high horn line, on TrebCM; the two sparse high figures ("pennock@",
+# "Paramount") join it there. "Generation" is the string pad, top line on
+# TenorCM; "Track 5" is the low sustained chords, top line on Accompaniment;
+# "The Next" is the bass, on the Base rank with spill-over. "Cliff Pennock" is
+# glissando runs, unplayable on pipes, dropped. The little drum track is a
+# snare roll at the end.
+transpose: auto
+voices:
+- {source: 'Star Trek#1', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, tremolo: 100}
+- {source: 'Copyright (c)#9', rank: drop}
+- {source: 'Sequenced#5', rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
+- {source: 'pennock@euronet.nl#8', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
+- {source: 'Paramount Pictures#10', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
+- {source: 'Generation#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
+- {source: 'Track 5#4', rank: 'Main:Accompainment', role: accomp, max_poly: 1, weight: 1.0}
+- {source: 'The Next#2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: 'Cliff Pennock#7', rank: drop}
+- {source: '& AWE arrangement:#6', rank: drop}
+- {source: 'Track 12#11', rank: drop}
+drums:
+  source: 'Track 13#12'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Trombone Base, Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
