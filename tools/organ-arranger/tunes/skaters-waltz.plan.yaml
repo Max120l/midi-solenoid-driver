@@ -1,0 +1,21 @@
+# Plan for organ_transcribe: Waldteufel, The Skaters' Waltz -- from a MIDI arranged for a
+# Wurlitzer 125 band organ roll (Schmidt's Music Rolls): one track, real
+# pitches, punched-roll style. Split by pitch into the roll's layers, as for
+# Over the Waves: bass on the Base rank with spill-over, accompaniment chords
+# on Accompaniment two deep, the top melody note on Melody, the melody's lower
+# octave on TenorCM, its middle voice on TrebCM. No drums in the file.
+# The track's own name inside the file is the roll maker's template.
+transpose: 5
+voices:
+- {source: 'Deck the Halls#0', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, lowest: 60, tremolo: 100}
+- {source: 'Deck the Halls#0', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, lowest: 72, highest: 83}
+- {source: 'Deck the Halls#0', rank: TenorCM, role: counter, max_poly: 1, weight: 1.0, lowest: 60, highest: 71}
+- {source: 'Deck the Halls#0', rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.0, lowest: 43, highest: 59}
+- {source: 'Deck the Halls#0', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment', highest: 41}
+drums:
+  source: null
+  map: {}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Trombone Base, Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
