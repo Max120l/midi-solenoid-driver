@@ -19,7 +19,12 @@ voices:
 - {source: Steel Drums#1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
 - {source: Marimba#5, rank: TenorCM, role: accomp, max_poly: 3, weight: 1.0}
 - {source: Organ 1#7, rank: 'Main:Accompainment', role: accomp, max_poly: 3, weight: 1.0}
-- {source: Organ 2#2, rank: TrebCM, role: counter, max_poly: 2, weight: 1.0}
+# Organ 2 is the counter riff on TrebCM. In the run-up to the break (54-79 s)
+# it peaks at once with the melody's fast run and the marimba, and the whole
+# thing was too busy; it sits that stretch out. The marimba on TenorCM (the
+# clarinet pipes) stays whole: it sounds wonderful there.
+- {source: Organ 2#2, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, until: 54}
+- {source: Organ 2#2, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, from: 79}
 - {source: Steel Drums#6, rank: TrebCM, role: counter, max_poly: 2, weight: 1.0}
 - {source: Piano#3, rank: TenorCM, role: counter, max_poly: 2, weight: 1.0}
 - {source: Steel Drums#9, rank: TenorCM, role: counter, max_poly: 2, weight: 1.0}
