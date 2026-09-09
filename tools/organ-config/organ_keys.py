@@ -48,6 +48,10 @@ DEFAULT_PULSE_MS = 150
 PULSE_STEP_MS = 50
 PULSE_MIN_MS, PULSE_MAX_MS = 50, 2000
 SCALE_STEP_S = 0.35
+DEFAULT_ROLL_MS = 120            # interval between roll hits; arrows change it
+ROLL_STEP_MS = 5
+ROLL_MIN_MS, ROLL_MAX_MS = 20, 500
+ROLL_HIT_MIN_MS = 10
 
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -120,7 +124,18 @@ class Console:
     sounding: set[int] = field(default_factory=set)        # solenoids currently on
     pending_off: dict[int, float] = field(default_factory=dict)   # solenoid -> time to switch off
     pending_scale: list[tuple[float, int]] = field(default_factory=list)   # (when, solenoid) for 'a'
+    # A roll: hits alternating over roll_targets every roll_interval_ms. Two
+    # entries are the snare's two beaters (how organ books roll faster than one
+    # beater can re-articulate); one entry measures a single solenoid's limit.
+    roll_targets: list[int] = field(default_factory=list)
+    roll_interval_ms: int = DEFAULT_ROLL_MS
+    roll_next: float = 0.0
+    roll_index: int = 0
+    last_tap: int | None = None
     status: str = ""
+
+    def snare_pair(self) -> list[int]:
+        return sorted(s for s, label in self.labels.items() if "snare" in label.lower())[:2]
 
     def note_of(self, solenoid: int) -> int:
         return self.solenoid_1_note + solenoid - 1
@@ -147,18 +162,33 @@ class Console:
             self.sounding.discard(solenoid)
         self.pending_off.pop(solenoid, None)
 
-    def pulse(self, solenoid: int, now: float) -> None:
+    def pulse(self, solenoid: int, now: float, length_ms: int | None = None) -> None:
         self.on(solenoid, now)
-        self.pending_off[solenoid] = now + self.pulse_ms / 1000
+        self.pending_off[solenoid] = now + (self.pulse_ms if length_ms is None else length_ms) / 1000
 
     def all_off(self) -> None:
+        self.roll_targets = []
         for s in sorted(self.sounding):
             self.off(s)
         self.pending_off.clear()
         self.send(mido.Message("control_change", channel=self.channel, control=123, value=0))
 
+    def roll_hit_ms(self) -> int:
+        """Each hit is on for a bit over half the interval, never longer than a tap."""
+        return max(ROLL_HIT_MIN_MS, min(self.pulse_ms, int(self.roll_interval_ms * 0.6)))
+
+    def start_roll(self, targets: list[int], now: float) -> None:
+        self.roll_targets = list(targets)
+        self.roll_index = 0
+        self.roll_next = now
+
     def tick(self, now: float) -> None:
-        """Switch off whatever pulse has run its course."""
+        """Switch off whatever pulse has run its course; keep a roll going."""
+        while self.roll_targets and now >= self.roll_next:
+            s = self.roll_targets[self.roll_index % len(self.roll_targets)]
+            self.roll_index += 1
+            self.pulse(s, self.roll_next, self.roll_hit_ms())
+            self.roll_next += self.roll_interval_ms / 1000
         for s, due in list(self.pending_off.items()):
             if now >= due:
                 self.off(s)
@@ -171,6 +201,8 @@ class Console:
         if key in (" ", "0"):
             self.all_off()
             self.status = "all off"
+            return True
+        if self.handle_roll_key(key, now):
             return True
         if key in BOARD_KEYS:
             self.board = BOARD_KEYS.index(key)
@@ -202,6 +234,7 @@ class Console:
         solenoid = self.solenoid_for_key(key.lower())
         if solenoid is None:
             return True
+        self.last_tap = solenoid
         if self.hold:
             if solenoid in self.sounding:
                 self.off(solenoid)
@@ -213,6 +246,37 @@ class Console:
             self.pulse(solenoid, now)
             self.status = f"solenoid {solenoid}  {self.labels.get(solenoid, '')}".rstrip()
         return True
+
+    def handle_roll_key(self, key: str, now: float) -> bool:
+        """r / R / UP / DOWN. Returns True if the key was one of those."""
+        if key == "r":
+            if self.roll_targets:
+                self.all_off()
+                self.status = "roll stopped"
+            else:
+                pair = self.snare_pair()
+                if len(pair) < 2:
+                    self.status = "no snare pair in the organ definition (need --organ); R rolls the last tapped solenoid"
+                else:
+                    self.start_roll(pair, now)
+                    self.status = f"rolling snare, beaters {pair[0]} and {pair[1]}"
+            return True
+        if key == "R":
+            if self.roll_targets:
+                self.all_off()
+                self.status = "roll stopped"
+            elif self.last_tap is None:
+                self.status = "tap a solenoid first, then R rolls it alone"
+            else:
+                self.start_roll([self.last_tap], now)
+                self.status = f"rolling solenoid {self.last_tap} alone"
+            return True
+        if key in ("UP", "DOWN"):
+            step = -ROLL_STEP_MS if key == "UP" else ROLL_STEP_MS
+            self.roll_interval_ms = max(ROLL_MIN_MS, min(ROLL_MAX_MS, self.roll_interval_ms + step))
+            self.status = f"roll interval {self.roll_interval_ms} ms"
+            return True
+        return False
 
     def tick_scale(self, now: float) -> None:
         while self.pending_scale and now >= self.pending_scale[0][0]:
@@ -236,8 +300,12 @@ def render(c: Console) -> list[tuple[str, str]]:
     """
     lines: list[tuple[str, str]] = []
     mode = "HOLD" if c.hold else f"pulse {c.pulse_ms} ms"
+    per_s = 1000 / c.roll_interval_ms
+    roll = (f"ROLLING {'+'.join(str(s) for s in c.roll_targets)} " if c.roll_targets else "roll ")
+    roll += f"{c.roll_interval_ms} ms/hit = {per_s:.1f}/s [r snare, R last tap, arrows]"
     lines.append((f" organ_keys {__version__}   board {c.board + 1} [z x c v, Tab]   {mode} [h, - =]", "normal"))
     lines.append((" keys 1-8 and q-i fire the marked board   a: its 16 in a row   space: all off   Q: quit", "dim"))
+    lines.append((" " + roll, "active" if c.roll_targets else "dim"))
     lines.append(("", "normal"))
     for b in range(BOARDS):
         active = b == c.board
@@ -303,6 +371,10 @@ def run_screen(c: Console) -> None:
                 ch = stdscr.get_wch()
             except curses.error:
                 continue
+            if ch == curses.KEY_UP:
+                ch = "UP"
+            elif ch == curses.KEY_DOWN:
+                ch = "DOWN"
             if isinstance(ch, str):
                 running = c.handle_key(ch, time.monotonic())
 
