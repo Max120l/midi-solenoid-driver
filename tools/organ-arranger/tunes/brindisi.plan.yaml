@@ -11,7 +11,7 @@ voices:
 - {source: 'Sequenced by#4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, tremolo: 100}
 - {source: 'Verdi- Brindisi#2', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'La Traviata#3', rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
-- {source: "Bazza1Studios�#6", rank: 'Main:Accompainment', role: accomp, max_poly: 1, weight: 1.0}   # the name ends in a stray byte
+- {source: 'Bazza1Studios#6', rank: 'Main:Accompainment', role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'Track 12#11', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'Bazza1  2010#5', rank: drop}
 - {source: 'North Adelaide#7', rank: drop}

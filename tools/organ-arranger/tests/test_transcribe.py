@@ -471,7 +471,7 @@ def test_a_track_carrying_several_channels_becomes_one_source_per_channel():
 
 
 def test_track_names_are_cleaned_of_nuls_and_padding():
-    tr = track("vocals \x00", notes(0, [79] * 4))
+    tr = track("vocals \x00�", notes(0, [79] * 4))
     sources, _, _ = ot.read_source(tune(tr))
     assert sources[0].key == "vocals#1" and sources[0].name == "vocals"
 
