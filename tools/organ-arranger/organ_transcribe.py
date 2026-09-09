@@ -288,8 +288,13 @@ class Voice:
 
     @property
     def key(self) -> str:
-        """Unique within a plan even when a source is listed more than once."""
+        """The source plus any window; two voices may share it (a line coupled
+        onto two ranks), so statistics are kept per (key, rank): see slot."""
         return self.source + (fmt_window(self) if self.windowed else "")
+
+    @property
+    def slot(self) -> str:
+        return f"{self.key} -> {self.rank}"
 
     def select(self, notes: list["Note"]) -> list["Note"]:
         if not self.windowed:
@@ -834,7 +839,7 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
         stats.thinned = thinned
         placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
                                  fallback=ranks.get(v.fallback) if v.fallback else None))
-        voice_stats[v.key] = stats
+        voice_stats[v.slot] = stats
         if v.role == ROLE_MELODY and selected:
             first = min(n.start for n in selected)
             melody_first = first if melody_first is None else min(melody_first, first)
@@ -941,7 +946,7 @@ def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: st
     by_key = {s.key: s for s in r.sources}
     for v in r.plan.voices:
         s = by_key.get(v.source)
-        st = r.voice_stats.get(v.key)
+        st = r.voice_stats.get(v.slot)
         window = f" {fmt_window(v)}" if v.windowed else ""
         if s is None or st is None:
             L.append(f"  {v.source + window:<32} -> {v.rank:<12} {v.role:<8} (not used)")

@@ -412,7 +412,7 @@ def test_a_voice_window_lets_one_source_play_two_roles():
     main = out_notes(r.mid, "Main")
     high = [s for s, e, n in main if n >= 72]
     assert high and max(high) < mido.second2tick(4.0, r.mid.ticks_per_beat, 500_000)   # nothing after 4 s
-    assert r.voice_stats[plan.voices[0].key].kept == 16
+    assert r.voice_stats[plan.voices[0].slot].kept == 16
     text = ot.render_report(r, org, ranks, "s", "d")
     assert "[..4s]" in text and "[4s..]" in text
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
@@ -443,7 +443,7 @@ def test_a_pitch_window_splits_one_line_into_bass_and_tune():
     main = out_notes(r.mid, "Main")
     pitches = sorted({n for _, _, n in main})
     assert len(pitches) == 2 and pitches[0] % 12 == 0 and pitches[0] < 72 and pitches[1] == 79   # C folded within the bass rank, G on the tune rank
-    assert r.voice_stats["Piano#1[C4..]"].kept == 8 and r.voice_stats["Piano#1[..B3]"].kept == 8
+    assert r.voice_stats["Piano#1[C4..] -> Main:high"].kept == 8 and r.voice_stats["Piano#1[..B3] -> Main:low"].kept == 8
     with pytest.raises(ot.TranscribeError):
         ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "lowest": 70, "highest": 60}]})
 
@@ -605,3 +605,21 @@ def test_snare_hits_alternate_between_the_two_beaters():
     assert len(snares) == 16 and snares[:4] == [22, 23, 22, 23]
     _, check = oa.arrange(r.mid, org)
     assert check.counts["Merged: re-articulation too fast to play, joined into one note"] == 0
+
+
+def test_a_line_coupled_onto_two_ranks_keeps_separate_statistics():
+    # The Bourree couples its bass onto TenorCM as well: same source, no
+    # window, two ranks. Each placement must report its own numbers.
+    org = organ()
+    mid = tune(track("Bass", notes(1, [38, 40, 43, 45] * 4, length=BEAT, step=BEAT)))
+    plan = ot.Plan.from_dict({"transpose": 0,
+                              "voices": [{"source": "Bass#1", "rank": "Main:low", "role": "bass"},
+                                         {"source": "Bass#1", "rank": "TenorCM", "role": "counter", "max_poly": 1}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    r = ot.transcribe(mid, org, plan)
+    low, tenor = plan.voices[0], plan.voices[1]
+    assert low.key == tenor.key and low.slot != tenor.slot
+    assert r.voice_stats[low.slot].kept == 16 and r.voice_stats[tenor.slot].kept == 16
+    assert r.voice_stats[low.slot].folded != r.voice_stats[tenor.slot].folded      # different ranks, different folding
+    text = ot.render_report(r, org, ot.derive_ranks(org), "s", "d")
+    assert text.count("Bass ") >= 2
