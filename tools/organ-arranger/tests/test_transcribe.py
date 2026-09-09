@@ -592,3 +592,16 @@ def test_tremolo_option_round_trips_through_the_plan_and_reaches_the_arrangement
     assert any("tremolo passage" in line for line in r.lines)
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
     assert again.voices[0].tremolo_ms == 100
+
+
+def test_snare_hits_alternate_between_the_two_beaters():
+    # The organ's two "Snare" notes are two beaters on one drum; alternating
+    # them is how a roll gets faster than one solenoid can re-articulate.
+    org = organ()
+    roll = notes(9, [38] * 16, start=0, length=5, step=BEAT // 8)        # 62 ms apart
+    r = ot.transcribe(tune(track("Lead", notes(0, [79] * 4, length=BEAT, step=BEAT)), track("Drums", roll)), org)
+    hits = [n for _, _, n in out_notes(r.mid, "Drums")]
+    snares = [n for n in hits if n in (22, 23)]
+    assert len(snares) == 16 and snares[:4] == [22, 23, 22, 23]
+    _, check = oa.arrange(r.mid, org)
+    assert check.counts["Merged: re-articulation too fast to play, joined into one note"] == 0

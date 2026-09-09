@@ -243,8 +243,11 @@ Writes `tune.fororgan.mid` (open it in the DAW, or feed it to the arranger) and
    drop`; every one is listed.
 5. **Thins chords** to what a voice may hold — one note for the melody
    (highest) and bass (lowest), two for counters, three for accompaniment.
-6. **Maps drums** by GM number onto the organ's percussion, alternating
-   between two snares where there are two, dropping what has no equivalent
+6. **Maps drums** by GM number onto the organ's percussion. This organ's two
+   "Snare" notes are **two beaters on one snare drum**, the traditional trick
+   for rolls faster than one beater can re-articulate; consecutive snare hits
+   alternate between them, so a fast GM roll comes through at double the
+   single-solenoid rate. What has no equivalent is dropped
    (hi-hats, toms, crashes) and saying which. **The leader's arm beats every
    downbeat** from the time signature, for as long as the music plays.
 7. **Writes a registration**: the soft stops before the first note, the loud

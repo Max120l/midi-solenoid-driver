@@ -672,7 +672,10 @@ def map_drums(src: Source | None, plan: Plan, organ: oa.Organ, report: list[str]
             counts["dropped"] += 1
             continue
         options = targets[fragment]
-        track, note = options[alternate[fragment] % len(options)]     # two snares: alternate
+        # Two solenoids under one label are two beaters on one drum (this
+        # organ's snare): alternating them is how organ books roll faster than
+        # a single beater can re-articulate.
+        track, note = options[alternate[fragment] % len(options)]
         alternate[fragment] += 1
         out.append(Placed(track, note, n.start, n.start + LEADER_PULSE_S, f"{fragment} ({n.pitch})"))
         counts[fragment] += 1
