@@ -1,0 +1,24 @@
+# Plan for organ_transcribe: The Secret of Monkey Island, main theme -- the
+# 1997 "Monkey.mid" band arrangement (a simpler alternative to mkintro).
+# "THE SECRET OF" and "MONKEY ISLAND" are the same melody twice; the first
+# goes on Melody with fast two-note alternations held as tremolos, the second
+# is dropped. Track 5 is the fast arpeggio in the marimba's role and goes on
+# TenorCM, the clarinet pipes. Track 4 is sustained chords: its top line on
+# TrebCM. "Main Title Theme" is the bass, on the Base rank with spill-over.
+# The two small counter lines ("by", "Michael Land") go up on TrebCM.
+transpose: 0
+voices:
+- {source: 'THE SECRET OF#1', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, tremolo: 100}
+- {source: 'MONKEY ISLAND#2', rank: drop}
+- {source: 'Track 5#4', rank: TenorCM, role: counter, max_poly: 1, weight: 2.0}
+- {source: 'Track 4#3', rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
+- {source: 'Main Title Theme#5', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: 'by#6', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
+- {source: 'Michael Land#7', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
+drums:
+  source: 'Track 10#9'
+  map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Trombone Base, Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

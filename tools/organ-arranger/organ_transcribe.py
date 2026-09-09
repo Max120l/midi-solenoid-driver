@@ -276,6 +276,11 @@ class Voice:
     # the bass, `lowest: 60` for the tune.
     lowest: int | None = None
     highest: int | None = None
+    # Optional: onsets closer than this (ms) that alternate between two pitches
+    # are a tremolo -- a steel drum roll, a synth trill -- and become the two
+    # pitches held for the passage. Pipes cannot re-articulate at 80 ms, and a
+    # sustained dyad is what a tremolo sounds like from a distance anyway.
+    tremolo_ms: int | None = None
 
     @property
     def windowed(self) -> bool:
@@ -323,7 +328,8 @@ class Plan:
             "voices": [{k: val for k, val in (("source", v.source), ("rank", v.rank), ("role", v.role),
                                                ("max_poly", v.max_poly), ("weight", v.weight),
                                                ("fallback", v.fallback), ("from", v.start), ("until", v.end),
-                                               ("lowest", v.lowest), ("highest", v.highest))
+                                               ("lowest", v.lowest), ("highest", v.highest),
+                                               ("tremolo", v.tremolo_ms))
                         if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
@@ -340,7 +346,8 @@ class Plan:
                             float(v["from"]) if v.get("from") is not None else None,
                             float(v["until"]) if v.get("until") is not None else None,
                             int(v["lowest"]) if v.get("lowest") is not None else None,
-                            int(v["highest"]) if v.get("highest") is not None else None)
+                            int(v["highest"]) if v.get("highest") is not None else None,
+                            int(v["tremolo"]) if v.get("tremolo") is not None else None)
                       for v in d.get("voices", [])]
             for v in voices:
                 if v.start is not None and v.end is not None and v.end <= v.start:
@@ -530,6 +537,37 @@ def thin_chords(notes: list[Note], max_poly: int, role: str) -> tuple[list[Note]
         out.extend(group)
         i = j
     return sorted(out, key=lambda n: (n.start, n.pitch)), removed
+
+
+def sustain_tremolos(notes: list[Note], max_gap_s: float) -> tuple[list[Note], int]:
+    """Runs of four or more notes, each starting within max_gap_s of the last
+    and using no more than two pitches, become those pitches held across the
+    run (ending where the run ends, or where the next note begins). Returns
+    the new list and how many runs were sustained."""
+    ordered = sorted(notes, key=lambda n: (n.start, n.pitch))
+    out: list[Note] = []
+    runs = 0
+    i = 0
+    while i < len(ordered):
+        j = i + 1
+        pitches = {ordered[i].pitch}
+        while j < len(ordered) and ordered[j].start - ordered[j - 1].start < max_gap_s \
+                and len(pitches | {ordered[j].pitch}) <= 2:
+            pitches.add(ordered[j].pitch)
+            j += 1
+        run = ordered[i:j]
+        if len(run) >= 4 and len(pitches) == 2:
+            end = max(n.end for n in run)
+            if j < len(ordered):
+                end = min(end, ordered[j].start)
+            for pitch in sorted(pitches):
+                first = next(n for n in run if n.pitch == pitch)
+                out.append(Note(first.start, max(end, first.start + 0.05), pitch))
+            runs += 1
+        else:
+            out.extend(run)
+        i = j
+    return sorted(out, key=lambda n: (n.start, n.pitch)), runs
 
 
 def clip_legato(notes: list[Note]) -> list[Note]:
@@ -784,6 +822,12 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
         notes, thinned = thin_chords(selected, v.max_poly, v.role)
         if v.max_poly == 1:
             notes = clip_legato(notes)
+        if v.tremolo_ms:
+            before = len(notes)
+            notes, runs = sustain_tremolos(notes, v.tremolo_ms / 1000)
+            if runs:
+                lines.append(f"{src.name} ({v.role}): {runs} tremolo passage(s) sustained, "
+                             f"{before} notes -> {len(notes)}")
         stats.thinned = thinned
         placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
                                  fallback=ranks.get(v.fallback) if v.fallback else None))
@@ -996,6 +1040,7 @@ def main(argv: list[str] | None = None) -> int:
             "# role: melody | bass | counter | accomp.  transpose: semitones or auto.\n"
             "# from / until (seconds) and lowest / highest (note numbers) limit a voice to\n"
             "# part of its track; list a source twice with different limits to split it.\n"
+            "# tremolo: N (ms) holds two-note alternations faster than N as a sustained pair.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:

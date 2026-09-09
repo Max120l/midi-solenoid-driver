@@ -560,3 +560,35 @@ def test_preview_gm_assigns_sounds_and_moves_drums_to_channel_10():
     assert {m.note for m in ons} <= {36, 38, 76}
     import io
     pv.save(file=io.BytesIO())
+
+
+def test_a_tremolo_between_two_pitches_becomes_the_pair_held():
+    # E5-G5 alternating every 80 ms for two seconds, then a plain C6.
+    trem = [ot.Note(i * 0.08, i * 0.08 + 0.06, 76 if i % 2 == 0 else 79) for i in range(25)]
+    tail = [ot.Note(2.5, 3.0, 84)]
+    out, runs = ot.sustain_tremolos(trem + tail, 0.1)
+    assert runs == 1
+    assert [(n.pitch, round(n.start, 2), round(n.end, 2)) for n in out] == [(76, 0.0, 1.98), (79, 0.08, 1.98), (84, 2.5, 3.0)]
+    # a scale at the same speed is not a tremolo: more than two pitches
+    scale = [ot.Note(i * 0.08, i * 0.08 + 0.06, 72 + i) for i in range(8)]
+    assert ot.sustain_tremolos(scale, 0.1) == (sorted(scale, key=lambda n: (n.start, n.pitch)), 0)
+    # and a slow alternation is left alone
+    slow = [ot.Note(i * 0.3, i * 0.3 + 0.2, 76 if i % 2 == 0 else 79) for i in range(8)]
+    assert ot.sustain_tremolos(slow, 0.1)[1] == 0
+
+
+def test_tremolo_option_round_trips_through_the_plan_and_reaches_the_arrangement():
+    org = organ()
+    line = []
+    for i in range(24):
+        line += notes(0, [76 if i % 2 == 0 else 79], start=i * (BEAT // 6), length=BEAT // 8)   # 83 ms apart
+    mid = tune(track("Lead", line))
+    plan = ot.Plan.from_dict({"transpose": 0,
+                              "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody", "tremolo": 100}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    r = ot.transcribe(mid, org, plan)
+    main = out_notes(r.mid, "Main")
+    assert len(main) == 2 and {n for _, _, n in main} == {76, 79}
+    assert any("tremolo passage" in line for line in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.voices[0].tremolo_ms == 100
