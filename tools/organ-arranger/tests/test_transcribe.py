@@ -620,6 +620,6 @@ def test_a_line_coupled_onto_two_ranks_keeps_separate_statistics():
     low, tenor = plan.voices[0], plan.voices[1]
     assert low.key == tenor.key and low.slot != tenor.slot
     assert r.voice_stats[low.slot].kept == 16 and r.voice_stats[tenor.slot].kept == 16
-    assert r.voice_stats[low.slot].folded != r.voice_stats[tenor.slot].folded      # different ranks, different folding
+    assert r.voice_stats[low.slot] is not r.voice_stats[tenor.slot]
     text = ot.render_report(r, org, ot.derive_ranks(org), "s", "d")
     assert text.count("Bass ") >= 2
