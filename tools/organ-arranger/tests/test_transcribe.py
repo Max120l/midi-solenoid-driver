@@ -623,3 +623,33 @@ def test_a_line_coupled_onto_two_ranks_keeps_separate_statistics():
     assert r.voice_stats[low.slot] is not r.voice_stats[tenor.slot]
     text = ot.render_report(r, org, ot.derive_ranks(org), "s", "d")
     assert text.count("Bass ") >= 2
+
+
+def test_align_snaps_a_doubling_voice_onto_the_melody_onsets():
+    lead = [ot.Note(i * 0.5, i * 0.5 + 0.4, 76) for i in range(8)]
+    late = [ot.Note(i * 0.5 - 0.015 + (0.02 if i % 2 else 0), i * 0.5 + 0.4, 72) for i in range(8)]   # 15 ms early / 5 ms late
+    far = [ot.Note(2.2, 2.4, 74)]                                                                   # 200 ms off: left alone
+    out, moved = ot.align_onsets(late + far, [n.start for n in lead], 0.04)
+    assert moved == 8
+    assert sorted(round(n.start, 3) for n in out if n.pitch == 72) == [round(i * 0.5, 3) for i in range(8)]
+    assert next(n for n in out if n.pitch == 74).start == 2.2
+
+
+def test_align_option_reaches_the_arrangement_and_round_trips():
+    org = organ()
+    lead = notes(0, [79] * 8, start=0, length=BEAT // 2, step=BEAT)
+    # the harmony voice is 12 ms early on every note (about 12 ticks at 480 tpb, 120 BPM)
+    harm = notes(1, [76] * 8, start=-0, length=BEAT // 2, step=BEAT)
+    harm = [(max(0, tick - 12) if msg.type == "note_on" else tick, msg) for tick, msg in harm]
+    mid = tune(track("Lead", lead), track("Harm", harm))
+    plan = ot.Plan.from_dict({"transpose": 0,
+                              "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody"},
+                                         {"source": "Harm#2", "rank": "TenorCM", "role": "counter", "max_poly": 1, "align": 40}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    r = ot.transcribe(mid, org, plan)
+    main = sorted(s for s, _, _ in out_notes(r.mid, "Main"))
+    tenor = sorted(s for s, _, _ in out_notes(r.mid, "TenorCM"))
+    assert tenor == main                                            # identical onsets after alignment
+    assert any("aligned to the melody" in line for line in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.voices[1].align_ms == 40

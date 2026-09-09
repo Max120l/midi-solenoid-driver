@@ -282,6 +282,10 @@ class Voice:
     # pitches held for the passage. Pipes cannot re-articulate at 80 ms, and a
     # sustained dyad is what a tremolo sounds like from a distance anyway.
     tremolo_ms: int | None = None
+    # Optional: onsets within this (ms) of a melody onset move onto it. Doubled
+    # and harmonising voices in sequenced files run 10-30 ms off the lead;
+    # synths hide that, two pipe ranks in unison turn it into a flam.
+    align_ms: int | None = None
 
     @property
     def windowed(self) -> bool:
@@ -335,7 +339,7 @@ class Plan:
                                                ("max_poly", v.max_poly), ("weight", v.weight),
                                                ("fallback", v.fallback), ("from", v.start), ("until", v.end),
                                                ("lowest", v.lowest), ("highest", v.highest),
-                                               ("tremolo", v.tremolo_ms))
+                                               ("tremolo", v.tremolo_ms), ("align", v.align_ms))
                         if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
@@ -353,7 +357,8 @@ class Plan:
                             float(v["until"]) if v.get("until") is not None else None,
                             int(v["lowest"]) if v.get("lowest") is not None else None,
                             int(v["highest"]) if v.get("highest") is not None else None,
-                            int(v["tremolo"]) if v.get("tremolo") is not None else None)
+                            int(v["tremolo"]) if v.get("tremolo") is not None else None,
+                            int(v["align"]) if v.get("align") is not None else None)
                       for v in d.get("voices", [])]
             for v in voices:
                 if v.start is not None and v.end is not None and v.end <= v.start:
@@ -543,6 +548,28 @@ def thin_chords(notes: list[Note], max_poly: int, role: str) -> tuple[list[Note]
         out.extend(group)
         i = j
     return sorted(out, key=lambda n: (n.start, n.pitch)), removed
+
+
+def align_onsets(notes: list[Note], anchors: list[float], tolerance_s: float) -> tuple[list[Note], int]:
+    """Move each note that starts within tolerance_s of an anchor onto that
+    anchor (its end stays, so the length changes by the same few ms).
+    Returns the new list and how many moved."""
+    import bisect
+    if not anchors:
+        return list(notes), 0
+    anchors = sorted(anchors)
+    out: list[Note] = []
+    moved = 0
+    for n in notes:
+        i = bisect.bisect_left(anchors, n.start)
+        cands = anchors[max(0, i - 1):i + 1]
+        near = min(cands, key=lambda a: abs(a - n.start))
+        if abs(near - n.start) <= tolerance_s and near != n.start:
+            out.append(Note(near, max(n.end, near + 0.03), n.pitch))
+            moved += 1
+        else:
+            out.append(n)
+    return sorted(out, key=lambda n: (n.start, n.pitch)), moved
 
 
 def sustain_tremolos(notes: list[Note], max_gap_s: float) -> tuple[list[Note], int]:
@@ -822,12 +849,19 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
     placed: list[Placed] = []
     voice_stats: dict[str, VoiceStats] = {}
     melody_first: float | None = None
+    # Melody onsets, for voices that ask to be aligned to the lead.
+    melody_onsets = sorted({n.start for v in plan.voices if v.role == ROLE_MELODY and v.rank != ROLE_DROP
+                            and v.source in by_key for n in v.select(by_key[v.source].notes)})
     for v in plan.voices:
         src = by_key.get(v.source)
         if src is None or v.rank == ROLE_DROP:
             continue
         stats = VoiceStats()
         selected = v.select(src.notes)
+        if v.align_ms and v.role != ROLE_MELODY:
+            selected, moved = align_onsets(selected, melody_onsets, v.align_ms / 1000)
+            if moved:
+                lines.append(f"{src.name} ({v.role}): {moved} onsets aligned to the melody (within {v.align_ms} ms)")
         notes, thinned = thin_chords(selected, v.max_poly, v.role)
         if v.max_poly == 1:
             notes = clip_legato(notes)
@@ -1050,6 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
             "# from / until (seconds) and lowest / highest (note numbers) limit a voice to\n"
             "# part of its track; list a source twice with different limits to split it.\n"
             "# tremolo: N (ms) holds two-note alternations faster than N as a sustained pair.\n"
+            "# align: N (ms) snaps a voice's onsets within N of a melody onset onto it (no flams).\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:
