@@ -12,6 +12,7 @@ voices:
 - {source: 'OVERDRIVE#3', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 128, until: 160}
 - {source: 'FRETLESS#2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'A.PIANO 1#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 1.0, fallback: 'Main:Accompainment', until: 34}
+- {source: 'A.PIANO 1#1', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0, from: 34}
 - {source: 'CHOIR AAHS#5', rank: drop}
 drums:
   source: 'DRUMS#6'
@@ -19,4 +20,4 @@ drums:
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

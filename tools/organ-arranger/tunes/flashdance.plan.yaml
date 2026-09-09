@@ -12,7 +12,7 @@ voices:
 - {source: 'HitBit#0/ch3', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.0}
 - {source: 'HitBit#0/ch2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'HitBit#0/ch6', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 12}
-- {source: 'HitBit#0/ch4', rank: drop}
+- {source: 'HitBit#0/ch4', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'HitBit#0/ch5', rank: drop}
 - {source: 'HitBit#0/ch8', rank: drop}
 - {source: 'HitBit#0/ch9', rank: drop}
@@ -23,4 +23,4 @@ drums:
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

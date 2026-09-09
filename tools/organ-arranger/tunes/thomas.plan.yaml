@@ -14,12 +14,12 @@ voices:
 - {source: WinJammer Demo#7, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: WinJammer Demo#1, rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.0}
 - {source: WinJammer Demo#2, rank: drop}
-- {source: WinJammer Demo#8, rank: drop}
-- {source: WinJammer Demo#9, rank: drop}
+- {source: WinJammer Demo#8, rank: TenorCM, role: accomp, max_poly: 2, weight: 1.0}
+- {source: WinJammer Demo#9, rank: TenorCM, role: counter, max_poly: 1, weight: 1.0}
 drums:
   source: WinJammer Demo#3
   map: {36: bass, 38: snare, 40: snare, 37: snare}   # the kit doubles 35+36 on every kick; one is enough
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

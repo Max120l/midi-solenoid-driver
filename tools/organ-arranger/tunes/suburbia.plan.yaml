@@ -7,9 +7,9 @@
 transpose: 2
 voices:
 - {source: 'Words#6', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: 'Synth#5', rank: drop}
+- {source: 'Synth#5', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'Bassline#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: 'Chords#3', rank: drop}
+- {source: 'Chords#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 0.8}
 - {source: 'Piano#4', rank: drop}
 drums:
   source: 'Drums#2'
@@ -17,4 +17,4 @@ drums:
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

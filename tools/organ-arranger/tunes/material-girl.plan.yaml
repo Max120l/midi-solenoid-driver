@@ -16,7 +16,7 @@ voices:
 - {source: Track 8#7/ch7, rank: drop}
 - {source: Track 9#8/ch8, rank: drop}
 - {source: Track 10#9/ch9, rank: drop}
-- {source: Track 12#11/ch11, rank: drop}
+- {source: Track 12#11/ch11, rank: TenorCM, role: accomp, max_poly: 2, weight: 1.0}
 - {source: Track 13#12/ch12, rank: drop}
 - {source: Track 14#13/ch13, rank: drop}
 drums:
@@ -25,4 +25,4 @@ drums:
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

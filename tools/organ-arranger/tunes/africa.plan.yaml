@@ -14,9 +14,9 @@ voices:
 - {source: 'Track 6#5', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 215}
 - {source: 'Flute (Bridge)#6', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 2.0, from: 165, until: 195}
 - {source: 'Track 3#2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: 'AFRICA  ##1', rank: drop}
+- {source: 'AFRICA  ##1', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'Track 4#3', rank: drop}
-- {source: 'Flute Harmony (Bridge)#7', rank: drop}
+- {source: 'Flute Harmony (Bridge)#7', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5, from: 165, until: 195}
 - {source: 'Track 9#8', rank: drop}
 - {source: 'Track 10#9', rank: drop}
 drums:
@@ -25,4 +25,4 @@ drums:
   leader: downbeat
 registration:
 - at: start
-  'on': [Trombone Base, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Trombone Base, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

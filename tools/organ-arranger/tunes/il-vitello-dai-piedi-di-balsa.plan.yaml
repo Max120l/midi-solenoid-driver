@@ -16,7 +16,7 @@ voices:
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch5', rank: drop}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch8', rank: drop}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch9', rank: drop}
-- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch11', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch11', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch13', rank: drop}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch14', rank: drop}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch16', rank: drop}
@@ -26,4 +26,4 @@ drums:
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]

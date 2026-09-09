@@ -8,11 +8,11 @@ voices:
 - {source: 8-Bit Square#1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
 - {source: Grand Piano (Classic)#0, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment', highest: 50}
 - {source: Grand Piano (Classic)#0, rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.0, lowest: 51}
-- {source: 8-Bit Sine#2, rank: drop}
+- {source: 8-Bit Sine#2, rank: TenorCM, role: counter, max_poly: 1, weight: 1.0}
 drums:
   source: null
   map: {}
   leader: downbeat
 registration:
 - at: start
-  'on': [Violin Accompainment, Flute Melody, Violin Melody]
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Violin Melody]
