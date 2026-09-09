@@ -12,7 +12,7 @@ voices:
 - {source: 'Bass Guitar (Classic)#3', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'Acoustic Gtr (Classic)#5', rank: drop}
 - {source: 'Jazz Guitar#7', rank: TenorCM, role: accomp, max_poly: 2, weight: 1.0}
-- {source: 'Grand Piano (Classic)#8', rank: drop}
+- {source: 'Grand Piano (Classic)#8', rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'Elec. Piano (Classic)#9', rank: TenorCM, role: accomp, max_poly: 2, weight: 1.0, from: 80}
 - {source: 'Slap Bass#10', rank: drop}
 drums:

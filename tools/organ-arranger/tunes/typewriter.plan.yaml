@@ -10,7 +10,7 @@ transpose: 5
 voices:
 - {source: D_2728#0/ch1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
 - {source: D_2728#0/ch2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: D_2728#0/ch3, rank: drop}
+- {source: D_2728#0/ch3, rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: D_2728#0/ch4, rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: D_2728#0/ch5, rank: drop}
 drums:

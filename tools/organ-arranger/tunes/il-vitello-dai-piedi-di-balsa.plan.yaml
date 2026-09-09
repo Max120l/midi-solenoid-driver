@@ -10,7 +10,7 @@
 transpose: 5
 voices:
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch12', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 10}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch12', rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch3', rank: drop}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch5', rank: drop}
@@ -18,7 +18,7 @@ voices:
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch9', rank: drop}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch11', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch13', rank: drop}
-- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch14', rank: drop}
+- {source: 'IL VITELLO DAI PIEDI DI BA#0/ch14', rank: TrebCM, role: counter, max_poly: 1, weight: 1.2}
 - {source: 'IL VITELLO DAI PIEDI DI BA#0/ch16', rank: drop}
 drums:
   source: 'IL VITELLO DAI PIEDI DI BA#0/ch10'

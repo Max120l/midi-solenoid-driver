@@ -13,7 +13,7 @@ voices:
 - {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 205}
 - {source: Slap Bass#2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: Smooth Synth (Classic)#3, rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
-- {source: Electric Guitar#7, rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
+- {source: Electric Guitar#7, rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: Elec. Piano (Classic)#4, rank: drop}
 drums:
   source: Electric Drum Kit#0

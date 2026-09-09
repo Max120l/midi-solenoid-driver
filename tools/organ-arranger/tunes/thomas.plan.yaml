@@ -9,8 +9,8 @@ transpose: -3
 voices:
 - {source: WinJammer Demo#6, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
 - {source: WinJammer Demo#5, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
-- {source: WinJammer Demo#4, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 0.5}
-- {source: WinJammer Demo#10, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 0.5}
+- {source: WinJammer Demo#4, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
+- {source: WinJammer Demo#10, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 - {source: WinJammer Demo#7, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: WinJammer Demo#1, rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.0}
 - {source: WinJammer Demo#2, rank: drop}

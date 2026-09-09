@@ -18,7 +18,7 @@ voices:
 - {source: 'Track 4#3', rank: drop}
 - {source: 'Flute Harmony (Bridge)#7', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5, from: 165, until: 195}
 - {source: 'Track 9#8', rank: drop}
-- {source: 'Track 10#9', rank: drop}
+- {source: 'Track 10#9', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 drums:
   source: 'Track 11#10'
   map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}

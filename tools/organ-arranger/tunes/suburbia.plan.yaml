@@ -10,7 +10,7 @@ voices:
 - {source: 'Synth#5', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'Bassline#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'Chords#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 0.8}
-- {source: 'Piano#4', rank: drop}
+- {source: 'Piano#4', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 drums:
   source: 'Drums#2'
   map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}

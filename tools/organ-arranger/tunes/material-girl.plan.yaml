@@ -11,7 +11,7 @@ voices:
 - {source: Track 5#4/ch4, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
 - {source: Track 4#3/ch3, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
 - {source: Track 3#2/ch2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: Track 6#5/ch5, rank: drop}
+- {source: Track 6#5/ch5, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 - {source: Track 7#6/ch6, rank: drop}
 - {source: Track 8#7/ch7, rank: drop}
 - {source: Track 9#8/ch8, rank: drop}

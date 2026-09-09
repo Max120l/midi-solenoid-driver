@@ -13,7 +13,7 @@ voices:
 - {source: 'FRETLESS#2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
 - {source: 'A.PIANO 1#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 1.0, fallback: 'Main:Accompainment', until: 34}
 - {source: 'A.PIANO 1#1', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0, from: 34}
-- {source: 'CHOIR AAHS#5', rank: drop}
+- {source: 'CHOIR AAHS#5', rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
 drums:
   source: 'DRUMS#6'
   map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
