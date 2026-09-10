@@ -316,8 +316,8 @@ order, each held long enough to hear it speak and stop. It comes out in the
 organ format, so it goes through the arranger like any song.
 
 ```bash
-python make_scale.py --organ instrument/organ.yaml --track Main --section Accompainment --section Melody -o scale-main.mid
-python organ_arranger.py scale-main.mid --organ instrument/organ.yaml
+python make_scale.py --organ instrument/organ.yaml --track Melody -o scale-melody.mid
+python organ_arranger.py scale-melody.mid --organ instrument/organ.yaml
 ```
 
 `--track` alone plays the whole track; `--section` (repeatable) narrows it;
