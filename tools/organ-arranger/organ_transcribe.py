@@ -289,6 +289,13 @@ class Voice:
     # and harmonising voices in sequenced files run 10-30 ms off the lead;
     # synths hide that, two pipe ranks in unison turn it into a flam.
     align_ms: int | None = None
+    # Optional: make a new line out of this material instead of placing it as
+    # written. "arpeggio" turns block chords into a moving inner line, one
+    # chord tone per step (derive_step beats); "thirds" plays a melody a
+    # diatonic third above, in the key the melody itself implies. The
+    # embellishments a band-organ arranger writes by hand.
+    derive: str | None = None
+    derive_step: float = 0.5
 
     @property
     def windowed(self) -> bool:
@@ -342,7 +349,9 @@ class Plan:
                                                ("max_poly", v.max_poly), ("weight", v.weight),
                                                ("fallback", v.fallback), ("from", v.start), ("until", v.end),
                                                ("lowest", v.lowest), ("highest", v.highest),
-                                               ("tremolo", v.tremolo_ms), ("align", v.align_ms))
+                                               ("tremolo", v.tremolo_ms), ("align", v.align_ms),
+                                               ("derive", v.derive),
+                                               ("derive_step", v.derive_step if v.derive == "arpeggio" else None))
                         if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
@@ -361,8 +370,13 @@ class Plan:
                             int(v["lowest"]) if v.get("lowest") is not None else None,
                             int(v["highest"]) if v.get("highest") is not None else None,
                             int(v["tremolo"]) if v.get("tremolo") is not None else None,
-                            int(v["align"]) if v.get("align") is not None else None)
+                            int(v["align"]) if v.get("align") is not None else None,
+                            str(v["derive"]).lower() if v.get("derive") else None,
+                            float(v.get("derive_step", 0.5)))
                       for v in d.get("voices", [])]
+            for v in voices:
+                if v.derive not in (None, "arpeggio", "thirds"):
+                    raise ValueError(f"voice {v.source}: derive must be 'arpeggio' or 'thirds', not '{v.derive}'")
             for v in voices:
                 if v.start is not None and v.end is not None and v.end <= v.start:
                     raise ValueError(f"voice {v.source}: 'until' ({v.end}) must be after 'from' ({v.start})")
@@ -553,6 +567,64 @@ def thin_chords(notes: list[Note], max_poly: int, role: str) -> tuple[list[Note]
     return sorted(out, key=lambda n: (n.start, n.pitch)), removed
 
 
+def implied_scale(notes: list[Note]) -> list[int]:
+    """The seven pitch classes the material uses most, weighted by duration:
+    a fair guess at its key without asking. Fewer if it uses fewer."""
+    weight: Counter = Counter()
+    for n in notes:
+        weight[n.pitch % 12] += max(n.end - n.start, 0.05)
+    return sorted(pc for pc, _ in weight.most_common(7))
+
+
+def derive_thirds(notes: list[Note]) -> list[Note]:
+    """Each note a diatonic third above (two scale steps up in the implied
+    scale). Where a pitch class is outside the scale, four semitones up."""
+    scale = implied_scale(notes)
+    out: list[Note] = []
+    for n in notes:
+        pc = n.pitch % 12
+        if pc in scale and len(scale) >= 5:
+            i = scale.index(pc)
+            up = scale[(i + 2) % len(scale)]
+            interval = (up - pc) % 12
+        else:
+            interval = 4
+        out.append(Note(n.start, n.end, n.pitch + interval))
+    return out
+
+
+def derive_arpeggio(notes: list[Note], step_s_at, ) -> list[Note]:
+    """Block chords into a moving line: each group of simultaneous notes is
+    played one chord tone at a time, bottom to top and back, at one tone per
+    step, for as long as the chord lasts. A lone note is left alone."""
+    ordered = sorted(notes, key=lambda n: (n.start, n.pitch))
+    out: list[Note] = []
+    i = 0
+    while i < len(ordered):
+        j = i
+        while j < len(ordered) and ordered[j].start - ordered[i].start <= ONSET_GROUP_S:
+            j += 1
+        chord = sorted({n.pitch for n in ordered[i:j]})
+        start = ordered[i].start
+        end = max(n.end for n in ordered[i:j])
+        nxt = ordered[j].start if j < len(ordered) else None
+        if nxt is not None:
+            end = min(end, nxt) if nxt > start else end
+        step = step_s_at(start)
+        if len(chord) < 2 or end - start < step * 1.5:
+            out.extend(ordered[i:j])
+        else:
+            cycle = chord + chord[-2:0:-1]                       # up and back down, no repeats at the turns
+            t = start
+            k = 0
+            while t < end - 1e-6:
+                out.append(Note(t, min(t + step, end), cycle[k % len(cycle)]))
+                t += step
+                k += 1
+        i = j
+    return sorted(out, key=lambda n: (n.start, n.pitch))
+
+
 def align_onsets(notes: list[Note], anchors: list[float], tolerance_s: float) -> tuple[list[Note], int]:
     """Move each note that starts within tolerance_s of an anchor onto that
     anchor (its end stays, so the length changes by the same few ms).
@@ -723,6 +795,16 @@ def map_drums(src: Source | None, plan: Plan, organ: oa.Organ, report: list[str]
     return out, counts
 
 
+def seconds_per_beat(tempo_map: list[tuple[float, int]], at: float) -> float:
+    tempo = 500_000
+    for t, us in tempo_map:
+        if t <= at:
+            tempo = us
+        else:
+            break
+    return tempo / 1_000_000
+
+
 def leader_beats(organ: oa.Organ, first: float, last: float, tempo_map: list[tuple[float, int]],
                  timesig: tuple[int, int]) -> list[Placed]:
     targets = percussion_notes(organ, "leader")
@@ -865,7 +947,16 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
             selected, moved = align_onsets(selected, melody_onsets, v.align_ms / 1000)
             if moved:
                 lines.append(f"{src.name} ({v.role}): {moved} onsets aligned to the melody (within {v.align_ms} ms)")
+        if v.derive == "arpeggio":
+            before = len(selected)
+            selected = derive_arpeggio(selected, lambda at: v.derive_step * seconds_per_beat(tempo_map, at))
+            lines.append(f"{src.name} ({v.role}): chords arpeggiated into a line, {before} notes -> {len(selected)}")
         notes, thinned = thin_chords(selected, v.max_poly, v.role)
+        if v.derive == "thirds":
+            notes = derive_thirds(notes)
+            scale = implied_scale(notes)
+            lines.append(f"{src.name} ({v.role}): played a diatonic third above, in the scale "
+                         + " ".join(NOTE_NAMES[pc] for pc in scale))
         if v.max_poly == 1:
             notes = clip_legato(notes)
         if v.tremolo_ms:
@@ -1088,6 +1179,8 @@ def main(argv: list[str] | None = None) -> int:
             "# part of its track; list a source twice with different limits to split it.\n"
             "# tremolo: N (ms) holds two-note alternations faster than N as a sustained pair.\n"
             "# align: N (ms) snaps a voice's onsets within N of a melody onset onto it (no flams).\n"
+            "# derive: arpeggio (chords -> moving line, derive_step beats per tone) or thirds\n"
+            "# (a melody a diatonic third above) makes a counter line out of the material.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:

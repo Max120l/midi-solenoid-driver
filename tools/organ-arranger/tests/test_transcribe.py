@@ -653,3 +653,46 @@ def test_align_option_reaches_the_arrangement_and_round_trips():
     assert any("aligned to the melody" in line for line in r.lines)
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
     assert again.voices[1].align_ms == 40
+
+
+def test_derive_thirds_follows_the_implied_scale():
+    # C major tune: E above C, F above D, G above E, ... B above G, C above A, D above B
+    tune_notes = [ot.Note(i * 0.5, i * 0.5 + 0.4, p) for i, p in enumerate([60, 62, 64, 65, 67, 69, 71, 72] * 3)]
+    assert ot.implied_scale(tune_notes) == [0, 2, 4, 5, 7, 9, 11]
+    thirds = ot.derive_thirds(tune_notes)
+    assert [n.pitch for n in thirds[:8]] == [64, 65, 67, 69, 71, 72, 74, 76]
+    assert all(a.start == b.start and a.end == b.end for a, b in zip(tune_notes, thirds))
+
+
+def test_derive_arpeggio_turns_a_held_chord_into_an_up_and_down_line():
+    chord = [ot.Note(0.0, 2.0, 48), ot.Note(0.0, 2.0, 52), ot.Note(0.0, 2.0, 55)]     # C E G held 2 s
+    line = ot.derive_arpeggio(chord, lambda at: 0.25)
+    assert [n.pitch for n in line] == [48, 52, 55, 52, 48, 52, 55, 52]
+    assert line[0].start == 0.0 and line[-1].end == 2.0 and all(abs(n.end - n.start - 0.25) < 1e-9 for n in line)
+    single = [ot.Note(0.0, 1.0, 60)]
+    assert ot.derive_arpeggio(single, lambda at: 0.25) == single
+    short = [ot.Note(0.0, 0.3, 48), ot.Note(0.0, 0.3, 52)]                           # too short to arpeggiate
+    assert ot.derive_arpeggio(short, lambda at: 0.25) == sorted(short, key=lambda n: (n.start, n.pitch))
+
+
+def test_derive_options_reach_the_arrangement_and_round_trip():
+    org = organ()
+    lead = notes(0, [72, 74, 76, 77, 79, 77, 76, 74] * 2, length=BEAT // 2, step=BEAT // 2)
+    pad = notes(2, [[48, 52, 55]] * 4, length=2 * BEAT, step=2 * BEAT)
+    mid = tune(track("Lead", lead), track("Pad", pad))
+    plan = ot.Plan.from_dict({"transpose": 0,
+                              "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody"},
+                                         {"source": "Lead#1", "rank": "TrebCM", "role": "counter", "max_poly": 1, "derive": "thirds"},
+                                         {"source": "Pad#2", "rank": "TenorCM", "role": "counter", "max_poly": 1,
+                                          "derive": "arpeggio", "derive_step": 0.5}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    r = ot.transcribe(mid, org, plan)
+    treb = [n for _, _, n in out_notes(r.mid, "TrebCM")]
+    assert treb and treb[0] == 88                                     # E above C, folded into TrebCM (C6-C7)
+    tenor = out_notes(r.mid, "TenorCM")
+    assert len(tenor) == 16                                           # 4 chords x 4 half-beat steps
+    assert any("arpeggiated" in line for line in r.lines) and any("diatonic third" in line for line in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.voices[1].derive == "thirds" and again.voices[2].derive == "arpeggio" and again.voices[2].derive_step == 0.5
+    with pytest.raises(ot.TranscribeError):
+        ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "derive": "sixths"}]})
