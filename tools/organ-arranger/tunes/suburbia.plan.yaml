@@ -6,9 +6,9 @@
 # dropped, with the Piano, until more ranks are in.
 transpose: 2
 voices:
-- {source: 'Words#6', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'Words#6', rank: Melody, role: melody, max_poly: 1, weight: 3.0}
 - {source: 'Synth#5', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
-- {source: 'Bassline#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: 'Bassline#1', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
 - {source: 'Chords#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 0.8}
 - {source: 'Piano#4', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 drums:

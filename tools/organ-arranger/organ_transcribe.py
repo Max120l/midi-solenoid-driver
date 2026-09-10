@@ -67,7 +67,7 @@ ROLE_POLY = {ROLE_MELODY: 1, ROLE_BASS: 1, ROLE_COUNTER: 2, ROLE_ACCOMP: 3}
 DEFAULT_DRUM_MAP = {35: "bass", 36: "bass", 38: "snare", 40: "snare", 37: "snare"}
 
 # Output channel per organ track, mirroring the instrument's own sample file.
-TRACK_CHANNEL = {"Main": 0, "TenorCM": 1, "TrebCM": 2, "Drums": 0, "Registers": 0}
+TRACK_CHANNEL = {"Melody": 0, "Main": 0, "TenorCM": 1, "TrebCM": 2, "Accompainment": 3, "Drums": 0, "Registers": 0}
 
 NOTE_NAMES = oa.NOTE_NAMES
 note_name = oa.note_name
@@ -118,7 +118,10 @@ def derive_ranks(organ: oa.Organ) -> dict[str, Rank]:
         if track.sections:
             for section, sec_notes in track.sections.items():
                 if sec_notes:
-                    add(f"{tname}:{section}", tname, list(sec_notes))
+                    # "Accompainment" track with sections Base and Accompainment:
+                    # ranks Accompainment:Base and plain Accompainment.
+                    name = tname if section.lower() == tname.lower() else f"{tname}:{section}"
+                    add(name, tname, list(sec_notes))
             continue
         notes = sorted(track.notes)
         regions: list[list[int]] = [[notes[0]]]

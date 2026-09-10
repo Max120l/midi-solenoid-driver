@@ -67,7 +67,8 @@ def note_name(n: int) -> str:
 # What each solenoid is, from organ.yaml (optional)
 # ----------------------------------------------------------------------------
 
-TRACK_ABBREV = {"main": "", "tenorcm": "Tn", "trebcm": "Tr", "drums": "", "registers": ""}
+TRACK_ABBREV = {"main": "", "melody": "", "accompainment": "", "accompaniment": "",
+                "tenorcm": "Tn", "trebcm": "Tr", "drums": "", "registers": ""}
 SECTION_ABBREV = {"base": "Bas", "accompainment": "Acc", "accompaniment": "Acc", "melody": "Mel"}
 
 

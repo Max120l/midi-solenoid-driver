@@ -8,10 +8,10 @@
 # Down 5: the bass line is chromatic and 68 of its 880 notes are nudged in any key.
 transpose: -5
 voices:
-- {source: 'vocals#2', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: 'vocals#2', rank: Melody, role: melody, max_poly: 1, weight: 3.0}
 - {source: 'arpegio#7', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
-- {source: 'sitar#8', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
-- {source: 'bassguitar#5', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: 'sitar#8', rank: Melody, role: counter, max_poly: 1, weight: 1.5}
+- {source: 'bassguitar#5', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
 - {source: 'organ#3', rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'horns#4', rank: drop}
 - {source: 'funky guitar#6', rank: drop}

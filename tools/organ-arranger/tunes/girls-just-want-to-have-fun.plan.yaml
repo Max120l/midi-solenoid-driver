@@ -8,10 +8,10 @@
 # (6, 7) and the odds and ends (11, 13) are dropped. Drums on channel 10.
 transpose: 1
 voices:
-- {source: 'GIRLSJUS#0/ch4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: 'GIRLSJUS#0/ch14', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: 'GIRLSJUS#0/ch4', rank: Melody, role: melody, max_poly: 1, weight: 3.0}
+- {source: 'GIRLSJUS#0/ch14', rank: Melody, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'GIRLSJUS#0/ch12', rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
-- {source: 'GIRLSJUS#0/ch2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: 'GIRLSJUS#0/ch2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
 - {source: 'GIRLSJUS#0/ch3', rank: TrebCM, role: accomp, max_poly: 1, weight: 0.8}
 - {source: 'GIRLSJUS#0/ch5', rank: drop}
 - {source: 'GIRLSJUS#0/ch6', rank: drop}

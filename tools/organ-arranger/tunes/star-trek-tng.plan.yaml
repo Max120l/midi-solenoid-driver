@@ -10,14 +10,14 @@
 # snare roll at the end.
 transpose: 2
 voices:
-- {source: 'Star Trek#1', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, tremolo: 100}
+- {source: 'Star Trek#1', rank: Melody, role: melody, max_poly: 1, weight: 3.0, tremolo: 100}
 - {source: 'Copyright (c)#9', rank: drop}
 - {source: 'Sequenced#5', rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'pennock@euronet.nl#8', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 - {source: 'Paramount Pictures#10', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 - {source: 'Generation#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
-- {source: 'Track 5#4', rank: 'Main:Accompainment', role: accomp, max_poly: 1, weight: 1.0}
-- {source: 'The Next#2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: 'Track 5#4', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0}
+- {source: 'The Next#2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
 - {source: 'Cliff Pennock#7', rank: drop}
 - {source: '& AWE arrangement:#6', rank: drop}
 - {source: 'Track 12#11', rank: drop}

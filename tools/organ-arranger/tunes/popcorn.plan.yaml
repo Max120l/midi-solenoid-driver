@@ -6,8 +6,8 @@
 # moves the nudges into the tune instead (9), so D minor it is. Two ranks installed.
 transpose: 3
 voices:
-- {source: Elec. Piano (Classic)#0, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0, lowest: 60}
-- {source: Elec. Piano (Classic)#0, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment', highest: 59}
+- {source: Elec. Piano (Classic)#0, rank: Melody, role: melody, max_poly: 1, weight: 3.0, lowest: 60}
+- {source: Elec. Piano (Classic)#0, rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment, highest: 59}
 drums:
   source: null
   map: {}

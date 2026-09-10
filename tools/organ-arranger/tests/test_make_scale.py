@@ -26,9 +26,9 @@ def played(mid):
 
 def test_sections_are_merged_and_ascend():
     organ = oa.Organ.load(ORGAN)
-    notes = ms.scale_notes(organ, "Main", ["Accompainment", "Melody"], descend=False)
-    assert notes == [48, 50, 52, 53, 55, 57, 58, 59, 60, 72, 74, 76, 77, 78, 79, 81, 82, 83, 84, 86, 88, 89]
-    assert ms.scale_notes(organ, "main", [], descend=False)[:4] == [36, 41, 43, 46]   # whole track, case-insensitive
+    notes = ms.scale_notes(organ, "Accompainment", ["Base", "Accompainment"], descend=False)
+    assert notes == [36, 41, 43, 46, 48, 50, 52, 53, 55, 57, 58, 59, 60]
+    assert ms.scale_notes(organ, "melody", [], descend=False) == [72, 74, 76, 77, 78, 79, 81, 82, 83, 84, 86, 88, 89]   # case-insensitive
 
 
 def test_descend_comes_back_down_without_repeating_the_top():
@@ -41,7 +41,7 @@ def test_unknown_track_or_section_is_a_clear_error():
     with pytest.raises(ValueError, match="no track 'Nope'"):
         ms.scale_notes(organ, "Nope", [], False)
     with pytest.raises(ValueError, match="no section 'Bass'"):
-        ms.scale_notes(organ, "Main", ["Bass"], False)
+        ms.scale_notes(organ, "Accompainment", ["Bass"], False)
 
 
 def test_each_note_lasts_note_s_with_gap_s_between():
@@ -53,8 +53,8 @@ def test_each_note_lasts_note_s_with_gap_s_between():
 
 def test_output_arranges_onto_the_organ_with_nothing_dropped():
     organ = oa.Organ.load(ORGAN)
-    notes = ms.scale_notes(organ, "Main", ["Accompainment", "Melody"], descend=False)
-    out, report = oa.arrange(ms.build("Main", notes, 1.0, 0.1, "t"), organ)
+    notes = ms.scale_notes(organ, "Melody", [], descend=False)
+    out, report = oa.arrange(ms.build("Melody", notes, 1.0, 0.1, "t"), organ)
     assert report.dropped == 0
     assert report.notes["pitched"] == len(notes)
 

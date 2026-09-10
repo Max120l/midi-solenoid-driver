@@ -28,7 +28,9 @@ __version__ = "0.1.0"
 
 # GM program per organ track (zero-based program numbers)
 PROGRAMS = {
-    "Main": 21,          # Accordion: the workhorse pipes, reedy and bright
+    "Melody": 21,        # Accordion: the melody pipes, reedy and bright
+    "Accompainment": 24, # Nylon guitar: bass and accompaniment, so the oom-pah is audible apart
+    "Main": 21,          # older definitions, before Main was split in two
     "TenorCM": 71,       # Clarinet
     "TrebCM": 72,        # Piccolo
 }

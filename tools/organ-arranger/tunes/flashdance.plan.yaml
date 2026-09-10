@@ -8,10 +8,10 @@
 # The pads (4, 5, 8, 9) and the counter line (11) are dropped. Drums on 10.
 transpose: 2
 voices:
-- {source: 'HitBit#0/ch1', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: 'HitBit#0/ch3', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.0}
-- {source: 'HitBit#0/ch2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: 'HitBit#0/ch6', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 12}
+- {source: 'HitBit#0/ch1', rank: Melody, role: melody, max_poly: 1, weight: 3.0}
+- {source: 'HitBit#0/ch3', rank: Melody, role: counter, max_poly: 1, weight: 1.0}
+- {source: 'HitBit#0/ch2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
+- {source: 'HitBit#0/ch6', rank: Melody, role: counter, max_poly: 1, weight: 1.5, until: 12}
 - {source: 'HitBit#0/ch4', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'HitBit#0/ch5', rank: drop}
 - {source: 'HitBit#0/ch8', rank: drop}

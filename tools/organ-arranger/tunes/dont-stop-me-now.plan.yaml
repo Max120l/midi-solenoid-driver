@@ -8,10 +8,10 @@
 # nudged in any key; up 2 is the best fit.
 transpose: 2
 voices:
-- {source: 'ALTO SAX#4', rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: 'OVERDRIVE#3', rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 128, until: 160}
-- {source: 'FRETLESS#2', rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: 'A.PIANO 1#1', rank: 'Main:Base', role: bass, max_poly: 1, weight: 1.0, fallback: 'Main:Accompainment', until: 34}
+- {source: 'ALTO SAX#4', rank: Melody, role: melody, max_poly: 1, weight: 3.0}
+- {source: 'OVERDRIVE#3', rank: Melody, role: counter, max_poly: 1, weight: 1.5, from: 128, until: 160}
+- {source: 'FRETLESS#2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
+- {source: 'A.PIANO 1#1', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 1.0, fallback: Accompainment, until: 34}
 - {source: 'A.PIANO 1#1', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0, from: 34}
 - {source: 'CHOIR AAHS#5', rank: TrebCM, role: accomp, max_poly: 1, weight: 1.0}
 drums:

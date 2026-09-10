@@ -6,8 +6,8 @@ For commissioning: every pipe of a rank, one after another, long enough to
 hear each speak and stop. Writes an organ-format multi-track file, so it goes
 through organ_arranger like any song and comes out addressed to the solenoids.
 
-    make_scale.py --organ instrument/organ.yaml --track Main -o scale-main.mid
-    make_scale.py --organ instrument/organ.yaml --track Main --section Accompainment --section Melody
+    make_scale.py --organ instrument/organ.yaml --track Melody -o scale-melody.mid
+    make_scale.py --organ instrument/organ.yaml --track Accompainment --section Base
     make_scale.py --organ instrument/organ.yaml --track TenorCM --note-s 0.5 --descend
     make_scale.py --organ instrument/organ.yaml --track Drums --note-s 0.2
 

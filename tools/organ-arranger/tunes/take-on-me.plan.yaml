@@ -7,11 +7,11 @@
 # guitar and electric piano are dropped. Up 3 into C: 100% coverage, nothing snapped.
 transpose: 3
 voices:
-- {source: Grand Piano (Classic)#6, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, until: 45}
-- {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 105, until: 165}
-- {source: Synth Pluck#1, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5, from: 205}
-- {source: Slap Bass#2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
+- {source: Grand Piano (Classic)#6, rank: Melody, role: melody, max_poly: 1, weight: 3.0}
+- {source: Synth Pluck#1, rank: Melody, role: counter, max_poly: 1, weight: 1.5, until: 45}
+- {source: Synth Pluck#1, rank: Melody, role: counter, max_poly: 1, weight: 1.5, from: 105, until: 165}
+- {source: Synth Pluck#1, rank: Melody, role: counter, max_poly: 1, weight: 1.5, from: 205}
+- {source: Slap Bass#2, rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
 - {source: Smooth Synth (Classic)#3, rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
 - {source: Electric Guitar#7, rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: Elec. Piano (Classic)#4, rank: drop}

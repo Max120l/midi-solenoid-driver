@@ -7,12 +7,12 @@
 # Down 3 semitones, confirmed by ear against the up-4 alternative.
 transpose: -3
 voices:
-- {source: WinJammer Demo#6, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
-- {source: WinJammer Demo#5, rank: 'Main:Melody', role: counter, max_poly: 1, weight: 1.5}
+- {source: WinJammer Demo#6, rank: Melody, role: melody, max_poly: 1, weight: 3.0}
+- {source: WinJammer Demo#5, rank: Melody, role: counter, max_poly: 1, weight: 1.5}
 - {source: WinJammer Demo#4, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 - {source: WinJammer Demo#10, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
-- {source: WinJammer Demo#7, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: WinJammer Demo#1, rank: 'Main:Accompainment', role: accomp, max_poly: 2, weight: 1.0}
+- {source: WinJammer Demo#7, rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
+- {source: WinJammer Demo#1, rank: Accompainment, role: accomp, max_poly: 2, weight: 1.0}
 - {source: WinJammer Demo#2, rank: drop}
 - {source: WinJammer Demo#8, rank: TenorCM, role: accomp, max_poly: 2, weight: 1.0}
 - {source: WinJammer Demo#9, rank: TenorCM, role: counter, max_poly: 1, weight: 1.0}

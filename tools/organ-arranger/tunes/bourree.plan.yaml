@@ -5,8 +5,8 @@
 # role: melody | bass | counter | accomp.  transpose: semitones or auto.
 transpose: 3
 voices:
-- {source: Voice 2#2, rank: 'Main:Base', role: bass, max_poly: 1, weight: 2.0, fallback: 'Main:Accompainment'}
-- {source: Voice 1#1, rank: 'Main:Melody', role: melody, max_poly: 1, weight: 3.0}
+- {source: Voice 2#2, rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
+- {source: Voice 1#1, rank: Melody, role: melody, max_poly: 1, weight: 3.0}
 # Two lines, five ranks: couple them as an organist would. The tune is doubled
 # an octave up on TrebCM; the bass line, which in Bach is a melody in its own
 # right, is doubled as a tenor on TenorCM. No new notes are invented.
