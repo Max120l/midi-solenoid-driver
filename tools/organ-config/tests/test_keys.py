@@ -187,7 +187,7 @@ def test_screen_loop_runs_against_a_fake_curses(monkeypatch):
 def test_r_rolls_the_two_snare_beaters_alternately_at_the_set_interval():
     c, s = console(labels={55: "Snare", 56: "Snare", 15: "Bass"})
     assert c.snare_pair() == [55, 56]
-    c.handle_key("r", 100.0)
+    c.handle_key("d", 100.0)
     assert c.roll_targets == [55, 56]
     for i in range(0, 61):
         c.tick(100.0 + i * 0.01 + 0.005)                  # 600 ms at 120 ms/hit -> hits at 0,120,...,600
@@ -195,7 +195,7 @@ def test_r_rolls_the_two_snare_beaters_alternately_at_the_set_interval():
     assert ons == [54, 55, 54, 55, 54, 55]                # solenoid-1 on the wire, alternating
     offs = [n for typ, n in s.notes() if typ == "note_off"]
     assert len(offs) >= 5                                 # each hit released before the next same beater
-    c.handle_key("r", 101.0)                              # r again stops it, everything off
+    c.handle_key("d", 101.0)                              # d again stops it, everything off
     assert c.roll_targets == [] and c.sounding == set()
 
 
@@ -208,7 +208,7 @@ def test_arrows_change_the_roll_interval_and_hits_shorten_with_it():
         c.handle_key("DOWN", 0.0)
     assert c.roll_interval_ms == ok.ROLL_MAX_MS and c.roll_hit_ms() == c.pulse_ms
     c.roll_interval_ms = 40
-    c.handle_key("r", 0.0)
+    c.handle_key("d", 0.0)
     for i in range(0, 41):
         c.tick(i * 0.01)                                  # 400 ms at 40 ms -> 11 hits
     ons = [n for typ, n in s.notes() if typ == "note_on"]
@@ -217,10 +217,10 @@ def test_arrows_change_the_roll_interval_and_hits_shorten_with_it():
 
 def test_capital_r_rolls_the_last_tapped_solenoid_alone_and_space_stops_it():
     c, s = console()
-    c.handle_key("R", 0.0)
+    c.handle_key("D", 0.0)
     assert "tap a solenoid first" in c.status and c.roll_targets == []
     c.handle_key("3", 0.0)
-    c.handle_key("R", 1.0)
+    c.handle_key("D", 1.0)
     assert c.roll_targets == [3]
     for i in range(0, 50):
         c.tick(1.0 + i * 0.01)
@@ -232,5 +232,15 @@ def test_capital_r_rolls_the_last_tapped_solenoid_alone_and_space_stops_it():
 
 def test_r_without_an_organ_definition_explains_itself():
     c, _ = console()
-    c.handle_key("r", 0.0)
+    c.handle_key("d", 0.0)
     assert c.roll_targets == [] and "--organ" in c.status
+
+
+def test_r_is_a_solenoid_key_not_a_roll():
+    # Regression: the roll used to live on r, which is solenoid 12's key.
+    c, s = console(labels={55: "Snare", 56: "Snare"})
+    c.handle_key("r", 0.0)
+    assert c.roll_targets == [] and s.notes() == [("note_on", 11)]
+    c.handle_key("x", 0.0)
+    c.handle_key("r", 1.0)
+    assert s.notes()[-1] == ("note_on", 27)                # board 2, solenoid 28

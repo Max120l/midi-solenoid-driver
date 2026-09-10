@@ -19,6 +19,9 @@ Keys
     z x c v   or Tab     select board 1-4
     h                    hold mode on/off (keys toggle instead of pulse)
     a                    play the selected board's 16 in a row
+    d                    roll the snare, alternating its two beaters (d again stops)
+    D                    roll the last tapped solenoid alone
+    up / down arrows     roll faster / slower
     -  =                 pulse length down / up
     space  or  0         everything off
     Q  or  Esc           quit (everything off first)
@@ -249,24 +252,24 @@ class Console:
 
     def handle_roll_key(self, key: str, now: float) -> bool:
         """r / R / UP / DOWN. Returns True if the key was one of those."""
-        if key == "r":
+        if key == "d":
             if self.roll_targets:
                 self.all_off()
                 self.status = "roll stopped"
             else:
                 pair = self.snare_pair()
                 if len(pair) < 2:
-                    self.status = "no snare pair in the organ definition (need --organ); R rolls the last tapped solenoid"
+                    self.status = "no snare pair in the organ definition (need --organ); D rolls the last tapped solenoid"
                 else:
                     self.start_roll(pair, now)
                     self.status = f"rolling snare, beaters {pair[0]} and {pair[1]}"
             return True
-        if key == "R":
+        if key == "D":
             if self.roll_targets:
                 self.all_off()
                 self.status = "roll stopped"
             elif self.last_tap is None:
-                self.status = "tap a solenoid first, then R rolls it alone"
+                self.status = "tap a solenoid first, then D rolls it alone"
             else:
                 self.start_roll([self.last_tap], now)
                 self.status = f"rolling solenoid {self.last_tap} alone"
@@ -302,7 +305,7 @@ def render(c: Console) -> list[tuple[str, str]]:
     mode = "HOLD" if c.hold else f"pulse {c.pulse_ms} ms"
     per_s = 1000 / c.roll_interval_ms
     roll = (f"ROLLING {'+'.join(str(s) for s in c.roll_targets)} " if c.roll_targets else "roll ")
-    roll += f"{c.roll_interval_ms} ms/hit = {per_s:.1f}/s [r snare, R last tap, arrows]"
+    roll += f"{c.roll_interval_ms} ms/hit = {per_s:.1f}/s [d snare, D last tap, arrows]"
     lines.append((f" organ_keys {__version__}   board {c.board + 1} [z x c v, Tab]   {mode} [h, - =]", "normal"))
     lines.append((" keys 1-8 and q-i fire the marked board   a: its 16 in a row   space: all off   Q: quit", "dim"))
     lines.append((" " + roll, "active" if c.roll_targets else "dim"))

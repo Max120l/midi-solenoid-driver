@@ -133,15 +133,15 @@ python organ_keys.py --serial /dev/serial0 --organ ../organ-arranger/instrument/
 | `z` `x` `c` `v`, `Tab` | select board 1–4 |
 | `h` | hold mode: a key opens a valve until pressed again (leaving hold mode closes everything) |
 | `a` | play the selected board's sixteen in a row |
-| `r` | roll the snare, alternating its two beaters; `r` again stops |
-| `R` | roll the last tapped solenoid on its own, to find one solenoid's limit |
+| `d` | roll the snare (drum), alternating its two beaters; `d` again stops |
+| `D` | roll the last tapped solenoid on its own, to find one solenoid's limit |
 | `↑` `↓` | roll faster / slower, 5 ms per press (20–500 ms per hit; the header shows hits per second) |
 | `-` `=` | tap length down / up (default 150 ms) |
 | `space`, `0` | everything off, plus an all-notes-off on the channel |
 | `Q`, `Esc` | quit, everything off first |
 
 The organ's two snare notes are two beaters on one drum, so the roll alternates
-them, as organ books do; `R` on one solenoid shows how fast a single beater can
+them, as organ books do; `D` on one solenoid shows how fast a single beater can
 really repeat, which is what `min_gap_ms` in organ.yaml should be tuned to.
 
 A tap is a pulse, because a terminal cannot see a key being released. Hold
