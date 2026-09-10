@@ -34,3 +34,23 @@ for scales that punch sustained notes as rows of short holes.
 
 Tested on "49T Limonaire - LA VALSE BRUNE" (Orchestrophone1904): 540x360 at
 25 fps, 49 rows at 6.16 px, 4,485 holes on 47 rows in 197 s.
+
+## From rows to the organ
+
+`book_to_organ.py` turns the row events into the organ-format score, given
+the layout sheet with a `book scale` column (which book key drives each
+solenoid) and which key the top row is:
+
+```bash
+python book_to_organ.py valse-brune.events.json --scale limonaire49t_scale.xlsx --top-key 49 -o valse-brune.fororgan.mid
+python ../organ-arranger/organ_arranger.py valse-brune.fororgan.mid --organ ../organ-arranger/instrument/organ.yaml
+```
+
+Finding the row order without guessing: decode the video's audio, correlate
+each row's on/off pattern with the energy at every pitch, and score the
+candidate orders against the sheet for every transposition. For the
+Orchestrophone1904 scans the top row is key 49, keys descend down the
+picture, and that organ sounds a fifth above this sheet's nominal notes
+(it is also about a quarter tone flat of A440). The three drum keys came out
+empty on La Valse Brune: that book, as scanned, has no percussion, and the
+dotted rows are fast repeated melody notes.
