@@ -596,31 +596,39 @@ def derive_thirds(notes: list[Note]) -> list[Note]:
 def derive_arpeggio(notes: list[Note], step_s_at, ) -> list[Note]:
     """Block chords into a moving line: each group of simultaneous notes is
     played one chord tone at a time, bottom to top and back, at one tone per
-    step, for as long as the chord lasts. A lone note is left alone."""
+    step, from the chord's onset until the next chord -- its harmonic span,
+    not its punched length, so a roll's short oom-pah stabs become a line
+    that keeps moving through the bar. A lone note is left alone."""
     ordered = sorted(notes, key=lambda n: (n.start, n.pitch))
     out: list[Note] = []
     i = 0
+    walk = 0            # position in the up-and-down cycle, carried from chord to chord
     while i < len(ordered):
         j = i
         while j < len(ordered) and ordered[j].start - ordered[i].start <= ONSET_GROUP_S:
             j += 1
         chord = sorted({n.pitch for n in ordered[i:j]})
         start = ordered[i].start
-        end = max(n.end for n in ordered[i:j])
+        sounding = max(n.end for n in ordered[i:j])
         nxt = ordered[j].start if j < len(ordered) else None
-        if nxt is not None:
-            end = min(end, nxt) if nxt > start else end
         step = step_s_at(start)
-        if len(chord) < 2 or end - start < step * 1.5:
+        # the span: to the next chord, but never more than two bars' worth of
+        # steps past the chord's own sound (a chord before a rest should stop)
+        end = sounding if nxt is None else min(nxt, max(sounding, start + step * 8))
+        cycle = chord + chord[-2:0:-1]                           # up and back down, no repeats at the turns
+        if len(chord) < 2:
             out.extend(ordered[i:j])
+        elif end - start < step * 1.5:
+            # chords come faster than the arpeggio would: walk instead, one
+            # chord tone per chord, moving through the cycle across chords
+            out.append(Note(start, sounding, cycle[walk % len(cycle)]))
+            walk += 1
         else:
-            cycle = chord + chord[-2:0:-1]                       # up and back down, no repeats at the turns
             t = start
-            k = 0
             while t < end - 1e-6:
-                out.append(Note(t, min(t + step, end), cycle[k % len(cycle)]))
+                out.append(Note(t, min(t + step, end), cycle[walk % len(cycle)]))
                 t += step
-                k += 1
+                walk += 1
         i = j
     return sorted(out, key=lambda n: (n.start, n.pitch))
 

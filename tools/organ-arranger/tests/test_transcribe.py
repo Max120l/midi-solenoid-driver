@@ -671,8 +671,8 @@ def test_derive_arpeggio_turns_a_held_chord_into_an_up_and_down_line():
     assert line[0].start == 0.0 and line[-1].end == 2.0 and all(abs(n.end - n.start - 0.25) < 1e-9 for n in line)
     single = [ot.Note(0.0, 1.0, 60)]
     assert ot.derive_arpeggio(single, lambda at: 0.25) == single
-    short = [ot.Note(0.0, 0.3, 48), ot.Note(0.0, 0.3, 52)]                           # too short to arpeggiate
-    assert ot.derive_arpeggio(short, lambda at: 0.25) == sorted(short, key=lambda n: (n.start, n.pitch))
+    short = [ot.Note(0.0, 0.3, 48), ot.Note(0.0, 0.3, 52)]                           # too short to arpeggiate: walk instead
+    assert ot.derive_arpeggio(short, lambda at: 0.25) == [ot.Note(0.0, 0.3, 48)]
 
 
 def test_derive_options_reach_the_arrangement_and_round_trip():
@@ -696,3 +696,27 @@ def test_derive_options_reach_the_arrangement_and_round_trip():
     assert again.voices[1].derive == "thirds" and again.voices[2].derive == "arpeggio" and again.voices[2].derive_step == 0.5
     with pytest.raises(ot.TranscribeError):
         ot.Plan.from_dict({"voices": [{"source": "x", "rank": "drop", "derive": "sixths"}]})
+
+
+def test_derive_arpeggio_fills_the_span_between_short_punched_chords():
+    # oom-pah-pah stabs 100 ms long, chords every 0.5 s: the line runs through the gaps
+    stabs = []
+    for k in range(4):
+        stabs += [ot.Note(k * 0.5, k * 0.5 + 0.1, 48), ot.Note(k * 0.5, k * 0.5 + 0.1, 52), ot.Note(k * 0.5, k * 0.5 + 0.1, 55)]
+    line = ot.derive_arpeggio(stabs, lambda at: 0.125)
+    first = [n for n in line if n.start < 0.5]
+    assert [n.pitch for n in first] == [48, 52, 55, 52]                # four eighths fill the half second
+    assert first[-1].end == pytest.approx(0.5)
+    last = [n for n in line if n.start >= 1.5]
+    assert last and last[-1].end <= 1.5 + 0.125 * 8 + 1e-9             # the last chord does not run on forever
+
+
+def test_derive_arpeggio_walks_when_chords_change_faster_than_the_step():
+    # pah-pah chords every 0.25 s, step 0.25 s: no room to arpeggiate, so one
+    # tone per chord, moving through the cycle, not the top note every time
+    stabs = []
+    for k in range(6):
+        stabs += [ot.Note(k * 0.25, k * 0.25 + 0.1, 48), ot.Note(k * 0.25, k * 0.25 + 0.1, 52), ot.Note(k * 0.25, k * 0.25 + 0.1, 55)]
+    line = ot.derive_arpeggio(stabs, lambda at: 0.25)
+    assert [n.pitch for n in line] == [48, 52, 55, 52, 48, 52]
+    assert all(abs(n.end - n.start - 0.1) < 1e-9 for n in line)          # keeps the punched length
