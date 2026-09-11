@@ -13,7 +13,7 @@ read exactly, frame by frame, with no listening involved:
   3. for every frame, note which rows are red at the playhead,
   4. optionally join chain perforations (--chain-gap N frames) for scales
      that punch sustained notes as rows of short holes. Off by default: on
-     the Limonaire 49 the dotted rows are the snare's two beaters rolling.
+     the Limonaire 49 books read so far, dotted rows were fast repeated notes.
 
 Outputs, next to the video (or at --out PREFIX):
   PREFIX.rows.json     lattice, playhead, per-row hole statistics
@@ -40,7 +40,7 @@ from pathlib import Path
 __version__ = "0.1.0"
 
 DEFAULT_KEYS = 49
-CHAIN_GAP_FRAMES = 0           # off: on this scale the dotted rows are snare rolls, not chained sustains
+CHAIN_GAP_FRAMES = 0           # off: on these books the dotted rows are repeated notes, not chained sustains
 
 
 def masks(frame, np, cv2):

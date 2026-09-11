@@ -27,8 +27,8 @@ red at the playhead. It writes:
 
 Rows are anonymous. The scale — which row is which pipe, drum or register —
 turns the row MIDI into an organ-format file; from there `organ_arranger`
-does the rest. On the Limonaire 49 the alternating dotted rows are the
-snare's two beaters rolling, not chain perforations: `--chain-gap` (joining
+does the rest. On the Limonaire 49 books read so far the dotted rows were
+fast repeated melody notes, not chain perforations: `--chain-gap` (joining
 holes separated by N frames or fewer) is therefore off by default, and only
 for scales that punch sustained notes as rows of short holes.
 
