@@ -284,6 +284,24 @@ the board's indicator LEDs too: on some of these modules the signal LED is in
 series with the input and eats 2 V of the 3.3 V drive, in which case bridge
 it. This one did not need either change.
 
+Because this is the standard MIDI IN circuit, any ordinary MIDI source drives
+the module unchanged: DIN pin 4 to IN+, DIN pin 5 to IN-, pin 2 left
+unconnected on this side. A source's two 220 Ω legs plus the 360 Ω put the
+loop at about 4.5 mA from a 5 V keyboard, so the 1 k across R1 is worth
+fitting before a keyboard is used. A 1N4148 across the input (cathode on
+IN+) protects the LED from a reversed source, as every MIDI IN has. To make
+the Pi a standard source too, give it a MIDI OUT: 3.3 V through 33 Ω to DIN
+pin 4, TX through 10 Ω to pin 5, ground to pin 2 (the spec's 3.3 V values).
+Two sources cannot share one opto -- an idle source holds the loop open --
+so switch cables, or use a merge box, or send the keyboard to the Pi over
+USB and let the Pi forward.
+
+An earlier home-made input had the Pi's TX lighting the LED at idle behind a
+non-inverting output stage. It worked with the Pi, which does not care which
+state carries the current, but it is upside down for a MIDI source and
+would have shown a keyboard as a permanent break. The inverting 6N137 with
+TX on the cathode is what makes the input standard.
+
 ## Remote reset from the Pi
 
 `/RESET` is on **pin 5 of the ISP header, with GND on pin 6** beside it,
