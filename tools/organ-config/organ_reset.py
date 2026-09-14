@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-organ_reset -- pulse the driver boards' RESET lines from Raspberry Pi GPIO.
+organ_reset -- pulse the driver boards' RESET line from Raspberry Pi GPIO.
 
-Each board's RESET is reached through an optocoupler (see hardware/HARDWARE-
-NOTES.md, "Remote reset from the Pi"): a GPIO drives the opto's LED through
-330 ohm, and the opto's output pulls the board's RESET low. The Pi and the
-organ share no ground, which is the point.
+RESET is reached through an optocoupler (see hardware/HARDWARE-NOTES.md,
+"Remote reset from the Pi"): a GPIO drives the opto's LED through 330 ohm,
+and the opto's output pulls RESET low. The Pi and the organ share no ground,
+which is the point.
 
-    organ_reset.py --all
-    organ_reset.py --board 2
-    organ_reset.py --board 1 --board 4 --pins 17,27,22,23 --hold-ms 100
+This instrument has one common reset line for the whole chain, on RJ12 bus
+pin 1, driven from GPIO 17 -- the default. With several lines (one opto per
+board), list their GPIOs in board order with --pins and pick boards with
+--board.
+
+    organ_reset.py                       # the common line: every board
+    organ_reset.py --hold-ms 200
+    organ_reset.py --pins 17,27,22,23 --board 2   # per-board wiring
 
 A reset reloads the board's saved EEPROM settings and runs its power-up
 exercise routine -- every coil in sequence, about 3.8 s. Under wind that plays
@@ -26,7 +31,7 @@ import time
 
 __version__ = "0.1.0"
 
-DEFAULT_PINS = "17,27,22,23"      # BCM numbers: physical pins 11, 13, 15, 16; all pull-down at boot
+DEFAULT_PINS = "17"               # BCM; physical pin 11, pull-down at boot. Per-board wiring: "17,27,22,23"
 STAGGER_S = 0.25                  # between boards, so four exercise routines do not start together
 
 
@@ -66,8 +71,8 @@ def pulse(pin: int, hold_s: float, device_factory=None) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="organ_reset", description="Reset the solenoid driver boards from the Pi.")
-    p.add_argument("--pins", default=DEFAULT_PINS, help=f"BCM GPIO per board, in board order (default {DEFAULT_PINS})")
-    p.add_argument("--board", type=int, action="append", help="board to reset, 1-based; repeatable")
+    p.add_argument("--pins", default=DEFAULT_PINS, help=f"BCM GPIO of the reset line, or one per board in board order (default {DEFAULT_PINS})")
+    p.add_argument("--board", type=int, action="append", help="board to reset, 1-based, when --pins lists one line per board; repeatable")
     p.add_argument("--all", action="store_true", help="reset every board (default when no --board is given)")
     p.add_argument("--hold-ms", type=int, default=100, help="how long to hold RESET low (default 100)")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -87,7 +92,10 @@ def main(argv: list[str] | None = None) -> int:
 
     for i, b in enumerate(targets):
         pulse(pins[b - 1], a.hold_ms / 1000)
-        print(f"board {b}: reset pulsed on GPIO {pins[b - 1]}")
+        if len(pins) == 1:
+            print(f"reset pulsed on GPIO {pins[0]}: the whole chain")
+        else:
+            print(f"board {b}: reset pulsed on GPIO {pins[b - 1]}")
         if i + 1 < len(targets):
             time.sleep(STAGGER_S)
     print("boards will reload their saved settings and run the exercise routine")

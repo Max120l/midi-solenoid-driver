@@ -129,6 +129,8 @@ import organ_reset as orst  # noqa: E402
 
 
 def test_reset_pin_parsing_and_target_selection():
+    assert orst.parse_pins(orst.DEFAULT_PINS) == [17]           # one common line for the chain
+    assert orst.select_targets([17], None, False) == [1]
     pins = orst.parse_pins("17,27,22,23")
     assert pins == [17, 27, 22, 23]
     assert orst.select_targets(pins, None, False) == [1, 2, 3, 4]

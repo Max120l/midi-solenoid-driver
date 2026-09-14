@@ -254,7 +254,7 @@ current rather than sourcing it:
 Pi 3.3 V (header pin 1 or 17) ── IN+ (anode)          Pi side
 Pi TX, GPIO 14 (header pin 8) ── IN- (cathode)
                                  ────────────────────── isolation barrier
-organ 5 V ────────────────────── VCC
+organ 5 V (RJ12 bus pin 6) ───── VCC
 OUT ─────────────────────────── RX of all four boards
 organ GND ───────────────────── GND
 ```
@@ -314,38 +314,70 @@ without opening the case.
 **Do not run a bare wire from a Pi GPIO.** It would tie the Pi's ground to
 the organ's -- the ground plane that sinks the solenoid current -- which is
 exactly what the optocoupler on the MIDI input exists to prevent. Isolate the
-reset line the same way:
+reset line the same way.
+
+### One common line, on the RJ12 bus
+
+Decided 2026-09-14: **one reset line for the whole chain**, not one per
+board. The boards cannot talk back, so the Pi never knows which board hung
+and would reset all of them anyway; a whole-organ reset costs milliseconds
+plus the exercise routine, which exerciseCycles = 0 silences; and a common
+line is what a modular chain wants -- a fifth board gets the same bodge and
+nothing on the Pi changes. The only loss is diagnosis: a shorted reset
+bodge on any board holds all of them in reset.
+
+The line rides the spare pins of the RJ12 chain, together with 5 V for the
+opto modules at the head:
+
+| RJ12 pin | Carries | On every board | Once |
+|---|---|---|---|
+| 1 | `/RESET`, common | jumper J1 pin 1 to J3 pin 1; tap to ISP pin 5; 100 nF from ISP pin 5 to pin 6 | |
+| 6 | 5 V for the opto modules | jumper J1 pin 6 to J3 pin 6 | fed from ISP pin 2 (VCC) on the **last** board only |
+| the two the boards already use | MIDI signal, GND | as shipped | |
+
+The jumpers are needed because the spare pins have no copper between J1 and
+J3 (in the PCB file only pins 1 and 4 are netted, and only for the RS485
+revision). The 5 V comes from one board so that four regulators are never
+paralleled on one wire; the modules draw about 15 mA, so the drop over the
+whole chain, even from the far end, is a few millivolts. 30 AWG wire-wrap
+wire is ample for both lines at these currents.
+
+**Cables must be straight-through.** With `/RESET` on pin 1 and 5 V on
+pin 6, a reversed ("telephone") RJ12 cable joins the two buses: the reset
+line is then tied to 5 V and the opto shorts the rail when it fires. The
+existing cables are straight or the MIDI pair would not have worked, but a
+new cable needs checking before it goes in.
 
 ```
-Pi GPIO ──[330 Ω]──► PC817 pin 1 (anode)         Pi side
-Pi GND ────────────── PC817 pin 2 (cathode)
-                      ────────────────────────── isolation barrier
-                      PC817 pin 4 (collector) ── ISP header pin 5 (RESET)
-                      PC817 pin 3 (emitter)   ── ISP header pin 6 (GND)
+Pi GPIO 17 ──[330 Ω]──► PC817 pin 1 (anode)          Pi side
+Pi GND ───────────────── PC817 pin 2 (cathode)
+                         ─────────────────────────── isolation barrier
+                         PC817 pin 4 (collector) ── RJ12 bus pin 1 (/RESET)
+                         PC817 pin 3 (emitter)   ── RJ12 bus GND
 ```
 
-One opto and one resistor per board, or a quad package (LTV-847, TLP281-4,
-PC847) for four. A ready-made four-channel PC817-type module does the job
-too, as long as its output is a bare open collector or a transistor that
-pulls low when the LED is lit: in seller language that is an "inverting"
-module, and it is the one to buy. Whatever the module, the test that
-matters is at rest -- with the GPIO low, or the Pi off, /RESET must read
-high on the header. If it does not, the boards will sit in reset whenever
-the Pi is down. Keep four separate lines rather than ganging them on one
-GPIO: it costs three pins and lets one hung board be kicked while the other
-three keep playing. The LED draws about 6 mA from the 3.3 V GPIO; the output transistor
-sinks the pull-up's 0.5 mA with ease and saturates near 0.2 V, well under the
-AVR's reset threshold of about 1 V. The output is open-collector, so it does
-not interfere with an ISP programmer -- simply do not assert it while
-flashing.
+The opto sits at the head of the chain beside the MIDI module and needs one
+channel only: the four 10k pull-ups in parallel are 2.5k, 2 mA, which any
+PC817 sinks while saturating near 0.2 V, well under the AVR's reset
+threshold of about 1 V. A ready-made module does as well, as long as its
+output is a bare open collector or a transistor that pulls low when the LED
+is lit -- an "inverting" module in seller language. Whatever the part, the
+test that matters is at rest: with the GPIO low, or the Pi off, `/RESET`
+must read high on the ISP header, or the organ sits in reset whenever the
+Pi is down. The output is open-collector, so it does not interfere with an
+ISP programmer -- simply do not assert it while flashing.
 
-Place the opto at the **board** end. The long wire then carries LED drive,
-which needs over a volt and milliamps to do anything, and the sensitive
-`/RESET` trace -- which has no capacitor on it -- stays a centimetre long.
+The line now runs through the chest next to solenoid wiring, which is why
+each board gets the 100 nF: with the 2.5k pull-up it filters about a
+millisecond, which no real reset pulse notices and no coupled spike
+survives. `/RESET` has no capacitor of its own on the board.
 
-Suggested GPIOs: 17, 27, 22, 23 (physical pins 11, 13, 15, 16), one per board.
-All four default to pull-down at boot, so a booting Pi cannot hold the organ
-in reset by accident. `tools/organ-config/organ_reset.py` drives them.
+GPIO 17 (physical pin 11) defaults to pull-down at boot, so a booting Pi
+cannot hold the organ in reset by accident.
+`tools/organ-config/organ_reset.py --pins 17` drives the line; with one pin
+configured, "board 1" is the whole chain. The per-board wiring the tool
+was written for (GPIOs 17, 27, 22, 23, an opto at each board's ISP header)
+still works if independent resets are ever wanted.
 
 A reset with wind on plays a scale, since the exercise routine fires every
 coil. Set exerciseCycles to 0 over MIDI first if remote resets need to be

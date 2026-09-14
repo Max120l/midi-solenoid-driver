@@ -94,18 +94,19 @@ tweak.
 
 ## Resetting boards from the Pi
 
-`organ_reset.py` pulses each board's RESET through an optocoupler wired to a
+`organ_reset.py` pulses the boards' RESET through an optocoupler wired to a
 Pi GPIO — see the hardware notes for the circuit. The Pi and the organ share
 no ground; the reset line is isolated for the same reason the MIDI line is.
 
 ```bash
 pip install gpiozero lgpio
-python organ_reset.py --all
-python organ_reset.py --board 2
+python organ_reset.py
 ```
 
-Default GPIOs are 17, 27, 22 and 23 (physical pins 11, 13, 15, 16), one per
-board in order; `--pins` changes that. A reset reloads the board's saved
+This instrument has one common reset line for the whole chain, on GPIO 17
+(physical pin 11), which is the default. If the boards are ever given one
+line each, list the GPIOs in board order with `--pins 17,27,22,23` and pick
+boards with `--board 2`. A reset reloads the board's saved
 settings and runs its exercise routine, so under wind it plays a scale — set
 `--exercise 0 --save` with `organ_config` first if that matters.
 
