@@ -239,6 +239,51 @@ that is two regulators contending for one rail.
 Since tuning is done over MIDI (see the README), reflashing is rare, which is
 the best mitigation of all.
 
+## MIDI input: the isolated link from the Pi
+
+The Pi's UART reaches all four boards through one optocoupler module, a
+generic single-channel board (marked GYJ-0109-B) carrying a **6N137** with a
+360 Ω input resistor, a two-transistor output buffer and its own pull-up on
+OUT. A 6N137 is fast enough for 31,250 baud with a wide margin; the slow
+PC817 class is not, and belongs on the reset lines instead.
+
+The module is wired the MIDI way, with the Pi's TX **sinking** the LED
+current rather than sourcing it:
+
+```
+Pi 3.3 V (header pin 1 or 17) ── IN+ (anode)          Pi side
+Pi TX, GPIO 14 (header pin 8) ── IN- (cathode)
+                                 ────────────────────── isolation barrier
+organ 5 V ────────────────────── VCC
+OUT ─────────────────────────── RX of all four boards
+organ GND ───────────────────── GND
+```
+
+With TX idle high, both ends of the LED sit at 3.3 V, nothing flows and the
+LED is dark; the 6N137 is inverting, so OUT idles at the 5 V the boards
+expect. Each zero bit pulls TX low, the pin sinks about 5 mA through the
+360 Ω, and OUT drops. Measured on the bench: OUT idles at 5 V and dips on
+every note. No Pi ground goes to the module at all -- the TX pin is the
+return -- and nothing links the two grounds.
+
+The two ways this was got wrong first, kept here so they are not repeated:
+
+- **IN+ to TX, IN- to Pi GND** lights the LED at *idle* and leaves it dark on
+  zero bits. OUT then sits low (about 0.9 V here, a solid low for the AVR's
+  1.5 V threshold) and the boards see a permanent break. Pulling the input
+  wires and watching OUT rise to 5 V is the quick way to recognise it.
+- **Swapping the two input wires** reverse-biases the LED, which then never
+  lights: OUT stays at 5 V for ever. The module's IN+/IN- polarity is fixed;
+  only the Pi ends of the wires move.
+
+Feed the LED from 3.3 V, not 5 V: with TX resting at 3.3 V, a 5 V anode would
+leave 1.7 V across the LED and the chip might never switch fully off. The
+360 Ω gives about 5 mA from 3.3 V, right at the 6N137's minimum; if a module
+of this type proves marginal, a 1 k across R1 brings it to about 7 mA. Check
+the board's indicator LEDs too: on some of these modules the signal LED is in
+series with the input and eats 2 V of the 3.3 V drive, in which case bridge
+it. This one did not need either change.
+
 ## Remote reset from the Pi
 
 `/RESET` is on **pin 5 of the ISP header, with GND on pin 6** beside it,
@@ -261,8 +306,16 @@ Pi GND ────────────── PC817 pin 2 (cathode)
                       PC817 pin 3 (emitter)   ── ISP header pin 6 (GND)
 ```
 
-One opto and one resistor per board, or a quad package (LTV-847, TLP281-4)
-for four. The LED draws about 6 mA from the 3.3 V GPIO; the output transistor
+One opto and one resistor per board, or a quad package (LTV-847, TLP281-4,
+PC847) for four. A ready-made four-channel PC817-type module does the job
+too, as long as its output is a bare open collector or a transistor that
+pulls low when the LED is lit: in seller language that is an "inverting"
+module, and it is the one to buy. Whatever the module, the test that
+matters is at rest -- with the GPIO low, or the Pi off, /RESET must read
+high on the header. If it does not, the boards will sit in reset whenever
+the Pi is down. Keep four separate lines rather than ganging them on one
+GPIO: it costs three pins and lets one hung board be kicked while the other
+three keep playing. The LED draws about 6 mA from the 3.3 V GPIO; the output transistor
 sinks the pull-up's 0.5 mA with ease and saturates near 0.2 V, well under the
 AVR's reset threshold of about 1 V. The output is open-collector, so it does
 not interfere with an ISP programmer -- simply do not assert it while
