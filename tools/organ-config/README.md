@@ -112,12 +112,17 @@ settings and runs its exercise routine, so under wind it plays a scale — set
 
 ## Playing solenoids from the keyboard
 
-`organ_keys.py` is the commissioning screen: the 64 solenoids drawn as four
-boards, numbered as on the layout sheet, with the key that fires each one and,
-given the organ definition, what it is.
+`organ_keys.py` is the commissioning screen: the 64 solenoids drawn in blocks,
+numbered as on the layout sheet, with the key that fires each one and, given
+the organ definition, what it is. Two views of the same solenoids: **by
+board**, four blocks of sixteen as wired, and **by section**, the organ's
+ranks -- Melody, Accompainment, Base, TenorCM, TrebCM, Drums, Registers --
+each in pitch order, so the keys walk up the rank and `a` plays its scale.
+`s` switches between them on screen.
 
 ```bash
 python organ_keys.py --serial /dev/serial0 --organ ../organ-arranger/instrument/organ.yaml
+python organ_keys.py --serial /dev/serial0 --organ ../organ-arranger/instrument/organ.yaml --view section
 ```
 
 ```
@@ -128,12 +133,30 @@ python organ_keys.py --serial /dev/serial0 --organ ../organ-arranger/instrument/
  Tr B6    F2 Bas   C2 Bas   C4 Acc   E6 Mel   A#3 Acc  C6 Mel   G3 Acc
 ```
 
+By section, the same solenoids regroup as ranks, in pitch order, each cell
+naming the note and the board it is wired to:
+
+```
+ Accompainment   9 solenoids   <-- keys
+ 36 1     38 2     34 3     40 4     32 5     42 6     30 7     44 8
+ C3 b3    D3 b3    E3 b3    F3 b3    G3 b2    A3 b3    A#3 b2   B3 b3
+ 28 q
+ C4 b2
+ Base   4 solenoids
+ 27       26       63       62
+ C2 b2    F2 b2    G2 b4    A#2 b4
+```
+
+The section view is 36 lines tall with every block open; on a shorter
+terminal the blocks that are not selected fold to their headings.
+
 | Key | Does |
 |---|---|
-| `1`–`8`, `q`–`i` | fire solenoids 1–8 and 9–16 of the selected board |
-| `z` `x` `c` `v`, `Tab` | select board 1–4 |
+| `1`–`8`, `q`–`i` | fire the first eight and the next eight solenoids of the selected block |
+| `z` `x` `c` `v` `b` `n` `m`, `Tab` | select a block: board 1–4, or section 1–7 |
+| `s` | switch view, boards / sections (sections need `--organ`) |
 | `h` | hold mode: a key opens a valve until pressed again (leaving hold mode closes everything) |
-| `a` | play the selected board's sixteen in a row |
+| `a` | play the selected block in a row: a board's sixteen, or a section's scale |
 | `d` | roll the snare (drum), alternating its two beaters; `d` again stops |
 | `D` | roll the last tapped solenoid on its own, to find one solenoid's limit |
 | `↑` `↓` | roll faster / slower, 5 ms per press (20–500 ms per hit; the header shows hits per second) |
@@ -149,8 +172,10 @@ A tap is a pulse, because a terminal cannot see a key being released. Hold
 mode is for tuning a pipe or finding a tube that goes nowhere. `--dry-run`
 shows the screen with no output; `--port` uses a MIDI interface instead of
 the UART; `--solenoid-1-note` overrides what the definition says about the
-wire. Labels are `Tn`/`Tr` for TenorCM and TrebCM, the note, and `Bas`/`Acc`/
-`Mel` for Main's sections; registers show as `Trom B+` (Trombone Base on).
+wire; `--view section` starts in the section view. In the board view labels
+are `Tn`/`Tr` for TenorCM and TrebCM, the note, and `Bas`/`Acc` for the
+accompaniment's sections; in the section view they are the note and the
+board (`C3 b3`). Registers show as `Trom B+` (Trombone Base on) in both.
 
 ## Tests
 
