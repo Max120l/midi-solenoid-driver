@@ -302,6 +302,24 @@ state carries the current, but it is upside down for a MIDI source and
 would have shown a keyboard as a permanent break. The inverting 6N137 with
 TX on the cathode is what makes the input standard.
 
+## Faults found while commissioning four boards
+
+Hand-assembled boards, sixteen channels each. What went wrong, how it
+showed, and what found it -- worth running through before blaming the
+tubing or the arranger.
+
+| Fault | How it showed | Found by |
+|---|---|---|
+| Solder bridges between neighbouring gate pads | two solenoids on one key, or one that never released | the row walk in `organ_keys`: a bridge fires a pair |
+| Series gate network (RN7-RN10) not soldered on the MCU side | the solenoid dead, or firing on its own: the gate floats and follows its neighbours | continuity from the MCU pin to the network, then about 1 k through to the gate |
+| Snubber diode reversed on one channel | the solenoid never fired under power, though every joint tested fine: the diode conducts across the coil the moment the FET turns on, and only the hold PWM saved the FET | ohms across the diode against a working channel; nothing else sees it |
+
+Per channel the parts are Q*n* (FET), D*n* (snubber, across the coil),
+D(16+*n*) (gate indicator, see above), and one element each of the series
+network and the pull-down network: RN7/RN1 for channels 1-4, RN8/RN5 for
+5-8, RN9/RN2 for 9-12, RN10/RN6 for 13-16. On the series networks the gate
+for channel *n* of the group is pin *n* and its MCU input is pin 9 - *n*.
+
 ## Remote reset from the Pi
 
 `/RESET` is on **pin 5 of the ISP header, with GND on pin 6** beside it,
