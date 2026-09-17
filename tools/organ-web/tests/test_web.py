@@ -378,6 +378,32 @@ def test_upload_puts_a_finished_file_in_a_folder_and_refuses_junk(client, desk, 
     assert client.post("/api/upload", data={}, content_type="multipart/form-data").status_code == 400
 
 
+def test_board_parameters_go_out_as_organ_config_ccs_and_are_remembered(client, desk):
+    r = client.post("/api/boards", json={"peak": 60, "hold": 25, "peak_ms": 40})
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["sent"][0].endswith("all boards") and any("peak duty" in s and s.split()[-1] == "60" for s in d["sent"])
+    assert d["warnings"] == [] and d["boards"]["peak"] == 60 and "sent_at" in d["boards"] and "saved_at" not in d["boards"]
+    assert json.loads(desk.cfg.settings_file.read_text())["boards"]["hold"] == 25
+    # save: the command goes last, and the moment is remembered
+    d = client.post("/api/boards", json={"hold": 30, "command": "save"}).get_json()
+    assert d["sent"][-1].endswith("save") and d["boards"]["hold"] == 30 and d["boards"]["peak"] == 60 and "saved_at" in d["boards"]
+    # one board only, by base note
+    d = client.post("/api/boards", json={"peak": 55, "board": 16}).get_json()
+    assert d["sent"][0].endswith("base note 16")
+    # out of range is refused before anything is sent; so is an empty request and a bad command
+    assert client.post("/api/boards", json={"hold": 90}).status_code == 400
+    assert client.post("/api/boards", json={}).status_code == 400
+    assert client.post("/api/boards", json={"command": "explode"}).status_code == 400
+    # factory forgets what was remembered
+    d = client.post("/api/boards", json={"command": "factory"}).get_json()
+    assert set(d["boards"]) == {"sent_at"}
+    # not while the player has work
+    desk.add(["marches/bogey.organ.mid"])
+    assert client.post("/api/boards", json={"peak": 60}).status_code == 409
+    assert client.get("/api/state").get_json()["settings"]["boards"] == d["boards"]
+
+
 def test_upload_route_runs_a_job(client, desk):
     data = {"file": (io.BytesIO(b"MThd"), "Uploaded Tune.mid"), "plan": "", "transpose": "auto"}
     r = client.post("/api/arrange", data=data, content_type="multipart/form-data")

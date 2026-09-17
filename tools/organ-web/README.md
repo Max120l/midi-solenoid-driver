@@ -49,7 +49,7 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 | **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
 | **Arrange** | drop a raw `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source |
 | **Service** | reset the boards; pump on and off by hand; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
-| **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out |
+| **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The boards cannot be read back, so the fields show what was last sent from here |
 
 The keys tester shares the serial line with the player, so it only answers
 while the player is idle; the moment something is queued it closes.
@@ -86,6 +86,7 @@ a script or a home-automation box can do the same.
 | `POST /api/arrange` | multipart `file`, `plan`, `transpose` | start an arrange job |
 | `GET /api/jobs`, `GET /api/jobs/<id>` | | job state, output path, log |
 | `GET /api/keys/layout`, `POST /api/keys/pulse` `/hold` `/roll` `/off` | `{solenoid, ms?}`, `{solenoid,on}`, `{solenoids?,interval_ms?,on}` | the keys tester |
+| `POST /api/boards` | `{peak?, hold?, peak_ms?, max_note?, exercise?, command?: save\|reload\|factory, board?}` | solenoid parameters to the boards (idle only) |
 | `POST /api/service/reset`, `POST /api/service/pump` | , `{on}` | the boards' reset line; the pump by hand |
 
 Errors come back as `{"error": "…"}` with 400 (bad request), 404 (no such

@@ -55,12 +55,18 @@ sys.path.insert(0, str(TOOLS / "player"))
 sys.path.insert(0, str(TOOLS / "organ-config"))
 
 import grinder  # noqa: E402
+import organ_config  # noqa: E402
 import organ_keys  # noqa: E402
 
 __version__ = "0.1.0"
 
 DEFAULT_PORT = 8080
-DEFAULT_SETTINGS = {"tempo": 1.0, "gap": 3.0, "repeat": False, "warm_up": 8.0, "idle_off": 180.0}
+DEFAULT_SETTINGS = {"tempo": 1.0, "gap": 3.0, "repeat": False, "warm_up": 8.0, "idle_off": 180.0,
+                    "boards": {}}       # what was last sent to the driver boards: they cannot be read back
+BOARD_FIELDS = {"peak": (1, 100), "hold": (0, organ_config.HOLD_DUTY_MAX_PERCENT),
+                "peak_ms": (1, organ_config.PEAK_DURATION_MAX_MS), "max_note": (0, 127),
+                "exercise": (0, organ_config.EXERCISE_CYCLES_MAX)}
+BOARD_COMMANDS = {"save": organ_config.CMD_SAVE, "reload": organ_config.CMD_RELOAD, "factory": organ_config.CMD_FACTORY}
 PLAYER_RESTART_S = 2.0
 HOUSEKEEP_S = 1.0
 KEYS_TICK_S = 0.01
@@ -764,6 +770,53 @@ class Desk:
 
     # -- service ----------------------------------------------------------------
 
+    def busy(self) -> bool:
+        return (self.status.get("state") in ("playing", "pause", "skipped", "warming up")
+                or bool(self.queue) or bool(self.pending))
+
+    def apply_boards(self, values: dict, command: str | None = None, board: int | None = None) -> dict:
+        """Send solenoid parameters and/or a command to the driver boards over
+        the MIDI line, as organ_config does. Only while the player is idle: the
+        line is shared. Remembers what was sent, since the boards cannot answer."""
+        with self.lock:
+            if self.busy():
+                raise RuntimeError("the player is busy: stop it before retuning the boards")
+        req = organ_config.Request(board=board)
+        sent: dict = {}
+        for name, (lo, hi) in BOARD_FIELDS.items():
+            if values.get(name) is None or values.get(name) == "":
+                continue
+            v = int(values[name])
+            if not lo <= v <= hi:
+                raise ValueError(f"{name} must be {lo}-{hi}")
+            setattr(req, name, v)
+            sent[name] = v
+        if command is not None:
+            if command not in BOARD_COMMANDS:
+                raise ValueError(f"unknown command {command!r} (save, reload, factory)")
+            req.command = BOARD_COMMANDS[command]
+        if not sent and command is None:
+            raise ValueError("nothing to send")
+        messages, warnings = organ_config.build_messages(req)
+        port = self._open_port()
+        try:
+            organ_config.send_serial(messages, port)
+        finally:
+            close = getattr(port, "close", None)
+            if close:
+                close()
+        with self.lock:
+            boards = dict(self.settings.get("boards") or {})
+            if command == "factory":
+                boards = {}
+            boards.update(sent)
+            boards["sent_at"] = time.time()
+            if command == "save":
+                boards["saved_at"] = boards["sent_at"]
+            self.settings["boards"] = boards
+            self._save_settings()
+        return {"sent": [organ_config.describe(m) for m in messages], "warnings": warnings, "boards": boards}
+
     def reset_boards(self) -> dict:
         if self.cfg.dry_run:
             return {"reset": "dry run", "pins": self.cfg.reset_pins}
@@ -947,6 +1000,12 @@ def create_app(desk: Desk):
     @app.post("/api/keys/<what>")
     def keys_act(what):
         return jsonify(desk.keys_act(what, body()))
+
+    @app.post("/api/boards")
+    def boards():
+        b = body()
+        board = b.get("board")
+        return jsonify(desk.apply_boards(b, b.get("command"), int(board) if board not in (None, "") else None))
 
     @app.post("/api/service/reset")
     def service_reset():

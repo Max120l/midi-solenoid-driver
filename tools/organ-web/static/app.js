@@ -51,7 +51,7 @@ function showTab(name) {
 /* ---- state ------------------------------------------------------------ */
 async function refresh() {
   try { state = await api("/api/state"); } catch (e) { $("now-line").textContent = "no connection"; return; }
-  renderNow(); renderQueue(); renderSettings(); renderService(); renderNav();
+  renderNow(); renderQueue(); renderSettings(); renderBoards(); renderService(); renderNav();
 }
 
 /* the sidebar's small numbers: readings, not decoration */
@@ -267,6 +267,39 @@ $("btn-save-settings").onclick = async () => {
   await act("/api/settings", body, "settings saved");
 };
 
+/* ---- the driver boards' solenoid parameters ---------------------------- */
+const BOARD_FIELDS = { peak: "bd-peak", hold: "bd-hold", peak_ms: "bd-peak-ms", max_note: "bd-max-note", exercise: "bd-exercise" };
+let boardsDirty = false;
+Object.values(BOARD_FIELDS).forEach((id) => $(id).oninput = () => (boardsDirty = true));
+function renderBoards() {
+  const b = state.settings.boards || {};
+  if (!boardsDirty) Object.entries(BOARD_FIELDS).forEach(([k, id]) => { $(id).value = b[k] ?? ""; });
+  const when = (t) => new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+  let note = "The boards cannot be read back: these fields show what was last sent from here. ";
+  if (b.sent_at) note += `Last sent ${when(b.sent_at)}${b.saved_at ? `, saved to the boards ${when(b.saved_at)}` : ", not saved to the boards"}. `;
+  note += state.idle ? "Apply changes them until power-off; save writes them to each board's memory, and every board clicks once to say so."
+                     : "The player is busy: stop it before retuning.";
+  $("bd-note").textContent = note;
+  ["bd-apply", "bd-apply-save", "bd-reload", "bd-factory"].forEach((id) => $(id).disabled = !state.idle);
+}
+function boardValues() {
+  const out = {};
+  Object.entries(BOARD_FIELDS).forEach(([k, id]) => { if ($(id).value !== "") out[k] = +$(id).value; });
+  return out;
+}
+async function sendBoards(body, okText) {
+  try {
+    const d = await api("/api/boards", "POST", body);
+    boardsDirty = false;
+    toast(d.warnings && d.warnings.length ? d.warnings.join("; ") : okText, !!(d.warnings && d.warnings.length));
+    await refresh();
+  } catch (e) { toast(e.message, true); }
+}
+$("bd-apply").onclick = () => sendBoards(boardValues(), "sent to the boards");
+$("bd-apply-save").onclick = () => { if (confirm("Send these values and save them to every board's memory?")) sendBoards({ ...boardValues(), command: "save" }, "sent and saved"); };
+$("bd-reload").onclick = () => sendBoards({ command: "reload" }, "boards reloaded their saved settings");
+$("bd-factory").onclick = () => { if (confirm("Return every board to its compiled defaults? (In memory only; save afterwards to keep.)")) sendBoards({ command: "factory" }, "boards at factory defaults"); };
+
 /* ---- service ---------------------------------------------------------- */
 $("btn-reset").onclick = () => { if (confirm("Reset all driver boards? Every note drops and the boards run their exercise routine.")) act("/api/service/reset", {}, "boards reset"); };
 $("btn-pump-on").onclick = () => act("/api/service/pump", { on: true }, "pump on");
@@ -369,13 +402,17 @@ function chirp(kind) {
     else { tone(1250, 1850, 0, 0.055, 0.16); tone(2200, 2200, 0.06, 0.05, 0.12); }
   } catch (e) { /* no audio here; the button still works */ }
 }
-document.addEventListener("pointerdown", (ev) => {
-  const b = ev.target.closest("button, input[type=checkbox], select, input[type=range], .key");
+/* on release, not on touch-down: a finger that starts a scroll makes no sound */
+const scrollDrag = { swallow: false };
+document.addEventListener("click", (ev) => {
+  if (scrollDrag.swallow) return;
+  const b = ev.target.closest("button, input[type=checkbox], select, .key");
   if (!b) return;
   if (b.closest("#tabs")) chirp("nav");
   else if (b.classList.contains("danger")) chirp("danger");
   else chirp("tap");
-}, { passive: true });
+}, true);
+document.addEventListener("change", (ev) => { if (ev.target.matches("input[type=range]")) chirp("tap"); });
 
 /* ---- drag to scroll ---------------------------------------------------- */
 /* A real touch digitiser scrolls the content natively. Many HDMI touch panels
@@ -384,7 +421,8 @@ document.addEventListener("pointerdown", (ev) => {
    follow it is swallowed so a scroll never presses the button under the finger. */
 (() => {
   const main = document.querySelector("main");
-  let drag = null, swallow = false;
+  let drag = null;
+  const swallowFor = (ms) => { scrollDrag.swallow = true; setTimeout(() => (scrollDrag.swallow = false), ms); };
   document.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch" || e.button !== 0) return;
     if (e.target.closest("input, select, textarea, pre")) return;
@@ -402,13 +440,13 @@ document.addEventListener("pointerdown", (ev) => {
     e.preventDefault();
   });
   const end = () => {
-    if (drag && drag.moved) { swallow = true; setTimeout(() => (swallow = false), 300); }
+    if (drag && drag.moved) swallowFor(300);
     drag = null;
     main.classList.remove("dragging");
   };
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
-  document.addEventListener("click", (e) => { if (swallow) { e.stopPropagation(); e.preventDefault(); } }, true);
+  document.addEventListener("click", (e) => { if (scrollDrag.swallow) { e.stopPropagation(); e.preventDefault(); } }, true);
 })();
 
 /* ---- go --------------------------------------------------------------- */
