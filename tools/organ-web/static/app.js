@@ -266,6 +266,21 @@ $("keys-roll").onclick = () => keysAct("roll", { on: !keys.rolling.length, inter
 $("keys-interval").oninput = () => { $("keys-interval-v").textContent = $("keys-interval").value; if (keys.rolling.length) keysAct("roll", { on: true, interval_ms: +$("keys-interval").value }); };
 $("keys-off").onclick = () => keysAct("off");
 
+/* ---- the look ---------------------------------------------------------- */
+$("set-theme").onchange = (e) => {
+  document.documentElement.dataset.theme = e.target.value;
+  try { localStorage.setItem("organ-theme", e.target.value); } catch (err) { /* fine */ }
+};
+$("set-theme").value = document.documentElement.dataset.theme || "lcars";
+function stardate() {
+  // TNG-style: four digits and a tenth, ticking through the day. Purely decorative.
+  const now = new Date(), start = new Date(now.getFullYear(), 0, 1);
+  const frac = (now - start) / (365.25 * 864e5);
+  return (1000 * (now.getFullYear() - 1987) + frac * 1000).toFixed(1);
+}
+setInterval(() => { $("stardate").textContent = "Stardate " + stardate(); }, 6000);
+$("stardate").textContent = "Stardate " + stardate();
+
 /* ---- go --------------------------------------------------------------- */
 let startTab = "play";
 try { startTab = localStorage.getItem("organ-tab") || "play"; } catch (e) { /* fine */ }

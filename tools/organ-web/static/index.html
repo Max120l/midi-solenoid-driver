@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#1b1a17">
 <title>Band organ</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem("organ-theme")||"lcars"}catch(e){document.documentElement.dataset.theme="lcars"}</script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header>
-  <div class="brand">Band organ</div>
+  <div class="brand"><span class="lcars-only">LCARS 47 · </span>Band organ</div>
   <div id="now-line" class="now-line">connecting…</div>
+  <div id="stardate" class="stardate lcars-only"></div>
   <div class="lamps">
     <span id="lamp-player" class="lamp" title="player">player</span>
     <span id="lamp-pump" class="lamp" title="pump">pump</span>
@@ -18,12 +20,13 @@
 </header>
 
 <nav id="tabs">
-  <button data-tab="play" class="active">Play</button>
-  <button data-tab="library">Library</button>
-  <button data-tab="playlists">Playlists</button>
-  <button data-tab="upload">Upload</button>
-  <button data-tab="service">Service</button>
-  <button data-tab="settings">Settings</button>
+  <button data-tab="play" class="active" data-code="01-1701">Play</button>
+  <button data-tab="library" data-code="02-4077">Library</button>
+  <button data-tab="playlists" data-code="03-2893">Playlists</button>
+  <button data-tab="upload" data-code="04-6119">Upload</button>
+  <button data-tab="service" data-code="05-3947">Service</button>
+  <button data-tab="settings" data-code="06-8241">Settings</button>
+  <div class="nav-fill"></div>
 </nav>
 
 <main>
@@ -128,6 +131,7 @@
       <label class="setting">Pause between songs <input type="number" id="set-gap" min="0" max="60" step="0.5"> s</label>
       <label class="setting">Pump warm-up before the first note <input type="number" id="set-warm" min="0" max="120" step="1"> s</label>
       <label class="setting">Pump off after idling <input type="number" id="set-idle" min="0" max="3600" step="10"> s</label>
+      <label class="setting">Look <select id="set-theme"><option value="lcars">LCARS, Enterprise-D</option><option value="brass">Brass and walnut</option></select></label>
       <div class="row buttons"><button class="big" id="btn-save-settings">Save</button><span id="settings-note" class="hint"></span></div>
     </div>
     <p class="hint" id="about"></p>

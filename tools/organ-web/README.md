@@ -53,6 +53,11 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 The keys tester shares the serial line with the player, so it only answers
 while the player is idle; the moment something is queued it closes.
 
+Two looks, chosen under Settings and remembered per browser: **LCARS**, the
+Enterprise-D panel (the default: black field, the elbow, coloured blocks
+with their codes, pill controls, a stardate that means nothing), and
+**brass and walnut**, the plain dark one. Same page, same buttons.
+
 Tempo and pause changes apply to the songs not yet played. A playlist line
 can still carry its own `tempo=` and `gap=`, which win over the settings.
 

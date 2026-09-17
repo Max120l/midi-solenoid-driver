@@ -96,3 +96,144 @@ label.setting input[type=number] { margin-left: 10px; }
   .now-line { order: 3; width: 100%; flex-basis: 100%; }
   button.big { flex: 1 1 40%; }
 }
+
+/* =====================================================================
+   LCARS -- the Enterprise-D look. Black field, coloured blocks with the
+   elbow at the top left, pill controls, condensed uppercase type. Set by
+   data-theme="lcars" on <html>; the brass look above is the other choice.
+   ===================================================================== */
+:root[data-theme="lcars"] {
+  --bg: #000; --panel: #000; --panel-2: #000; --line: #000;
+  --ink: #ffcc99; --ink-dim: #cc99cc; --brass: #ff9900; --brass-dim: #cc6600;
+  --red: #cc6666; --green: #99ccff; --radius: 999px;
+  --lc-orange: #ff9900; --lc-peach: #ffcc99; --lc-tan: #ffcc66; --lc-lav: #cc99cc;
+  --lc-blue: #9999ff; --lc-sky: #99ccff; --lc-red: #cc6666; --lc-rust: #cc6633;
+  --nav-w: 172px;
+}
+[data-theme="lcars"] .lcars-only { display: inline; }
+:root:not([data-theme="lcars"]) .lcars-only { display: none; }
+
+[data-theme="lcars"] body {
+  font-family: "Antonio", "Oswald", "Bahnschrift Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  font-stretch: condensed; text-transform: uppercase; letter-spacing: .03em;
+  display: grid; grid-template-columns: var(--nav-w) 1fr; grid-template-rows: 76px 1fr;
+  grid-template-areas: "header header" "nav main"; min-height: 100vh;
+}
+/* the elbow: header bar across the top, curving down into the sidebar */
+[data-theme="lcars"] header {
+  grid-area: header; position: relative; background: #000; border: none; padding: 4px 20px 0 calc(var(--nav-w) + 72px);
+  align-items: flex-start;
+}
+[data-theme="lcars"] header::before {           /* the L, outer corner rounded */
+  content: ""; position: absolute; left: 0; top: 0; width: calc(var(--nav-w) + 60px); height: 76px;
+  background: var(--lc-orange); border-top-left-radius: 56px;
+}
+[data-theme="lcars"] header::after {            /* the inner corner cut out of the L */
+  content: ""; position: absolute; left: var(--nav-w); top: 30px; width: 60px; height: 46px;
+  background: #000; border-top-left-radius: 34px;
+}
+[data-theme="lcars"] header .brand, [data-theme="lcars"] header .now-line, [data-theme="lcars"] header .lamps, [data-theme="lcars"] header .stardate {
+  position: relative; z-index: 1;
+}
+[data-theme="lcars"] .brand { color: var(--lc-orange); font-size: 1.4em; line-height: 1; padding-top: 2px; }
+[data-theme="lcars"] .now-line { color: var(--lc-peach); font-size: 1.05em; padding-top: 6px; }
+[data-theme="lcars"] .stardate { color: var(--lc-lav); font-size: .95em; padding-top: 8px; white-space: nowrap; }
+/* the top bar, a strip along the header's bottom with coloured segments */
+[data-theme="lcars"] header .lamps { position: absolute; left: calc(var(--nav-w) + 60px); right: 0; bottom: 0; height: 30px; gap: 4px; align-items: stretch; }
+[data-theme="lcars"] header .lamps::before { content: ""; flex: 1; background: var(--lc-orange); }
+[data-theme="lcars"] header .lamps::after { content: ""; width: 60px; background: var(--lc-lav); border-radius: 0 999px 999px 0; }
+[data-theme="lcars"] .lamp { border: none; border-radius: 0; background: var(--lc-tan); color: #000; padding: 0 14px; line-height: 30px; min-width: 110px; text-align: right; font-size: .95em; }
+[data-theme="lcars"] .lamp.on { background: var(--lc-sky); color: #000; }
+[data-theme="lcars"] .lamp.warm { background: var(--lc-red); color: #000; }
+
+/* the sidebar: coloured blocks, text bottom-right, as on every bridge display */
+[data-theme="lcars"] nav#tabs {
+  grid-area: nav; display: flex; flex-direction: column; gap: 4px; padding: 4px 0 0; background: #000; overflow: visible;
+}
+[data-theme="lcars"] nav#tabs button {
+  flex: 0 0 68px; min-width: 0; border: none; border-radius: 0; background: var(--lc-lav); color: #000;
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; padding: 6px 12px 6px; font-size: 1.05em;
+}
+[data-theme="lcars"] nav#tabs button::before { content: attr(data-code); font-size: .7em; opacity: .75; }
+[data-theme="lcars"] nav#tabs button:nth-child(2) { background: var(--lc-blue); }
+[data-theme="lcars"] nav#tabs button:nth-child(3) { background: var(--lc-tan); }
+[data-theme="lcars"] nav#tabs button:nth-child(4) { background: var(--lc-peach); }
+[data-theme="lcars"] nav#tabs button:nth-child(5) { background: var(--lc-rust); }
+[data-theme="lcars"] nav#tabs button:nth-child(6) { background: var(--lc-blue); }
+[data-theme="lcars"] nav#tabs button.active { background: var(--lc-orange); color: #000; }
+[data-theme="lcars"] nav#tabs button:active { filter: brightness(1.25); }
+[data-theme="lcars"] nav#tabs .nav-fill { flex: 1; background: var(--lc-lav); border-bottom-left-radius: 56px; min-height: 60px; }
+
+[data-theme="lcars"] main { grid-area: main; padding: 18px 20px 20px 24px; max-width: none; }
+[data-theme="lcars"] .card { background: #000; border: none; border-left: 14px solid var(--lc-lav); border-radius: 0 20px 20px 0; padding: 10px 16px 14px; }
+[data-theme="lcars"] .card.now { border-left-color: var(--lc-orange); }
+[data-theme="lcars"] .label { color: var(--lc-lav); letter-spacing: .12em; }
+[data-theme="lcars"] .title { color: var(--lc-peach); font-size: 1.9em; line-height: 1.05; }
+[data-theme="lcars"] .sub, [data-theme="lcars"] .hint { color: var(--lc-blue); }
+[data-theme="lcars"] .now .bar { height: 14px; border-radius: 0; background: repeating-linear-gradient(90deg, #332211 0 18px, #000 18px 22px); }
+[data-theme="lcars"] .now .bar div { background: var(--lc-orange); }
+[data-theme="lcars"] .now .times { color: var(--lc-tan); }
+
+[data-theme="lcars"] button {
+  border: none; border-radius: 999px; background: var(--lc-peach); color: #000; font-weight: 600; letter-spacing: .04em;
+  padding: 10px 22px; text-align: right;
+}
+[data-theme="lcars"] button:active { background: #fff; }
+[data-theme="lcars"] button.big { background: var(--lc-orange); color: #000; }
+[data-theme="lcars"] button.danger { background: var(--lc-red); color: #000; }
+[data-theme="lcars"] button.active, [data-theme="lcars"] button[aria-pressed="true"] { background: var(--lc-sky); }
+[data-theme="lcars"] button:disabled { opacity: .3; }
+[data-theme="lcars"] .row.chips button { background: var(--lc-blue); }
+[data-theme="lcars"] input[type=number], [data-theme="lcars"] input[type=text], [data-theme="lcars"] input[type=search], [data-theme="lcars"] select {
+  background: #000; border: 2px solid var(--lc-lav); color: var(--lc-peach); border-radius: 999px; text-transform: none;
+}
+[data-theme="lcars"] input[type=range] { accent-color: var(--lc-orange); }
+[data-theme="lcars"] input[type=checkbox] { accent-color: var(--lc-orange); }
+[data-theme="lcars"] label.toggle, [data-theme="lcars"] label.setting { color: var(--lc-peach); }
+[data-theme="lcars"] label.setting { border-bottom: 2px solid #221a11; }
+
+[data-theme="lcars"] ul.list li { border-bottom: none; margin-bottom: 4px; background: #0d0a06; border-left: 10px solid var(--lc-blue); border-radius: 0 999px 999px 0; }
+[data-theme="lcars"] ul.list li.now { background: #1a1000; border-left-color: var(--lc-orange); }
+[data-theme="lcars"] ul.list li:nth-child(even) { border-left-color: var(--lc-lav); }
+[data-theme="lcars"] ul.list li.now:nth-child(even) { border-left-color: var(--lc-orange); }
+[data-theme="lcars"] ul.list .name { color: var(--lc-peach); }
+[data-theme="lcars"] ul.list .meta { color: var(--lc-tan); }
+[data-theme="lcars"] ul.list button { padding: 8px 14px; }
+[data-theme="lcars"] ul.list li.job { border-radius: 0 20px 20px 0; }
+[data-theme="lcars"] ul.list li.job pre { background: #0a0806; color: var(--lc-peach); text-transform: none; border: 1px solid #2a2016; }
+[data-theme="lcars"] .state-done { color: var(--lc-sky); }
+[data-theme="lcars"] .state-failed { color: var(--lc-red); }
+[data-theme="lcars"] .state-running { color: var(--lc-orange); }
+
+[data-theme="lcars"] #keys .block-title { color: var(--lc-lav); }
+[data-theme="lcars"] #keys .key { border: none; border-radius: 12px; background: var(--lc-blue); color: #000; }
+[data-theme="lcars"] #keys .block:nth-child(even) .key { background: var(--lc-lav); }
+[data-theme="lcars"] #keys .key .n { color: #000; opacity: .7; }
+[data-theme="lcars"] #keys .key.on { background: #fff; }
+
+[data-theme="lcars"] #toast { background: var(--lc-orange); color: #000; border-radius: 999px; }
+[data-theme="lcars"] #toast.error { background: var(--lc-red); }
+
+[data-theme="lcars"] main { min-width: 0; }               /* the grid column may shrink below its content */
+[data-theme="lcars"] body { overflow-x: hidden; }
+
+@media (max-width: 600px) {
+  :root[data-theme="lcars"] { --nav-w: 92px; }
+  [data-theme="lcars"] body { grid-template-rows: 64px 1fr; }
+  [data-theme="lcars"] header { padding-left: calc(var(--nav-w) + 56px); }
+  [data-theme="lcars"] header::before { width: calc(var(--nav-w) + 44px); }
+  [data-theme="lcars"] header::after { width: 44px; }
+  [data-theme="lcars"] header .lamps { left: calc(var(--nav-w) + 44px); }
+  [data-theme="lcars"] .brand .lcars-only { display: none; }
+  [data-theme="lcars"] .brand { font-size: 1.15em; }
+  ul.list [data-move] { display: none; }                  /* on a phone the names matter more than reordering */
+  ul.list button { min-width: 40px; padding: 6px 10px; }
+  [data-theme="lcars"] header::before { height: 64px; border-top-left-radius: 40px; }
+  [data-theme="lcars"] header::after { top: 26px; }
+  [data-theme="lcars"] header .lamps { height: 26px; }
+  [data-theme="lcars"] .lamp { line-height: 26px; min-width: 0; padding: 0 8px; font-size: .8em; }
+  [data-theme="lcars"] .now-line, [data-theme="lcars"] .stardate { display: none; }
+  [data-theme="lcars"] nav#tabs button { flex-basis: 56px; font-size: .85em; padding: 4px 8px; }
+  [data-theme="lcars"] main { padding: 12px 10px 12px 12px; }
+  [data-theme="lcars"] button.big { flex: 1 1 40%; text-align: center; }
+}
