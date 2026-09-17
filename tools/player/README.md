@@ -83,6 +83,7 @@ Notes already sounding at the start point are not restarted.
 | `Ctrl+C` during a song | skip it |
 | `Ctrl+C` again within two seconds | quit |
 | `Ctrl+C` during the pause or the warm-up | quit |
+| `SIGUSR1`, `SIGUSR2`, `SIGTERM` from another process | skip; pause or resume; quit cleanly |
 
 A skip does not cut the organ dead. The notes sounding at that moment end
 where they are written, as long as that is within half a second; anything

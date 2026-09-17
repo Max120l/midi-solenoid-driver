@@ -186,6 +186,7 @@ class PlayerProcess:
         self.started_at = 0.0
         self.closing = False
         self.skip_signal = getattr(signal, "SIGUSR1", None)      # None where the platform has no such thing
+        self.pause_signal = getattr(signal, "SIGUSR2", None)
 
     def command(self) -> list[str]:
         cmd = [self.cfg.python, str(TOOLS / "player" / "grinder.py"), str(self.cfg.queue_file), "--watch",
@@ -214,6 +215,13 @@ class PlayerProcess:
         if not self.running() or self.skip_signal is None:
             return False
         self.proc.send_signal(self.skip_signal)
+        return True
+
+    def pause(self) -> bool:
+        """Pauses a playing song, resumes a paused one; the player decides which."""
+        if not self.running() or self.pause_signal is None:
+            return False
+        self.proc.send_signal(self.pause_signal)
         return True
 
     def close(self) -> None:
@@ -350,6 +358,7 @@ class Desk:
         self._load_settings()
         self.queue: list[dict] = []
         self.pending: list[dict] = []           # held back for the warm-up
+        self.held = False                       # stopped: the queue is kept, but the player gets none of it
         self.wind_ready_at: float | None = None
         self.round: list[dict] = []             # what was added since the last idle, for repeat
         self.player = PlayerProcess(cfg, spawn)
@@ -395,7 +404,7 @@ class Desk:
 
     def write_queue(self) -> None:
         lines = ["# organ_web queue: edited by the app, read by grinder --watch before every song"]
-        for e in self.queue:
+        for e in ([] if self.held else self.queue):
             opts = [f"id={e['id']}", f"tempo={e.get('tempo') or self.settings['tempo']:.3f}",
                     f"gap={e.get('gap') if e.get('gap') is not None else self.settings['gap']:g}"]
             lines.append(f"{e['abs']} | {' '.join(opts)}")
@@ -430,6 +439,12 @@ class Desk:
                 random.shuffle(entries)
             self._save_settings()
             self.round += entries
+            if self.held and play_now:
+                # the new song first, then the queue that was frozen, back to life
+                self.held = False
+                self._renumber()
+                entries = entries + self.queue
+                self.queue = []
             if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
                 self.pump_set(True)
                 self.wind_ready_at = self.now() + float(self.settings["warm_up"])
@@ -473,7 +488,16 @@ class Desk:
             self.queue = [e for e in self.queue if e["id"] == current]
             self.pending = []
             self.round = []
+            self.held = False
             self.write_queue()
+
+    def _renumber(self) -> None:
+        """Fresh ids for the whole queue, so the player takes every entry as new
+        -- including one it has already played or skipped."""
+        for e in self.queue:
+            e["id"] = self.next_id
+            self.next_id += 1
+        self._save_settings()
 
     def shuffle(self) -> None:
         with self.lock:
@@ -487,17 +511,42 @@ class Desk:
     def skip(self) -> bool:
         return self.player.skip()
 
+    def pause(self) -> bool:
+        """Pause or resume, whichever applies; nothing between songs."""
+        if self.status.get("state") not in ("playing", "paused"):
+            return False
+        return self.player.pause()
+
     def stop(self) -> None:
-        """Clear what is to come, then end what is playing."""
+        """End what is playing and hold the queue where it is: the song that was
+        playing stays at the head, selected, and Play starts it from the top."""
         with self.lock:
-            self.queue = []
+            self.held = True
+            self.queue += self.pending          # anything still waiting for wind is kept too
             self.pending = []
-            self.round = []
-            self.write_queue()
+            self.wind_ready_at = None
+            self.write_queue()                  # nothing for the player; it idles after the skip
             self.player.skip()
+
+    def play(self) -> None:
+        """After a stop: the queue as it stands, from its head."""
+        with self.lock:
+            if not self.held:
+                return
+            self.held = False
+            self._renumber()
+            if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
+                self.pump_set(True)
+                self.wind_ready_at = self.now() + float(self.settings["warm_up"])
+            if self.wind_ready_at is not None and self.now() < self.wind_ready_at:
+                self.pending = self.queue + self.pending
+                self.queue = []
+            self.write_queue()
 
     def upcoming(self) -> list[dict]:
         current = self.status.get("id") if self.status.get("state") in ("playing", "skipped", "played") else None
+        if self.held:
+            return [dict(e, now=(i == 0)) for i, e in enumerate(self.queue)]
         return [dict(e, now=(e["id"] == current)) for e in self.queue]
 
     # -- settings -----------------------------------------------------------
@@ -541,7 +590,9 @@ class Desk:
             self.status = st
             state = st.get("state")
             current = st.get("id")
-            if state == "playing" and current is not None:
+            if self.held:
+                pass                                # the queue is frozen; the player's reports are about the past
+            elif state == "playing" and current is not None:
                 ids = [e["id"] for e in self.queue]
                 if current in ids:
                     self.queue = self.queue[ids.index(current):]
@@ -562,7 +613,8 @@ class Desk:
                 self.write_queue()
                 self._written = list(self.queue)
             # repeat: when everything has been played, queue the round again
-            if state == "idle" and not self.queue and not self.pending and self.settings["repeat"] and self.round:
+            if (state == "idle" and not self.queue and not self.pending and not self.held
+                    and self.settings["repeat"] and self.round):
                 again = [dict(e, id=self.next_id + i) for i, e in enumerate(self.round)]
                 self.next_id += len(again)
                 self._save_settings()
@@ -571,7 +623,7 @@ class Desk:
                 self.write_queue()
                 self._written = list(self.queue)
             # the pump: off after idling long enough
-            busy = state in ("playing", "pause", "skipped", "warming up") or self.queue or self.pending
+            busy = self.busy()
             if busy:
                 self.idle_since = None
             elif self.idle_since is None:
@@ -616,7 +668,8 @@ class Desk:
                 "board_defaults": dict(BOARD_DEFAULTS),
                 "firmware_defaults": dict(FIRMWARE_DEFAULTS),
                 "keys_open": self.keys.console is not None,
-                "idle": st.get("state") in (None, "idle", "finished", "stopped") and not self.queue,
+                "idle": not self.busy(),
+                "held": self.held,
                 "dry_run": self.cfg.dry_run,
                 "version": __version__,
             }
@@ -777,8 +830,9 @@ class Desk:
     # -- service ----------------------------------------------------------------
 
     def busy(self) -> bool:
-        return (self.status.get("state") in ("playing", "pause", "skipped", "warming up")
-                or bool(self.queue) or bool(self.pending))
+        """Is the wire spoken for: a song on it, one about to be, or one waiting for wind."""
+        return (self.status.get("state") in ("playing", "paused", "pause", "skipped", "warming up")
+                or (bool(self.queue) and not self.held) or bool(self.pending))
 
     def apply_boards(self, values: dict, command: str | None = None, board: int | None = None) -> dict:
         """Send solenoid parameters and/or a command to the driver boards over
@@ -843,8 +897,7 @@ class Desk:
 
     def keys_act(self, what: str, body: dict) -> dict:
         with self.lock:
-            snap_busy = self.status.get("state") in ("playing", "pause", "skipped", "warming up") or self.queue or self.pending
-            if snap_busy and what != "off":
+            if self.busy() and what != "off":
                 raise RuntimeError("the player is busy: stop it before using the keys")
         return self.keys.act(what, body)
 
@@ -937,6 +990,15 @@ def create_app(desk: Desk):
     def player_stop():
         desk.stop()
         return jsonify(desk.snapshot())
+
+    @app.post("/api/player/play")
+    def player_play():
+        desk.play()
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/player/pause")
+    def player_pause():
+        return jsonify({"paused": desk.pause(), "state": desk.status.get("state")})
 
     @app.post("/api/settings")
     def settings():

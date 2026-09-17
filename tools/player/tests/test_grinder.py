@@ -80,6 +80,8 @@ class FakeTime:
             raise KeyboardInterrupt
         if idx in self.quit_sleeps:
             raise g.Quit()
+        if idx in getattr(self, "pause_sleeps", set()):
+            raise g.Pause()
 
 
 # ----------------------------------------------------------------------------
@@ -451,6 +453,38 @@ def test_watch_survives_a_missing_or_broken_file_and_repeat_goes_round(tmp_path)
     assert [n for t, n in port.notes() if t == "note_on"] == [40, 40, 40]
     assert ft.slept == pytest.approx([1.0, 1.0, 0.5, 2.0, 0.5, 2.0, 0.5])
     assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
+
+
+def test_pause_lets_the_sounding_notes_end_and_resume_continues_from_there(tmp_path):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 1, 40), (2, 1, 41), (4, 1, 42), (6, 1, 43)])   # a note every second
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    st = Recorder(tmp_path / "status.json")
+    # sleeps: 0.5 (40 off), 0.5 (41 on), 0.5 -> the pause lands as 41 is about to end
+    ft.pause_sleeps = {2, 4}                                     # sleep 3 is the first idle poll of the pause; 4 resumes
+    assert g.run([g.Song(a)], port, g.Settings(), ft.sleep, ft.clock, out, status=st) == 0
+    assert [n for t, n in port.notes() if t == "note_on"] == [40, 41, 42, 43]     # nothing replayed
+    states = [(f["state"], f["position_s"]) for f in st.seen]
+    assert ("paused", 1.5) in states
+    assert ("played", 3.5) in states and states[-1][0] == "finished"
+    i = states.index(("paused", 1.5))
+    assert states[i + 1] == ("playing", 1.5)                     # resumed where it stopped
+    assert "paused at 0:02" in out.getvalue() and "resuming" in out.getvalue()
+    # the silence after the pause: All Notes Off went out before the wait
+    cc = [k for k, m in enumerate(port.msgs) if m.type == "control_change" and m.control == 123]
+    on42 = next(k for k, m in enumerate(port.msgs) if m.type == "note_on" and m.note == 42)
+    assert any(k < on42 for k in cc[1:])
+
+
+def test_a_skip_while_paused_ends_the_song(tmp_path):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 1, 40), (2, 1, 41), (4, 1, 42)])
+    b = song_file(tmp_path / "b.organ.mid", [(0, 1, 44)])
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    ft.pause_sleeps = {1}
+    ft.interrupt_sleeps = {3}                                    # Ctrl+C / SIGUSR1 during the pause
+    assert g.run([g.Song(a), g.Song(b)], port, g.Settings(gap=1.0), ft.sleep, ft.clock, out) == 0
+    # the pause landed just before the second note would have started, so it never did; the skip moves on to b
+    assert [n for t, n in port.notes() if t == "note_on"] == [40, 44]
+    assert "skipped while paused" in out.getvalue()
 
 
 def test_quit_from_outside_stops_cleanly_with_the_pump_off(tmp_path):

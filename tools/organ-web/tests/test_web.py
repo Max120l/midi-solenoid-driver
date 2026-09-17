@@ -176,8 +176,30 @@ def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
     assert [e["name"] for e in desk.queue][0] == "bogey"
     desk.remove(3)
     assert [e["name"] for e in desk.queue] == ["bogey", "danube"]
+    # stop: the song ends, the queue stays with it at the head, the player gets an empty file
     desk.stop()
-    assert desk.queue == [] and desk.procs[0].signals == [10, 10]
+    assert desk.held and [e["name"] for e in desk.queue] == ["bogey", "danube"] and desk.procs[0].signals == [10, 10]
+    assert queue_lines(desk) == [] and desk.upcoming()[0]["now"] is True
+    status(desk, state="skipped", id=1)
+    desk.housekeep()
+    status(desk, state="idle", queue=0)
+    desk.housekeep()
+    assert [e["name"] for e in desk.queue] == ["bogey", "danube"]         # the player's reports do not touch a held queue
+    assert desk.snapshot()["idle"] is True and desk.snapshot()["held"] is True
+    desk.keys_act("pulse", {"solenoid": 1}); desk.keys.close()          # the wire is free while stopped
+    # play: fresh ids, from the head
+    desk.play()
+    assert not desk.held and [e["id"] for e in desk.queue] == [4, 5]
+    assert [ln.split("| ")[1].split()[0] for ln in queue_lines(desk)] == ["id=4", "id=5"]
+    # pause is a signal, only while something plays
+    desk.player.pause_signal = 12
+    assert desk.pause() is False
+    status(desk, state="playing", id=4)
+    desk.housekeep()
+    assert desk.pause() is True and desk.procs[0].signals[-1] == 12
+    status(desk, state="paused", id=4, position_s=12.0)
+    desk.housekeep()
+    assert desk.busy() and desk.pause() is True
 
 
 def test_settings_reach_the_lines_not_yet_played_and_bad_values_are_refused(desk):

@@ -28,8 +28,12 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
   appends lines with an `id=`; the player plays the first id it has not
   played and idles when none is left. Reordering is rewriting the file;
   the player notices before its next song.
-- **Skip** is a `SIGUSR1` to the player. **Stop** clears the file and skips.
-  There is no pause: an organ has no way to hold its breath.
+- **Skip** is a `SIGUSR1` to the player. **Stop** empties the file and skips,
+  but keeps the queue in the app with the stopped song still at its head;
+  **Play** writes the queue back with fresh ids, so that song starts again
+  from the top and the rest follow. **Pause** is a `SIGUSR2`: the player lets
+  the sounding notes end where they are written, silences the organ and
+  waits; the same signal resumes from that position, registration first.
 - **The pump relay** belongs to this app, not the player. A play request
   while the pump is off switches it on and holds the songs back for the
   warm-up; after the idle time-out with nothing queued the pump goes off.
@@ -43,7 +47,7 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 
 | Tab | What it does |
 |---|---|
-| **Play** | what is playing, with position; skip, stop; the queue with move up/down and remove; shuffle and clear the queue; save it as a playlist; repeat |
+| **Play** | what is playing, with position; pause and resume; skip; stop, which keeps the queue with the stopped song selected, and play, which starts it again from the top; the queue with move up/down and remove; shuffle and clear the queue; save it as a playlist; repeat |
 | **Library** | the folders under `--library` as chips, the arranged tunes in each; ＋ queues one, ▶ plays it next; queue or shuffle a whole folder, or everything |
 | **Playlists** | the saved lists: open, queue, queue shuffled, "play instead" (replaces the queue), delete |
 | **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
@@ -77,7 +81,7 @@ a script or a home-automation box can do the same.
 | `POST /api/queue/add` | `{paths:[…], shuffle?, play_now?}` or `{path}` | queue tunes (library-relative paths) |
 | `POST /api/queue/remove` `/move` `/clear` `/shuffle` | `{id}`, `{id,to}` | edit the queue |
 | `POST /api/queue/save` | `{name}` | save the queue as a playlist |
-| `POST /api/player/skip` `/stop` | | transport |
+| `POST /api/player/skip` `/stop` `/play` `/pause` | | transport: stop keeps the queue, play restarts it from its head, pause toggles |
 | `POST /api/settings` | `{tempo?, gap?, repeat?, warm_up?, idle_off?}` | change settings |
 | `GET /api/playlists`, `GET /PUT /DELETE /api/playlists/<name>` | `{entries:[{path,tempo?,gap?}]}` | playlists |
 | `POST /api/playlists/<name>/queue` | `{shuffle?, replace?}` | queue a playlist |

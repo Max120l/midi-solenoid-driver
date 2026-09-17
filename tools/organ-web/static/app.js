@@ -59,7 +59,7 @@ function renderNav() {
   const c = state.counts || {}, st = state.status || {};
   const secs = state.queue.reduce((a, e) => a + (e.length_s || 0), 0);
   const code = {
-    play: state.queue.length ? `${state.queue.length} queued · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
+    play: state.held ? `stopped · ${state.queue.length} queued` : state.queue.length ? `${state.queue.length} queued · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
     library: `${c.tunes ?? "–"} tunes · ${c.folders ?? "–"} folders`,
     playlists: `${c.playlists ?? "–"} lists`,
     upload: `${(c.by_folder || {}).uploads || 0} in uploads`,
@@ -72,21 +72,24 @@ function renderNav() {
 
 function renderNow() {
   const st = state.status || {};
-  const playing = st.state === "playing" || st.state === "pause" || st.state === "skipped";
+  const playing = st.state === "playing" || st.state === "paused" || st.state === "pause" || st.state === "skipped";
+  const paused = st.state === "paused";
   $("lamp-player").className = "lamp" + (state.player.running ? " on" : "");
   const pump = state.pump;
   $("lamp-pump").className = "lamp" + (pump.on ? (state.warming_up_s > 0 ? " warm" : " on") : "");
   $("lamp-pump").textContent = pump.configured ? (state.warming_up_s > 0 ? `wind in ${Math.ceil(state.warming_up_s)} s` : "pump") : "pump (manual)";
   let line;
   if (st.state === "playing") line = `${st.song}  ${fmt(st.position_s)} / ${fmt(st.length_s)}`;
+  else if (paused) line = `paused  ${st.song}  ${fmt(st.position_s)} / ${fmt(st.length_s)}`;
   else if (st.state === "pause") line = `pause ${st.seconds ? st.seconds + " s" : ""}`;
   else if (state.warming_up_s > 0) line = "waiting for wind";
   else if (state.queue.length) line = "starting…";
   else line = state.player.running ? "idle" : "player not running";
   $("now-line").textContent = line;
-  if (st.state === "playing" || st.state === "pause") {
+  if (st.state === "playing" || st.state === "pause" || paused) {
     $("now-title").textContent = st.song || "";
-    $("now-sub").textContent = `${st.index}/${st.total || st.queue || ""}  ·  tempo ${Math.round((st.tempo || 1) * 100)} %` + (st.state === "pause" ? "  ·  pause" : "");
+    $("now-sub").textContent = `${st.index}/${st.total || st.queue || ""}  ·  tempo ${Math.round((st.tempo || 1) * 100)} %`
+      + (st.state === "pause" ? "  ·  pause" : paused ? "  ·  PAUSED" : "");
     const p = st.length_s ? Math.min(100, 100 * (st.position_s || 0) / st.length_s) : 0;
     $("now-bar").style.width = p + "%";
     $("now-pos").textContent = fmt(st.position_s); $("now-len").textContent = fmt(st.length_s);
@@ -95,19 +98,30 @@ function renderNow() {
     $("now-sub").textContent = ""; $("now-bar").style.width = "0"; $("now-pos").textContent = "0:00"; $("now-len").textContent = "0:00";
   }
   $("btn-skip").disabled = !playing;
+  $("btn-pause").hidden = state.held;
+  $("btn-pause").disabled = !(st.state === "playing" || paused);
+  $("btn-pause").textContent = paused ? "Resume" : "Pause";
+  $("btn-pause").classList.toggle("active", paused);
+  $("btn-play").hidden = !state.held;
+  $("btn-play").disabled = !state.queue.length;
+  $("btn-stop").hidden = state.held;
+  if (state.held && state.queue.length) {
+    $("now-title").textContent = state.queue[0].name;
+    $("now-sub").textContent = "stopped · Play starts it from the top";
+  }
   $("chk-repeat").checked = !!state.settings.repeat;
 }
 
 function renderQueue() {
   const ul = $("queue");
   const items = state.queue;
-  $("queue-label").textContent = items.length ? `Queue · ${items.length}` : "Queue is empty";
+  $("queue-label").textContent = items.length ? `${state.held ? "Stopped · " : "Queue · "}${items.length}` : "Queue is empty";
   ul.innerHTML = items.map((e, i) => `
     <li class="${e.now ? "now" : ""}">
-      <span class="meta">${e.now ? "▶" : i + 1}</span>
+      <span class="meta">${e.now ? (state.held ? "■" : "▶") : i + 1}</span>
       <span class="name">${esc(e.name)}<br><span class="meta">${esc(e.path.split("/").slice(0, -1).join("/"))}</span></span>
       <span class="meta">${fmt(e.length_s)}${e.tempo ? " · " + Math.round(e.tempo * 100) + " %" : ""}</span>
-      ${e.now ? "" : `<button data-move="${e.id}" data-dir="-1" title="earlier">▲</button>
+      ${e.now && !state.held ? "" : `<button data-move="${e.id}" data-dir="-1" title="earlier">▲</button>
       <button data-move="${e.id}" data-dir="1" title="later">▼</button>
       <button data-remove="${e.id}" class="danger" title="remove">✕</button>`}
     </li>`).join("");
@@ -122,6 +136,8 @@ function renderQueue() {
 
 $("btn-skip").onclick = async () => { const d = await act("/api/player/skip"); if (d && !d.skipped) toast("nothing to skip, or no signal on this platform", true); };
 $("btn-stop").onclick = () => act("/api/player/stop", {}, "stopped");
+$("btn-play").onclick = () => act("/api/player/play", {}, "playing");
+$("btn-pause").onclick = async () => { const d = await act("/api/player/pause"); if (d && !d.paused) toast("nothing playing, or no signal on this platform", true); };
 $("btn-shuffle").onclick = () => act("/api/queue/shuffle", {}, "shuffled");
 $("btn-clear").onclick = () => act("/api/queue/clear", {}, "queue cleared");
 $("btn-save").onclick = () => { const name = prompt("Playlist name"); if (name) act("/api/queue/save", { name }, `saved "${name}"`); };

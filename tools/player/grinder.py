@@ -39,7 +39,9 @@ Keys while playing: Ctrl+C skips the song -- the notes sounding at that
 moment end where they are written, within half a second, and then the organ
 is silenced; Ctrl+C again within two seconds, or during the pause between
 songs, quits. From another process, SIGUSR1 skips and SIGTERM quits the
-same clean way.
+same clean way, and SIGUSR2 pauses: the sounding notes end where written,
+the organ falls silent, and SIGUSR2 again resumes from that position, with
+the registration restored first.
 
 --watch turns one playlist into a live queue: the file is read again before
 every song, the first entry not yet played is next (entries carry `id=N`
@@ -90,6 +92,14 @@ ORGAN_MESSAGES = ("note_on", "note_off", "control_change")
 
 class Quit(BaseException):
     """Asked to stop from outside (SIGTERM): finish cleanly, silenced."""
+
+
+class Pause(BaseException):
+    """SIGUSR2 while a song plays: let what sounds end, fall silent, wait;
+    the same signal again resumes from that position."""
+
+
+_pausable = False            # only while a song is on the wire or paused does SIGUSR2 mean anything
 
 
 # ----------------------------------------------------------------------------
@@ -464,42 +474,74 @@ class Player:
 
     def play_song(self, song: Song, index: int, total: int, start: float = 0.0, extra: dict | None = None) -> str:
         """Returns 'played', 'skipped', 'quit' or 'unreadable'."""
+        global _pausable
         cfg = self.cfg
         speed = song.tempo if song.tempo is not None else cfg.tempo
         try:
             mid = mido.MidiFile(str(song.path))
-            events = timeline(mid, speed, start, cfg.min_note_s, cfg.min_gap_s)
+            full = timeline(mid, speed, 0.0, cfg.min_note_s, cfg.min_gap_s)
         except (OSError, ValueError, EOFError, KeyError, IndexError) as e:
             self.say(f"[{index}/{total}] {song.name}: cannot play: {e}")
             return "unreadable"
-        pb = Playback(events, cfg.min_note_s)
+        length = full[-1][0] if full else 0.0
         note = f"  from {clock_text(start)}" if start else ""
-        self.say(f"[{index}/{total}] {song.name}  {clock_text(pb.length)}  tempo {speed:.0%}{note}")
+        self.say(f"[{index}/{total}] {song.name}  {clock_text(length)}  tempo {speed:.0%}{note}")
         info = dict(song=song.name, path=str(song.path), id=song.id, index=index, total=total,
-                    length_s=round(pb.length, 1), tempo=speed, start_s=start, **(extra or {}))
-        self.report(state="playing", position_s=0.0, **info)
+                    length_s=round(length, 1), tempo=speed, start_s=start, **(extra or {}))
+        self.report(state="playing", position_s=round(start, 1), **info)
         silence(self.port)
-        try:
-            if start and cfg.registers:
-                pulse_registers(registration_at(mid, speed, start, cfg.registers), self.port, self.sleep)
-            tick = (lambda: self.report(state="playing", position_s=round(pb.position(self.clock), 1))) \
-                if self.status else None
-            pb.play(self.port, self.sleep, self.clock, tick)
-        except KeyboardInterrupt:
-            at = pb.position(self.clock)
+        offset = start
+        while True:
+            pb = Playback([(t - offset, m) for t, m in full if t >= offset], cfg.min_note_s)
             try:
-                pb.release(self.port, self.sleep, self.clock)
-            except KeyboardInterrupt:              # hammered: quit now, silenced
-                return "quit"
-            self.say(f"      skipped at {clock_text(at)}  (Ctrl+C again within {QUIT_WINDOW_S:.0f} s quits)")
-            self.report(state="skipped", position_s=round(at, 1))
-            try:
-                self.sleep(QUIT_WINDOW_S)
+                if offset and cfg.registers:
+                    pulse_registers(registration_at(mid, speed, offset, cfg.registers), self.port, self.sleep)
+                tick = (lambda: self.report(state="playing", position_s=round(offset + pb.position(self.clock), 1))) \
+                    if self.status else None
+                _pausable = True
+                pb.play(self.port, self.sleep, self.clock, tick)
+                _pausable = False
+            except Pause:
+                _pausable = False
+                at = offset + pb.position(self.clock)
+                try:
+                    pb.release(self.port, self.sleep, self.clock)
+                except (KeyboardInterrupt, Pause):
+                    silence(self.port)
+                self.say(f"      paused at {clock_text(at)}")
+                self.report(state="paused", position_s=round(at, 1))
+                _pausable = True
+                try:
+                    while True:
+                        self.sleep(WATCH_POLL_S)
+                except Pause:
+                    _pausable = False
+                    self.say(f"      resuming at {clock_text(at)}")
+                    self.report(state="playing", position_s=round(at, 1))
+                    offset = at
+                    continue
+                except KeyboardInterrupt:
+                    _pausable = False
+                    self.say("      skipped while paused")
+                    self.report(state="skipped", position_s=round(at, 1))
+                    return "skipped"
             except KeyboardInterrupt:
-                return "quit"
-            return "skipped"
+                _pausable = False
+                at = offset + pb.position(self.clock)
+                try:
+                    pb.release(self.port, self.sleep, self.clock)
+                except KeyboardInterrupt:              # hammered: quit now, silenced
+                    return "quit"
+                self.say(f"      skipped at {clock_text(at)}  (Ctrl+C again within {QUIT_WINDOW_S:.0f} s quits)")
+                self.report(state="skipped", position_s=round(at, 1))
+                try:
+                    self.sleep(QUIT_WINDOW_S)
+                except KeyboardInterrupt:
+                    return "quit"
+                return "skipped"
+            break
         silence(self.port)
-        self.report(state="played", position_s=round(pb.length, 1))
+        self.report(state="played", position_s=round(length, 1))
         return "played"
 
     def pause(self, seconds: float) -> bool:
@@ -615,8 +657,10 @@ def run_watch(queue: Path, port, cfg: Settings, sleep=time.sleep, clock=time.mon
 
 
 def install_signals() -> None:
-    """SIGTERM quits cleanly; SIGUSR1 (where it exists) skips like Ctrl+C.
-    Both arrive as exceptions in the main thread, wherever it is sleeping."""
+    """SIGTERM quits cleanly; SIGUSR1 (where it exists) skips like Ctrl+C;
+    SIGUSR2 pauses a playing song and resumes a paused one, and means nothing
+    between songs. All arrive as exceptions in the main thread, wherever it
+    is sleeping."""
 
     def quit_(signum, frame):
         raise Quit()
@@ -624,9 +668,15 @@ def install_signals() -> None:
     def skip(signum, frame):
         raise KeyboardInterrupt()
 
+    def pause(signum, frame):
+        if _pausable:
+            raise Pause()
+
     signal.signal(signal.SIGTERM, quit_)
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, skip)
+    if hasattr(signal, "SIGUSR2"):
+        signal.signal(signal.SIGUSR2, pause)
 
 
 # ----------------------------------------------------------------------------
