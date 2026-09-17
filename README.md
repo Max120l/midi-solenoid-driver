@@ -702,6 +702,16 @@ folding lines into each rank's compass, mapping the drums, beating the
 leader's arm on the downbeats — with every choice in an editable plan.
 Python, on `mido`; see its README.
 
+[`tools/player/`](tools/player/) is the playback engine on the Pi: arranged
+files down the UART one after another, from files, folders or playlists,
+with tempo, the pause between songs, shuffle and repeat, a clean skip, a
+status file, and the bellows pump's relay. [`tools/organ-web/`](tools/organ-web/)
+is the front desk on top of it: one web page for a touchscreen on the case
+and for any phone on the Wi-Fi -- the queue, the library, saved playlists,
+uploads that run the arranger, the pump, a reset button and a touch version
+of the keys tester. The player runs as its child and keeps playing if the
+page does not.
+
 [`tools/organ-config/`](tools/organ-config/) retunes the boards over MIDI —
 pull-in duty and duration, hold duty, watchdog, exercise passes — from the Pi
 or anything with a MIDI output, and saves the result to each board's EEPROM.

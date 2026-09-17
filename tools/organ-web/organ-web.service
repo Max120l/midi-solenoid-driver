@@ -1,0 +1,37 @@
+# The organ's front desk, always on. Install with:
+#
+#   sudo cp organ-web.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now organ-web
+#
+# Adjust User, the repo path and the options below to the Pi. The venv must
+# have flask, mido, pyserial, pyyaml and (for --pump / reset) gpiozero lgpio.
+# The user needs the dialout group for /dev/serial0 and gpio for the pins.
+
+[Unit]
+Description=Band organ front desk (organ_web + grinder)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/midi-solenoid-driver/tools/organ-web
+ExecStart=/home/pi/midi-solenoid-driver/.venv/bin/python organ_web.py \
+    --library /home/pi/organ/tunes \
+    --organ /home/pi/midi-solenoid-driver/tools/organ-arranger/instrument/organ.yaml \
+    --state /home/pi/.local/share/organ-web \
+    --device /dev/serial0 \
+    --port 8080
+# When the pump relay exists, add:  --pump 24 --pump-active-low
+# The status file is small and rewritten every second; keep the state folder
+# on the SD card only if you do not mind that, or point --state at /dev/shm
+# for status alone is not possible -- it holds the playlists too. tmpfs at
+# /var/tmp/organ-web with the playlists copied in at boot is the alternative.
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

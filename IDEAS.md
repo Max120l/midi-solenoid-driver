@@ -57,6 +57,13 @@ solenoids' minimum note and gap, the pause between songs, a start offset that
 restores the registration, and Ctrl+C to skip. A touchscreen or phone layer
 would start it and read its output rather than replace it.
 
+*Update, later in September 2026:* that layer exists:
+[`tools/organ-web/`](tools/organ-web/), a Flask app that runs the player in
+its live-queue mode, edits the queue file it reads and reads the status file
+it writes. Touchscreen and phone are the same page. The "worth checking"
+survey above stands: nothing off the shelf knew about registers, a pump or
+an arranger, and the page is a few hundred lines.
+
 ## Configuring the boards from the touchscreen
 
 The appeal is obvious: no digging inside the organ for DIP switches.

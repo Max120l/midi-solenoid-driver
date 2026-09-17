@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1b1a17">
+<title>Band organ</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Band organ</div>
+  <div id="now-line" class="now-line">connecting…</div>
+  <div class="lamps">
+    <span id="lamp-player" class="lamp" title="player">player</span>
+    <span id="lamp-pump" class="lamp" title="pump">pump</span>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="play" class="active">Play</button>
+  <button data-tab="library">Library</button>
+  <button data-tab="playlists">Playlists</button>
+  <button data-tab="upload">Upload</button>
+  <button data-tab="service">Service</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+
+<main>
+  <!-- Play ----------------------------------------------------------------- -->
+  <section id="tab-play" class="tab active">
+    <div class="card now" id="now-card">
+      <div class="label">Now playing</div>
+      <div class="title" id="now-title">Nothing</div>
+      <div class="sub" id="now-sub"></div>
+      <div class="bar"><div id="now-bar"></div></div>
+      <div class="times"><span id="now-pos">0:00</span><span id="now-len">0:00</span></div>
+    </div>
+    <div class="row buttons">
+      <button class="big" id="btn-skip">Skip</button>
+      <button class="big danger" id="btn-stop">Stop</button>
+      <button id="btn-shuffle">Shuffle</button>
+      <button id="btn-clear">Clear</button>
+      <button id="btn-save">Save as playlist</button>
+      <label class="toggle"><input type="checkbox" id="chk-repeat"> Repeat</label>
+    </div>
+    <div class="label" id="queue-label">Up next</div>
+    <ul id="queue" class="list"></ul>
+    <div id="pending-box" hidden>
+      <div class="label">Waiting for wind</div>
+      <ul id="pending" class="list"></ul>
+    </div>
+  </section>
+
+  <!-- Library --------------------------------------------------------------- -->
+  <section id="tab-library" class="tab">
+    <div class="row chips" id="folders"></div>
+    <div class="row buttons">
+      <button id="btn-queue-folder">Queue all</button>
+      <button id="btn-shuffle-folder">Queue shuffled</button>
+      <input type="search" id="search" placeholder="search…">
+    </div>
+    <ul id="tunes" class="list"></ul>
+  </section>
+
+  <!-- Playlists ------------------------------------------------------------- -->
+  <section id="tab-playlists" class="tab">
+    <ul id="playlists" class="list"></ul>
+    <div id="playlist-view" hidden>
+      <div class="row buttons">
+        <span class="title" id="playlist-name"></span>
+        <button id="pl-queue">Queue</button>
+        <button id="pl-shuffle">Queue shuffled</button>
+        <button id="pl-replace">Play instead</button>
+        <button class="danger" id="pl-delete">Delete</button>
+      </div>
+      <ul id="playlist-entries" class="list"></ul>
+    </div>
+  </section>
+
+  <!-- Upload ---------------------------------------------------------------- -->
+  <section id="tab-upload" class="tab">
+    <div class="card">
+      <div class="label">Arrange a MIDI file for the organ</div>
+      <form id="upload-form">
+        <input type="file" id="upload-file" accept=".mid,.midi" required>
+        <div class="row">
+          <label>Plan <select id="upload-plan"><option value="">automatic</option></select></label>
+          <label>Transpose <input type="text" id="upload-transpose" value="auto" size="5"></label>
+          <button type="submit" class="big">Arrange</button>
+        </div>
+      </form>
+      <p class="hint">A plan from the arranger's collection tells the transcriber which track is which and what to do with it.
+        Automatic works for most files; the plan it wrote is kept next to the source so it can be edited later.
+        A file that is already arranged (<code>.organ.mid</code>) is just added to the library.</p>
+    </div>
+    <div class="label">Jobs</div>
+    <ul id="jobs" class="list"></ul>
+  </section>
+
+  <!-- Service --------------------------------------------------------------- -->
+  <section id="tab-service" class="tab">
+    <div class="row buttons">
+      <button class="danger" id="btn-reset">Reset boards</button>
+      <button id="btn-pump-on">Pump on</button>
+      <button id="btn-pump-off">Pump off</button>
+      <span id="service-note" class="hint"></span>
+    </div>
+    <div class="card">
+      <div class="row buttons">
+        <span class="label">Keys</span>
+        <button id="keys-view" data-view="section">By section</button>
+        <label class="toggle"><input type="checkbox" id="keys-hold"> Hold</label>
+        <button id="keys-roll">Snare roll</button>
+        <label>every <input type="range" id="keys-interval" min="20" max="500" step="5" value="120"> <span id="keys-interval-v">120</span> ms</label>
+        <button class="danger" id="keys-off">All off</button>
+      </div>
+      <div id="keys-busy" class="hint" hidden>The player is busy. Stop it to use the keys.</div>
+      <div id="keys"></div>
+    </div>
+  </section>
+
+  <!-- Settings -------------------------------------------------------------- -->
+  <section id="tab-settings" class="tab">
+    <div class="card">
+      <label class="setting">Tempo <span id="set-tempo-v">100 %</span>
+        <input type="range" id="set-tempo" min="50" max="150" step="1" value="100"></label>
+      <label class="setting">Pause between songs <input type="number" id="set-gap" min="0" max="60" step="0.5"> s</label>
+      <label class="setting">Pump warm-up before the first note <input type="number" id="set-warm" min="0" max="120" step="1"> s</label>
+      <label class="setting">Pump off after idling <input type="number" id="set-idle" min="0" max="3600" step="10"> s</label>
+      <div class="row buttons"><button class="big" id="btn-save-settings">Save</button><span id="settings-note" class="hint"></span></div>
+    </div>
+    <p class="hint" id="about"></p>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

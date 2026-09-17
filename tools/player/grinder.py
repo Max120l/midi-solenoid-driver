@@ -5,8 +5,8 @@ grinder -- play arranged MIDI files to the organ over a serial MIDI line.
 The Raspberry Pi's UART, at 31250 baud into an optocoupler, is a MIDI
 output. This writes songs' note and control-change bytes down it, paced by
 the tempo map, one after another. It is the playback engine a screen or a
-phone will sit on top of, not the app: no state but the queue, nothing to
-crash but this process.
+phone sits on top of, not the app: no state but the queue, nothing to crash
+but this process.
 
     grinder.py SONG.organ.mid
     grinder.py tunes/                          # every *.organ.mid under tunes/, folder by folder
@@ -16,6 +16,7 @@ crash but this process.
     grinder.py skaters.organ.mid --start 62 --organ ../organ-arranger/instrument/organ.yaml
     grinder.py tunes --shuffle --list          # show the order, play nothing
     grinder.py tunes --status /tmp/grinder.json --pump 24 --warm-up 8
+    grinder.py queue.m3u --watch --status /dev/shm/grinder.json     # under a front end
 
 What plays: files that have been through organ_arranger -- single track,
 channel 1, every note a driver-board slot. A folder contributes every file
@@ -37,7 +38,16 @@ arrangement already ran at the limit, and no player can add headroom.
 Keys while playing: Ctrl+C skips the song -- the notes sounding at that
 moment end where they are written, within half a second, and then the organ
 is silenced; Ctrl+C again within two seconds, or during the pause between
-songs, quits.
+songs, quits. From another process, SIGUSR1 skips and SIGTERM quits the
+same clean way.
+
+--watch turns one playlist into a live queue: the file is read again before
+every song, the first entry not yet played is next (entries carry `id=N`
+after the pipe; a line without one is known by its line number), and when
+nothing is left the player idles, checking the file every second, until
+something is added. --repeat starts the file over instead of idling. This
+is how a front end drives the player: it edits the file, and sends the
+signals.
 
 --status FILE rewrites a one-line JSON document about once a second: what
 is playing, where in it, what the queue is doing. --pump GPIO drives a relay
@@ -50,7 +60,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
+import signal
 import sys
 import time
 from dataclasses import dataclass
@@ -58,7 +70,7 @@ from pathlib import Path
 
 import mido
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 MIDI_BAUD = 31250
 NOTE_CHANNEL = 0                    # channel 1, as mido counts; the boards' fixedChannel
@@ -71,8 +83,13 @@ REGISTER_PULSE_S, REGISTER_STAGGER_S, SETTLE_S = 0.100, 0.060, 0.250
 QUIT_WINDOW_S = 2.0
 FADE_MAX_S = 0.5                                # a skip lets what is sounding end where written, within this
 STATUS_PERIOD_S = 1.0
+WATCH_POLL_S = 1.0
 PLAYLIST_SUFFIXES = (".m3u", ".m3u8", ".txt", ".playlist")
 ORGAN_MESSAGES = ("note_on", "note_off", "control_change")
+
+
+class Quit(BaseException):
+    """Asked to stop from outside (SIGTERM): finish cleanly, silenced."""
 
 
 # ----------------------------------------------------------------------------
@@ -84,6 +101,7 @@ class Song:
     path: Path
     tempo: float | None = None          # a playlist line's own tempo, else the run's
     gap: float | None = None            # the pause after this song, else the run's
+    id: int | None = None               # a playlist line's id=, for --watch
 
     @property
     def name(self) -> str:
@@ -121,6 +139,7 @@ def read_playlist(path: Path, pattern: str = DEFAULT_PATTERN) -> list[Song]:
             continue
         target, _, opts = line.partition("|")
         tempo = gap = None
+        ident = lineno
         for opt in opts.split():
             key, _, value = opt.partition("=")
             try:
@@ -130,15 +149,17 @@ def read_playlist(path: Path, pattern: str = DEFAULT_PATTERN) -> list[Song]:
                     gap = float(value)
                     if gap < 0:
                         raise ValueError("gap must be 0 or more")
+                elif key == "id":
+                    ident = int(value)
                 else:
-                    raise ValueError(f"unknown setting {key!r} (tempo=, gap=)")
+                    raise ValueError(f"unknown setting {key!r} (tempo=, gap=, id=)")
             except ValueError as e:
                 raise ValueError(f"{path}:{lineno}: {e}") from None
         p = Path(target.strip())
         if not p.is_absolute():
             p = path.parent / p
         for song in expand([p], pattern):
-            song.tempo, song.gap = tempo, gap
+            song.tempo, song.gap, song.id = tempo, gap, ident
             songs.append(song)
     return songs
 
@@ -295,17 +316,25 @@ class Playback:
         delays never accumulate. With `tick`, long waits are cut into
         `period` slices and tick() is called between them."""
         self.t0 = clock()
+        next_tick = self.t0 + period
         while self.pos < len(self.events):
             t, msg = self.events[self.pos]
             while True:
-                wait = self.t0 + t - clock()
+                now = clock()
+                wait = self.t0 + t - now
                 if wait <= 0:
                     break
-                if tick is None or wait <= period:
+                if tick is None:
                     sleep(wait)
                     break
-                sleep(period)
-                tick()
+                if now >= next_tick:                      # dense music: the tick falls between events
+                    tick()
+                    next_tick += period
+                slice_ = min(wait, next_tick - now)
+                if slice_ > 0:
+                    sleep(slice_)
+                if wait <= slice_:
+                    break
             self._write(port, msg, clock)
             self.pos += 1
         port.flush()
@@ -354,7 +383,7 @@ class Status:
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
-        self.fields: dict = {}
+        self.fields: dict = {"pid": os.getpid()}
 
     def write(self, **fields) -> None:
         self.fields = {**self.fields, **fields}
@@ -393,102 +422,211 @@ class Settings:
     min_note_s: float = MIN_NOTE_S
     min_gap_s: float = MIN_GAP_S
     registers: list[tuple[int, int]] | None = None
+    pattern: str = DEFAULT_PATTERN
+
+
+class Player:
+    """The run loop's shared parts: one song at a time, the status file, the
+    pump, the console line."""
+
+    def __init__(self, port, cfg: Settings, sleep=time.sleep, clock=time.monotonic,
+                 out=None, status: Status | None = None, pump=None) -> None:
+        self.port, self.cfg, self.sleep, self.clock = port, cfg, sleep, clock
+        self.out = out or sys.stdout
+        self.status, self.pump = status, pump
+
+    def say(self, text: str) -> None:
+        print(text, file=self.out, flush=True)
+
+    def report(self, **fields) -> None:
+        if self.status is not None:
+            self.status.write(**fields)
+
+    def stopped(self) -> int:
+        silence(self.port)
+        self.say("Stopped.")
+        self.report(state="stopped")
+        return 130
+
+    def warm_up(self, total: int) -> bool:
+        """Pump on and the wait for wind. False when interrupted."""
+        if self.pump is not None:
+            self.pump.on()
+            self.say("pump on")
+        if self.cfg.warm_up > 0:
+            self.report(state="warming up", seconds=self.cfg.warm_up, index=0, total=total)
+            self.say(f"waiting {self.cfg.warm_up:g} s for wind")
+            try:
+                self.sleep(self.cfg.warm_up)
+            except KeyboardInterrupt:
+                return False
+        return True
+
+    def play_song(self, song: Song, index: int, total: int, start: float = 0.0, extra: dict | None = None) -> str:
+        """Returns 'played', 'skipped', 'quit' or 'unreadable'."""
+        cfg = self.cfg
+        speed = song.tempo if song.tempo is not None else cfg.tempo
+        try:
+            mid = mido.MidiFile(str(song.path))
+            events = timeline(mid, speed, start, cfg.min_note_s, cfg.min_gap_s)
+        except (OSError, ValueError, EOFError, KeyError, IndexError) as e:
+            self.say(f"[{index}/{total}] {song.name}: cannot play: {e}")
+            return "unreadable"
+        pb = Playback(events, cfg.min_note_s)
+        note = f"  from {clock_text(start)}" if start else ""
+        self.say(f"[{index}/{total}] {song.name}  {clock_text(pb.length)}  tempo {speed:.0%}{note}")
+        info = dict(song=song.name, path=str(song.path), id=song.id, index=index, total=total,
+                    length_s=round(pb.length, 1), tempo=speed, start_s=start, **(extra or {}))
+        self.report(state="playing", position_s=0.0, **info)
+        silence(self.port)
+        try:
+            if start and cfg.registers:
+                pulse_registers(registration_at(mid, speed, start, cfg.registers), self.port, self.sleep)
+            tick = (lambda: self.report(state="playing", position_s=round(pb.position(self.clock), 1))) \
+                if self.status else None
+            pb.play(self.port, self.sleep, self.clock, tick)
+        except KeyboardInterrupt:
+            at = pb.position(self.clock)
+            try:
+                pb.release(self.port, self.sleep, self.clock)
+            except KeyboardInterrupt:              # hammered: quit now, silenced
+                return "quit"
+            self.say(f"      skipped at {clock_text(at)}  (Ctrl+C again within {QUIT_WINDOW_S:.0f} s quits)")
+            self.report(state="skipped", position_s=round(at, 1))
+            try:
+                self.sleep(QUIT_WINDOW_S)
+            except KeyboardInterrupt:
+                return "quit"
+            return "skipped"
+        silence(self.port)
+        self.report(state="played", position_s=round(pb.length, 1))
+        return "played"
+
+    def pause(self, seconds: float) -> bool:
+        """The silence between songs. False when interrupted."""
+        self.report(state="pause", seconds=seconds)
+        try:
+            self.sleep(seconds)
+        except KeyboardInterrupt:
+            return False
+        return True
+
+    def finished(self) -> int:
+        self.say("Finished.")
+        self.report(state="finished")
+        return 0
+
+    def pump_off(self) -> None:
+        if self.pump is not None:
+            self.pump.off()
+            self.say("pump off")
 
 
 def run(songs: list[Song], port, cfg: Settings, sleep=time.sleep, clock=time.monotonic,
         out=None, rng: random.Random | None = None, status: Status | None = None, pump=None) -> int:
-    """Play the queue. Returns 0 at the end, 130 when quit with Ctrl+C."""
-    out = out or sys.stdout
+    """Play a fixed queue. Returns 0 at the end, 130 when quit with Ctrl+C."""
     rng = rng or random.Random()
+    pl = Player(port, cfg, sleep, clock, out, status, pump)
     total = len(songs)
-
-    def report(**fields) -> None:
-        if status is not None:
-            status.write(**fields)
-
-    def say(text: str) -> None:
-        print(text, file=out, flush=True)
-
     try:
-        if pump is not None:
-            pump.on()
-            say("pump on")
-        if cfg.warm_up > 0:
-            report(state="warming up", seconds=cfg.warm_up, index=0, total=total)
-            say(f"waiting {cfg.warm_up:g} s for wind")
-            try:
-                sleep(cfg.warm_up)
-            except KeyboardInterrupt:
-                say("Stopped.")
-                report(state="stopped")
-                return 130
+        if not pl.warm_up(total):
+            return pl.stopped()
         time_round = 0
         while True:
             order = list(range(total))
             if cfg.shuffle:
                 rng.shuffle(order)
             for k, i in enumerate(order):
-                song = songs[i]
-                speed = song.tempo if song.tempo is not None else cfg.tempo
                 start = cfg.start if time_round == 0 and k == 0 else 0.0
-                try:
-                    mid = mido.MidiFile(str(song.path))
-                    events = timeline(mid, speed, start, cfg.min_note_s, cfg.min_gap_s)
-                except (OSError, ValueError, EOFError, KeyError, IndexError) as e:
-                    say(f"[{k + 1}/{total}] {song.name}: cannot play: {e}")
+                outcome = pl.play_song(songs[i], k + 1, total, start, {"round": time_round + 1})
+                if outcome == "quit":
+                    return pl.stopped()
+                if outcome != "played":
                     continue
-                pb = Playback(events, cfg.min_note_s)
-                note = f"  from {clock_text(start)}" if start else ""
-                say(f"[{k + 1}/{total}] {song.name}  {clock_text(pb.length)}  tempo {speed:.0%}{note}")
-                info = dict(song=song.name, path=str(song.path), index=k + 1, total=total, round=time_round + 1,
-                            length_s=round(pb.length, 1), tempo=speed, start_s=start)
-                report(state="playing", position_s=0.0, **info)
-                silence(port)
-                try:
-                    if start and cfg.registers:
-                        pulse_registers(registration_at(mid, speed, start, cfg.registers), port, sleep)
-                    tick = (lambda: report(state="playing", position_s=round(pb.position(clock), 1))) if status else None
-                    pb.play(port, sleep, clock, tick)
-                except KeyboardInterrupt:
-                    at = pb.position(clock)
-                    try:
-                        pb.release(port, sleep, clock)
-                    except KeyboardInterrupt:              # hammered: quit now, silenced
-                        silence(port)
-                        say("Stopped.")
-                        report(state="stopped")
-                        return 130
-                    say(f"      skipped at {clock_text(at)}  (Ctrl+C again within {QUIT_WINDOW_S:.0f} s quits)")
-                    report(state="skipped", position_s=round(at, 1))
-                    try:
-                        sleep(QUIT_WINDOW_S)
-                    except KeyboardInterrupt:
-                        say("Stopped.")
-                        report(state="stopped")
-                        return 130
-                    continue
-                silence(port)
-                report(state="played", position_s=round(pb.length, 1))
                 last = k + 1 == total and not cfg.repeat
                 if not last:
-                    gap = song.gap if song.gap is not None else cfg.gap
-                    report(state="pause", seconds=gap)
-                    try:
-                        sleep(gap)
-                    except KeyboardInterrupt:
-                        say("Stopped.")
-                        report(state="stopped")
-                        return 130
+                    gap = songs[i].gap if songs[i].gap is not None else cfg.gap
+                    if not pl.pause(gap):
+                        return pl.stopped()
             if not cfg.repeat:
                 break
             time_round += 1
-        say("Finished.")
-        report(state="finished")
-        return 0
+        return pl.finished()
+    except Quit:
+        return pl.stopped()
     finally:
-        if pump is not None:
-            pump.off()
-            say("pump off")
+        pl.pump_off()
+
+
+def read_queue(path: Path, pattern: str, say) -> list[Song]:
+    """The live queue file, or nothing while it is missing or broken."""
+    try:
+        return read_playlist(path, pattern) if path.is_file() else []
+    except (OSError, ValueError, FileNotFoundError) as e:
+        say(f"queue: {e}")
+        return []
+
+
+def run_watch(queue: Path, port, cfg: Settings, sleep=time.sleep, clock=time.monotonic,
+              out=None, status: Status | None = None, pump=None) -> int:
+    """Play a live queue file: re-read before every song, the first entry not
+    yet played is next; idle when nothing is left. Runs until told to quit."""
+    pl = Player(port, cfg, sleep, clock, out, status, pump)
+    played: set[int] = set()
+    idle_said = False
+    try:
+        if not pl.warm_up(0):
+            return pl.stopped()
+        while True:
+            songs = read_queue(queue, cfg.pattern, pl.say)
+            waiting = [s for s in songs if s.id not in played]
+            if not waiting:
+                if cfg.repeat and played and songs:
+                    played.clear()
+                    continue
+                if not idle_said:
+                    pl.say("idle: waiting for the queue")
+                    idle_said = True
+                pl.report(state="idle", queue=len(songs), song=None, id=None)
+                try:
+                    sleep(WATCH_POLL_S)
+                except KeyboardInterrupt:
+                    return pl.stopped()
+                continue
+            idle_said = False
+            song = waiting[0]
+            played.add(song.id)
+            index = len(songs) - len(waiting) + 1
+            outcome = pl.play_song(song, index, len(songs), 0.0, {"queue": len(songs)})
+            if outcome == "quit":
+                return pl.stopped()
+            if outcome != "played":
+                continue
+            songs = read_queue(queue, cfg.pattern, pl.say)
+            more = any(s.id not in played for s in songs) or (cfg.repeat and bool(songs))
+            if more:
+                gap = song.gap if song.gap is not None else cfg.gap
+                if not pl.pause(gap):
+                    return pl.stopped()
+    except Quit:
+        return pl.stopped()
+    finally:
+        pl.pump_off()
+
+
+def install_signals() -> None:
+    """SIGTERM quits cleanly; SIGUSR1 (where it exists) skips like Ctrl+C.
+    Both arrive as exceptions in the main thread, wherever it is sleeping."""
+
+    def quit_(signum, frame):
+        raise Quit()
+
+    def skip(signum, frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, quit_)
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, skip)
 
 
 # ----------------------------------------------------------------------------
@@ -510,6 +648,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--start", type=float, default=0.0, metavar="SECONDS", help="begin the first song this far in")
     p.add_argument("--pattern", default=DEFAULT_PATTERN, help=f"which files a folder contributes (default {DEFAULT_PATTERN})")
     p.add_argument("--organ", help="organ.yaml: the minimum note and gap, and the registers to restore for --start")
+    p.add_argument("--watch", action="store_true",
+                   help="the one playlist given is a live queue: re-read before every song, idle when empty")
     p.add_argument("--status", metavar="FILE", help="rewrite this one-line JSON file about once a second with what is playing")
     p.add_argument("--pump", type=int, metavar="GPIO", help="BCM GPIO of the bellows pump relay: on before the music, off after")
     p.add_argument("--pump-active-low", action="store_true", help="the relay pulls in on a low input (most modules do)")
@@ -518,7 +658,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     a = p.parse_args(argv)
 
-    cfg = Settings(gap=a.gap, start=a.start, shuffle=a.shuffle, repeat=a.repeat, warm_up=a.warm_up)
+    cfg = Settings(gap=a.gap, start=a.start, shuffle=a.shuffle, repeat=a.repeat, warm_up=a.warm_up, pattern=a.pattern)
+    songs: list[Song] = []
+    queue: Path | None = None
     try:
         cfg.tempo = parse_tempo(a.tempo)
         if a.gap < 0 or a.start < 0 or a.warm_up < 0:
@@ -527,7 +669,14 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--pump must be a BCM GPIO number, 0-27")
         if a.organ:
             cfg.min_note_s, cfg.min_gap_s, cfg.registers = read_organ(a.organ)
-        songs = expand(a.items, a.pattern)
+        if a.watch:
+            if len(a.items) != 1 or Path(a.items[0]).suffix.lower() not in PLAYLIST_SUFFIXES:
+                raise ValueError("--watch takes exactly one playlist file (it need not exist yet)")
+            if a.shuffle or a.start or a.list:
+                raise ValueError("--watch does not go with --shuffle, --start or --list: the file's writer decides the order")
+            queue = Path(a.items[0])
+        else:
+            songs = expand(a.items, a.pattern)
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -554,11 +703,18 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:                         # gpiozero's own errors: no such pin, pin in use
             print(f"error: cannot drive GPIO {a.pump}: {e}", file=sys.stderr)
             return 2
+    install_signals()
+
+    def go(port) -> int:
+        if queue is not None:
+            return run_watch(queue, port, cfg, status=status, pump=pump)
+        return run(songs, port, cfg, status=status, pump=pump)
 
     try:
         if a.dry_run:
-            print(f"dry run: {len(songs)} song{'s' if len(songs) != 1 else ''}, nothing on the wire")
-            return run(songs, NullPort(), cfg, status=status, pump=pump)
+            what = f"live queue {queue}" if queue is not None else f"{len(songs)} song{'s' if len(songs) != 1 else ''}"
+            print(f"dry run: {what}, nothing on the wire")
+            return go(NullPort())
 
         try:
             import serial
@@ -567,7 +723,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         try:
             with serial.Serial(a.device, baudrate=MIDI_BAUD) as port:
-                return run(songs, port, cfg, status=status, pump=pump)
+                return go(port)
         except (serial.SerialException, OSError, ValueError) as e:
             print(f"error: cannot open {a.device}: {e}", file=sys.stderr)
             return 2

@@ -1,0 +1,132 @@
+# organ-web
+
+The organ's front desk: one web page served by the Pi, for a touchscreen on
+the case and for any phone on the same Wi-Fi. It sits on top of the
+[player](../player/) and owns everything around the music: the queue, the
+library, saved playlists, uploads through the arranger, the pump, and the
+service screens. The music itself stays in `grinder`, which this app runs
+as a child in `--watch` mode. If the page or this app dies, the song keeps
+playing.
+
+```bash
+pip install flask mido pyserial pyyaml          # plus gpiozero lgpio on the Pi for the pump and the reset
+python organ_web.py --library ~/organ/tunes --organ ../organ-arranger/instrument/organ.yaml
+```
+
+Then open `http://<pi>:8080/` from anything on the network. On a laptop
+with no organ, `--dry-run` plays to nowhere and the whole page works.
+
+## How it hangs together
+
+```
+phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  queue.m3u  ──read before each song──▶  grinder --watch  ──MIDI──▶  boards
+                                     ▲                                                                 │
+                                     └──────────────── reads status.json once a second ◀───────────────┘
+```
+
+- **The queue file** is the only thing the two processes share. The app
+  appends lines with an `id=`; the player plays the first id it has not
+  played and idles when none is left. Reordering is rewriting the file;
+  the player notices before its next song.
+- **Skip** is a `SIGUSR1` to the player. **Stop** clears the file and skips.
+  There is no pause: an organ has no way to hold its breath.
+- **The pump relay** belongs to this app, not the player. A play request
+  while the pump is off switches it on and holds the songs back for the
+  warm-up; after the idle time-out with nothing queued the pump goes off.
+  Without `--pump` the wind is your business and none of this happens.
+- **State** lives in `--state` (default `~/.local/share/organ-web`):
+  `queue.m3u`, `status.json`, `settings.json`, `playlists/*.m3u`. The
+  playlists are plain text in the player's own format, so a hand-written
+  one works too.
+
+## The pages
+
+| Tab | What it does |
+|---|---|
+| **Play** | what is playing, with position; skip, stop; the queue with move up/down and remove; shuffle and clear the queue; save it as a playlist; repeat |
+| **Library** | the folders under `--library` as chips, the arranged tunes in each; ＋ queues one, ▶ plays it next; queue or shuffle a whole folder, or everything |
+| **Playlists** | the saved lists: open, queue, queue shuffled, "play instead" (replaces the queue), delete |
+| **Upload** | drop a `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source; a `.organ.mid` is just added |
+| **Service** | reset the boards; pump on and off by hand; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
+| **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out |
+
+The keys tester shares the serial line with the player, so it only answers
+while the player is idle; the moment something is queued it closes.
+
+Tempo and pause changes apply to the songs not yet played. A playlist line
+can still carry its own `tempo=` and `gap=`, which win over the settings.
+
+## The API
+
+Everything the page does is a plain HTTP call, so a different front end,
+a script or a home-automation box can do the same.
+
+| Method and path | Body | Does |
+|---|---|---|
+| `GET /api/state` | | status, queue, pending, pump, settings, player |
+| `GET /api/library` | | tunes with folder and length |
+| `POST /api/queue/add` | `{paths:[…], shuffle?, play_now?}` or `{path}` | queue tunes (library-relative paths) |
+| `POST /api/queue/remove` `/move` `/clear` `/shuffle` | `{id}`, `{id,to}` | edit the queue |
+| `POST /api/queue/save` | `{name}` | save the queue as a playlist |
+| `POST /api/player/skip` `/stop` | | transport |
+| `POST /api/settings` | `{tempo?, gap?, repeat?, warm_up?, idle_off?}` | change settings |
+| `GET /api/playlists`, `GET /PUT /DELETE /api/playlists/<name>` | `{entries:[{path,tempo?,gap?}]}` | playlists |
+| `POST /api/playlists/<name>/queue` | `{shuffle?, replace?}` | queue a playlist |
+| `GET /api/plans` | | the arranger's plans |
+| `POST /api/arrange` | multipart `file`, `plan`, `transpose` | start an arrange job |
+| `GET /api/jobs`, `GET /api/jobs/<id>` | | job state, output path, log |
+| `GET /api/keys/layout`, `POST /api/keys/pulse` `/hold` `/roll` `/off` | `{solenoid, ms?}`, `{solenoid,on}`, `{solenoids?,interval_ms?,on}` | the keys tester |
+| `POST /api/service/reset`, `POST /api/service/pump` | , `{on}` | the boards' reset line; the pump by hand |
+
+Errors come back as `{"error": "…"}` with 400 (bad request), 404 (no such
+tune, playlist or job) or 409 (the player is busy; no pump configured).
+
+## Options
+
+| Option | Default | |
+|---|---|---|
+| `--library DIR` | required | arranged tunes; subfolders are the library's sections; `uploads/` is created inside |
+| `--organ FILE` | required | organ.yaml, for the keys tester's labels and the arranger |
+| `--state DIR` | `~/.local/share/organ-web` | queue, status, settings, playlists |
+| `--plans DIR` | `tools/organ-arranger/tunes` | the `*.plan.yaml` offered on upload |
+| `--device DEV` | `/dev/serial0` | the MIDI line, passed to the player and used by the keys tester |
+| `--python EXE` | this interpreter | runs the player and the arranger |
+| `--pump GPIO`, `--pump-active-low` | none | the bellows pump relay |
+| `--reset-pins 17` | `17` | the boards' reset line(s), for the Service page |
+| `--host`, `--port` | `0.0.0.0`, `8080` | where to listen |
+| `--dry-run` | | no serial port, no GPIO |
+
+## As a service, and as a kiosk
+
+[`organ-web.service`](organ-web.service) is a systemd unit: copy it to
+`/etc/systemd/system/`, edit the user, paths and options at the top, then
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now organ-web
+```
+
+The player is a child of the service and restarts with it; the app also
+restarts the player on its own if it ever exits. `systemctl stop organ-web`
+sends SIGTERM, which the player takes as a clean stop: the organ is silenced
+and the pump switched off before anything exits.
+
+For a touchscreen on the organ, run a browser in kiosk mode at boot. On Pi
+OS with the desktop, `~/.config/wayfire.ini` (or an autostart entry) with
+
+```
+chromium-browser --kiosk --noerrdialogs --disable-infobars http://localhost:8080/
+```
+
+gives a full-screen page with no chrome; the page remembers its last tab.
+The layout is touch-first: every control is at least 44 px, and it reflows
+for a phone in portrait.
+
+## Tests
+
+```bash
+python -m pytest tests
+```
+
+The tests drive the desk with a fake player process, a fake pump, a fake
+clock and a fake arranger, and the HTTP routes through Flask's test client.
+No serial port, no GPIO and no real time.

@@ -1,0 +1,981 @@
+#!/usr/bin/env python3
+"""
+organ_web -- the organ's front desk: a web page served by the Pi, for a
+touchscreen on the case and for any phone on the same Wi-Fi.
+
+It owns everything around the music and nothing of the music itself. The
+player (tools/player/grinder.py, run in --watch mode as a child of this
+process) reads a queue file before every song and writes a status file
+once a second; this app edits the one and reads the other, and sends the
+player a signal to skip. If this app dies, the song keeps playing.
+
+    organ_web.py --library ~/organ/tunes --organ ../organ-arranger/instrument/organ.yaml
+    organ_web.py --library ~/organ/tunes --organ ... --pump 24 --pump-active-low --warm-up 8
+    organ_web.py --library ./tunes --organ ... --dry-run --port 8080     # on a laptop: no serial, no GPIO
+
+What it does:
+
+  Play        the queue: what is playing, what is next; skip, stop, reorder
+  Library     the tune folders under --library; tap to queue or play now
+  Playlists   saved lists in the state folder; load, save the queue as one
+  Upload      drop a .mid: the transcriber and the arranger run on it, with a
+              plan if one is chosen, and the result lands in library/uploads
+  Service     reset the boards, the pump by hand, and a touch version of
+              organ_keys for when the player is idle
+  Settings    tempo, the pause between songs, repeat, the pump's warm-up
+              and idle time-out
+
+The pump: this app owns the relay, not the player. A play request while the
+pump is off switches it on and holds the songs back for the warm-up; when
+the player has been idle for the idle time-out the pump goes off again.
+
+State lives in --state (default ~/.local/share/organ-web): queue.m3u,
+status.json, settings.json, playlists/. Nothing here needs root.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import random
+import signal
+import subprocess
+import sys
+import threading
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+TOOLS = HERE.parent
+sys.path.insert(0, str(TOOLS / "player"))
+sys.path.insert(0, str(TOOLS / "organ-config"))
+
+import grinder  # noqa: E402
+import organ_keys  # noqa: E402
+
+__version__ = "0.1.0"
+
+DEFAULT_PORT = 8080
+DEFAULT_SETTINGS = {"tempo": 1.0, "gap": 3.0, "repeat": False, "warm_up": 8.0, "idle_off": 180.0}
+PLAYER_RESTART_S = 2.0
+HOUSEKEEP_S = 1.0
+KEYS_TICK_S = 0.01
+SOURCE_SUFFIXES = (".mid", ".midi")
+
+
+# ----------------------------------------------------------------------------
+# Configuration
+# ----------------------------------------------------------------------------
+
+@dataclass
+class Config:
+    library: Path
+    organ: Path
+    state: Path
+    plans: Path = TOOLS / "organ-arranger" / "tunes"
+    device: str = grinder.DEFAULT_DEVICE
+    python: str = sys.executable
+    pump_pin: int | None = None
+    pump_active_low: bool = False
+    reset_pins: list[int] = field(default_factory=lambda: [17])
+    dry_run: bool = False
+    host: str = "0.0.0.0"
+    port: int = DEFAULT_PORT
+
+    @property
+    def queue_file(self) -> Path:
+        return self.state / "queue.m3u"
+
+    @property
+    def status_file(self) -> Path:
+        return self.state / "status.json"
+
+    @property
+    def settings_file(self) -> Path:
+        return self.state / "settings.json"
+
+    @property
+    def playlists(self) -> Path:
+        return self.state / "playlists"
+
+    @property
+    def uploads(self) -> Path:
+        return self.library / "uploads"
+
+
+# ----------------------------------------------------------------------------
+# The library: what can be played
+# ----------------------------------------------------------------------------
+
+class Library:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self._lengths: dict[str, tuple[float, float]] = {}      # rel path -> (mtime, seconds)
+
+    def length(self, path: Path) -> float | None:
+        rel = str(path.relative_to(self.root))
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return None
+        hit = self._lengths.get(rel)
+        if hit and hit[0] == mtime:
+            return hit[1]
+        try:
+            import mido
+            seconds = round(mido.MidiFile(str(path)).length, 1)
+        except Exception:
+            seconds = None
+        if seconds is not None:
+            self._lengths[rel] = (mtime, seconds)
+        return seconds
+
+    def tunes(self, pattern: str = grinder.DEFAULT_PATTERN) -> list[dict]:
+        out = []
+        if not self.root.is_dir():
+            return out
+        for p in sorted(self.root.rglob(pattern)):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(self.root)
+            out.append({"path": rel.as_posix(), "name": grinder.Song(p).name,
+                        "folder": rel.parent.as_posix() if rel.parent != Path(".") else "",
+                        "length_s": self.length(p)})
+        return out
+
+    def folders(self) -> list[str]:
+        seen = []
+        for t in self.tunes():
+            if t["folder"] not in seen:
+                seen.append(t["folder"])
+        return seen
+
+    def resolve(self, rel: str) -> Path:
+        """A library-relative path, refused if it points outside the library."""
+        p = (self.root / rel).resolve()
+        if self.root.resolve() not in p.parents and p != self.root.resolve():
+            raise ValueError(f"{rel}: outside the library")
+        return p
+
+
+# ----------------------------------------------------------------------------
+# The player process
+# ----------------------------------------------------------------------------
+
+class PlayerProcess:
+    """grinder --watch as a child, restarted if it dies."""
+
+    def __init__(self, cfg: Config, spawn=None) -> None:
+        self.cfg = cfg
+        self.spawn = spawn or self._spawn
+        self.proc = None
+        self.started_at = 0.0
+        self.closing = False
+        self.skip_signal = getattr(signal, "SIGUSR1", None)      # None where the platform has no such thing
+
+    def command(self) -> list[str]:
+        cmd = [self.cfg.python, str(TOOLS / "player" / "grinder.py"), str(self.cfg.queue_file), "--watch",
+               "--status", str(self.cfg.status_file), "--organ", str(self.cfg.organ)]
+        if self.cfg.dry_run:
+            cmd.append("--dry-run")
+        else:
+            cmd += ["--device", self.cfg.device]
+        return cmd
+
+    def _spawn(self, cmd: list[str]):
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def running(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def ensure(self, now: float) -> None:
+        if self.closing or self.running():
+            return
+        if now - self.started_at < PLAYER_RESTART_S:
+            return
+        self.proc = self.spawn(self.command())
+        self.started_at = now
+
+    def skip(self) -> bool:
+        if not self.running() or self.skip_signal is None:
+            return False
+        self.proc.send_signal(self.skip_signal)
+        return True
+
+    def close(self) -> None:
+        self.closing = True
+        if self.running():
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except Exception:
+                self.proc.kill()
+
+
+# ----------------------------------------------------------------------------
+# The pump
+# ----------------------------------------------------------------------------
+
+class FakePump:
+    def __init__(self) -> None:
+        self.state = False
+
+    def on(self) -> None:
+        self.state = True
+
+    def off(self) -> None:
+        self.state = False
+
+    def close(self) -> None:
+        pass
+
+
+# ----------------------------------------------------------------------------
+# The keys tester over the wire, when the player is idle
+# ----------------------------------------------------------------------------
+
+class KeysDesk:
+    """organ_keys' Console driven from HTTP: pulses, holds and rolls, ticked
+    by a thread. Opened on demand, closed when the player has work."""
+
+    def __init__(self, cfg: Config, labels: dict[int, str], groups, section_labels, open_port) -> None:
+        self.cfg = cfg
+        self.open_port = open_port
+        self.port = None
+        self.console = None
+        self.lock = threading.Lock()
+        self.thread: threading.Thread | None = None
+        self.labels, self.groups, self.section_labels = labels, groups, section_labels
+
+    def layout(self) -> dict:
+        boards = [{"name": f"board {b + 1}", "solenoids": list(range(b * 16 + 1, b * 16 + 17))} for b in range(4)]
+        return {"boards": boards, "sections": [{"name": n, "solenoids": s} for n, s in self.groups],
+                "labels": {str(k): v for k, v in self.labels.items()},
+                "section_labels": {str(k): v for k, v in self.section_labels.items()},
+                "snare": self.console.snare_pair() if self.console else organ_keys.Console(
+                    send=lambda m: None, labels=self.labels).snare_pair()}
+
+    def open(self) -> None:
+        with self.lock:
+            if self.console is not None:
+                return
+            self.port = self.open_port()
+            first = int(self._solenoid_1_note)
+            self.console = organ_keys.Console(send=lambda m: self.port.write(bytes(m.bytes())),
+                                              solenoid_1_note=first, labels=self.labels,
+                                              sections=self.groups, section_labels=self.section_labels)
+            self.thread = threading.Thread(target=self._run, name="keys", daemon=True)
+            self.thread.start()
+
+    _solenoid_1_note = 0
+
+    def _run(self) -> None:
+        while True:
+            with self.lock:
+                c = self.console
+                if c is None:
+                    return
+                c.tick(time.monotonic())
+            time.sleep(KEYS_TICK_S)
+
+    def close(self) -> None:
+        with self.lock:
+            if self.console is None:
+                return
+            self.console.all_off()
+            self.console = None
+            try:
+                self.port.close()
+            except Exception:
+                pass
+            self.port = None
+
+    def act(self, what: str, body: dict) -> dict:
+        self.open()
+        now = time.monotonic()
+        with self.lock:
+            c = self.console
+            if what == "pulse":
+                s = int(body["solenoid"])
+                c.pulse(s, now, int(body.get("ms", c.pulse_ms)))
+            elif what == "hold":
+                s = int(body["solenoid"])
+                if body.get("on", True):
+                    c.on(s, now)
+                else:
+                    c.off(s)
+            elif what == "roll":
+                if body.get("on", True):
+                    targets = [int(x) for x in body.get("solenoids", [])] or c.snare_pair()
+                    c.roll_interval_ms = max(organ_keys.ROLL_MIN_MS, min(organ_keys.ROLL_MAX_MS,
+                                                                        int(body.get("interval_ms", c.roll_interval_ms))))
+                    c.start_roll(targets, now)
+                else:
+                    c.roll_targets = []
+            elif what == "off":
+                c.all_off()
+            else:
+                raise ValueError(f"unknown keys action {what!r}")
+            return {"sounding": sorted(c.sounding), "rolling": list(c.roll_targets)}
+
+
+# ----------------------------------------------------------------------------
+# The desk: queue, settings, pump, jobs
+# ----------------------------------------------------------------------------
+
+class Desk:
+    def __init__(self, cfg: Config, now=time.monotonic, spawn=None, pump=None, run_cmd=None, open_port=None) -> None:
+        self.cfg = cfg
+        self.now = now
+        cfg.state.mkdir(parents=True, exist_ok=True)
+        cfg.playlists.mkdir(parents=True, exist_ok=True)
+        cfg.uploads.mkdir(parents=True, exist_ok=True)
+        self.library = Library(cfg.library)
+        self.settings = dict(DEFAULT_SETTINGS)
+        self.next_id = 1
+        self._load_settings()
+        self.queue: list[dict] = []
+        self.pending: list[dict] = []           # held back for the warm-up
+        self.wind_ready_at: float | None = None
+        self.round: list[dict] = []             # what was added since the last idle, for repeat
+        self.player = PlayerProcess(cfg, spawn)
+        self.pump = pump
+        self.pump_on = False
+        self.idle_since: float | None = None
+        self.status: dict = {}
+        self.jobs: dict[str, dict] = {}
+        self.run_cmd = run_cmd or self._run_cmd
+        self.lock = threading.RLock()
+        import yaml
+        with open(cfg.organ, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        labels, first = organ_keys.labels_from_organ(raw)
+        groups, section_labels = organ_keys.groups_from_organ(raw)
+        self.keys = KeysDesk(cfg, labels, groups, section_labels, open_port or self._open_port)
+        self.keys._solenoid_1_note = first
+        self.registers = [r.get("name") for r in raw.get("registers") or []]
+        self._written: list[dict] = []
+        try:
+            cfg.status_file.unlink()            # a status left by an earlier run says nothing about now
+        except OSError:
+            pass
+        self.write_queue()
+
+    # -- persistence ---------------------------------------------------------
+
+    def _load_settings(self) -> None:
+        try:
+            data = json.loads(self.cfg.settings_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        for k in DEFAULT_SETTINGS:
+            if k in data:
+                self.settings[k] = data[k]
+        self.next_id = int(data.get("next_id", 1))
+
+    def _save_settings(self) -> None:
+        data = {**self.settings, "next_id": self.next_id}
+        tmp = self.cfg.settings_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
+        tmp.replace(self.cfg.settings_file)
+
+    def write_queue(self) -> None:
+        lines = ["# organ_web queue: edited by the app, read by grinder --watch before every song"]
+        for e in self.queue:
+            opts = [f"id={e['id']}", f"tempo={e.get('tempo') or self.settings['tempo']:.3f}",
+                    f"gap={e.get('gap') if e.get('gap') is not None else self.settings['gap']:g}"]
+            lines.append(f"{e['abs']} | {' '.join(opts)}")
+        tmp = self.cfg.queue_file.with_suffix(".tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp.replace(self.cfg.queue_file)
+        self.last_write = time.time()
+
+    def read_status(self) -> dict:
+        try:
+            return json.loads(self.cfg.status_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    # -- the queue ----------------------------------------------------------
+
+    def entry(self, rel: str, tempo=None, gap=None) -> dict:
+        p = self.library.resolve(rel)
+        if not p.is_file():
+            raise FileNotFoundError(f"{rel}: not in the library")
+        e = {"id": self.next_id, "path": rel, "abs": str(p), "name": grinder.Song(p).name,
+             "tempo": tempo, "gap": gap, "length_s": self.library.length(p)}
+        self.next_id += 1
+        return e
+
+    def add(self, rels: list[str], shuffle: bool = False, play_now: bool = False,
+            tempos: list | None = None, gaps: list | None = None) -> list[dict]:
+        with self.lock:
+            entries = [self.entry(r, (tempos or [None] * len(rels))[i], (gaps or [None] * len(rels))[i])
+                       for i, r in enumerate(rels)]
+            if shuffle:
+                random.shuffle(entries)
+            self._save_settings()
+            self.round += entries
+            if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
+                self.pump_set(True)
+                self.wind_ready_at = self.now() + float(self.settings["warm_up"])
+            if self.wind_ready_at is not None and self.now() < self.wind_ready_at:
+                self.pending = entries + self.pending if play_now else self.pending + entries
+                return entries
+            if play_now:
+                current = self.status.get("id") if self.status.get("state") == "playing" else None
+                keep = [e for e in self.queue if e["id"] == current]
+                rest = [e for e in self.queue if e["id"] != current]
+                self.queue = keep + entries + rest
+                self.write_queue()
+                if current is not None:
+                    self.player.skip()
+            else:
+                self.queue += entries
+                self.write_queue()
+            return entries
+
+    def remove(self, ident: int) -> None:
+        with self.lock:
+            self.queue = [e for e in self.queue if e["id"] != ident]
+            self.pending = [e for e in self.pending if e["id"] != ident]
+            self.write_queue()
+
+    def move(self, ident: int, to: int) -> None:
+        with self.lock:
+            e = next((x for x in self.queue if x["id"] == ident), None)
+            if e is None:
+                return
+            rest = [x for x in self.queue if x["id"] != ident]
+            current = self.status.get("id") if self.status.get("state") == "playing" else None
+            floor = 1 if rest and current is not None and rest[0]["id"] == current else 0
+            rest.insert(max(floor, min(to, len(rest))), e)
+            self.queue = rest
+            self.write_queue()
+
+    def clear(self) -> None:
+        with self.lock:
+            current = self.status.get("id") if self.status.get("state") == "playing" else None
+            self.queue = [e for e in self.queue if e["id"] == current]
+            self.pending = []
+            self.round = []
+            self.write_queue()
+
+    def shuffle(self) -> None:
+        with self.lock:
+            current = self.status.get("id") if self.status.get("state") == "playing" else None
+            head = [e for e in self.queue if e["id"] == current]
+            rest = [e for e in self.queue if e["id"] != current]
+            random.shuffle(rest)
+            self.queue = head + rest
+            self.write_queue()
+
+    def skip(self) -> bool:
+        return self.player.skip()
+
+    def stop(self) -> None:
+        """Clear what is to come, then end what is playing."""
+        with self.lock:
+            self.queue = []
+            self.pending = []
+            self.round = []
+            self.write_queue()
+            self.player.skip()
+
+    def upcoming(self) -> list[dict]:
+        current = self.status.get("id") if self.status.get("state") in ("playing", "skipped", "played") else None
+        return [dict(e, now=(e["id"] == current)) for e in self.queue]
+
+    # -- settings -----------------------------------------------------------
+
+    def set_settings(self, changes: dict) -> dict:
+        with self.lock:
+            if "tempo" in changes:
+                self.settings["tempo"] = grinder.parse_tempo(changes["tempo"])
+            for k in ("gap", "warm_up", "idle_off"):
+                if k in changes:
+                    v = float(changes[k])
+                    if v < 0:
+                        raise ValueError(f"{k} must be 0 or more")
+                    self.settings[k] = v
+            if "repeat" in changes:
+                self.settings["repeat"] = bool(changes["repeat"])
+            self._save_settings()
+            self.write_queue()                  # tempo and gap reach the lines not yet played
+            return dict(self.settings)
+
+    # -- the pump ------------------------------------------------------------
+
+    def pump_set(self, on: bool) -> None:
+        if self.pump is None:
+            return
+        if on:
+            self.pump.on()
+        else:
+            self.pump.off()
+        self.pump_on = on
+        if not on:
+            self.wind_ready_at = None
+
+    # -- housekeeping, once a second ------------------------------------------
+
+    def housekeep(self) -> None:
+        now = self.now()
+        with self.lock:
+            self.player.ensure(now)
+            st = self.read_status()
+            self.status = st
+            state = st.get("state")
+            current = st.get("id")
+            if state == "playing" and current is not None:
+                ids = [e["id"] for e in self.queue]
+                if current in ids:
+                    self.queue = self.queue[ids.index(current):]
+            elif state in ("played", "skipped") and current is not None:
+                self.queue = [e for e in self.queue if e["id"] != current]
+            elif state == "idle":
+                # only an idle reported after our last write means the player saw
+                # the file and found nothing to play; an older one is just late
+                if self.queue and not self.pending and st.get("time", 0) > self.last_write:
+                    self.queue = []
+            if self.queue != getattr(self, "_written", None):
+                self.write_queue()
+                self._written = list(self.queue)
+            # the warm-up is over: release what was held back
+            if self.pending and (self.wind_ready_at is None or now >= self.wind_ready_at):
+                self.queue += self.pending
+                self.pending = []
+                self.write_queue()
+                self._written = list(self.queue)
+            # repeat: when everything has been played, queue the round again
+            if state == "idle" and not self.queue and not self.pending and self.settings["repeat"] and self.round:
+                again = [dict(e, id=self.next_id + i) for i, e in enumerate(self.round)]
+                self.next_id += len(again)
+                self._save_settings()
+                self.queue = again
+                self.round = again
+                self.write_queue()
+                self._written = list(self.queue)
+            # the pump: off after idling long enough
+            busy = state in ("playing", "pause", "skipped", "warming up") or self.queue or self.pending
+            if busy:
+                self.idle_since = None
+            elif self.idle_since is None:
+                self.idle_since = now
+            if (self.pump_on and self.idle_since is not None and self.settings["idle_off"] > 0
+                    and now - self.idle_since >= self.settings["idle_off"]):
+                self.pump_set(False)
+            # the keys tester must not share the wire with a song
+            if self.keys.console is not None and busy:
+                self.keys.close()
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            st = dict(self.status)
+            return {
+                "status": st,
+                "queue": self.upcoming(),
+                "pending": [dict(e) for e in self.pending],
+                "warming_up_s": (max(0.0, self.wind_ready_at - self.now())
+                                 if self.wind_ready_at is not None and self.now() < self.wind_ready_at else 0.0),
+                "pump": {"configured": self.pump is not None, "on": self.pump_on},
+                "player": {"running": self.player.running(), "pid": st.get("pid")},
+                "settings": dict(self.settings),
+                "keys_open": self.keys.console is not None,
+                "idle": st.get("state") in (None, "idle", "finished", "stopped") and not self.queue,
+                "dry_run": self.cfg.dry_run,
+                "version": __version__,
+            }
+
+    # -- playlists ------------------------------------------------------------
+
+    def playlist_path(self, name: str) -> Path:
+        safe = "".join(c for c in name.strip() if c.isalnum() or c in " -_.,()'&").strip()
+        if not safe:
+            raise ValueError("a playlist needs a name")
+        return self.cfg.playlists / f"{safe}.m3u"
+
+    def playlists(self) -> list[dict]:
+        out = []
+        for p in sorted(self.cfg.playlists.glob("*.m3u")):
+            try:
+                entries = self.read_playlist(p.stem)
+            except (OSError, ValueError):
+                entries = []
+            out.append({"name": p.stem, "count": len(entries)})
+        return out
+
+    def read_playlist(self, name: str) -> list[dict]:
+        p = self.playlist_path(name)
+        if not p.is_file():
+            raise FileNotFoundError(f"no playlist {name!r}")
+        out = []
+        for raw in p.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            target, _, opts = line.partition("|")
+            e = {"path": target.strip(), "tempo": None, "gap": None}
+            for opt in opts.split():
+                k, _, v = opt.partition("=")
+                if k == "tempo":
+                    e["tempo"] = grinder.parse_tempo(v)
+                elif k == "gap":
+                    e["gap"] = float(v)
+            try:
+                full = self.library.resolve(e["path"])
+                e["name"] = grinder.Song(full).name
+                e["missing"] = not full.is_file()
+            except ValueError:
+                e["name"], e["missing"] = e["path"], True
+            out.append(e)
+        return out
+
+    def write_playlist(self, name: str, entries: list[dict]) -> None:
+        lines = [f"# {name}"]
+        for e in entries:
+            self.library.resolve(e["path"])
+            opts = []
+            if e.get("tempo") is not None:
+                opts.append(f"tempo={float(e['tempo']):.3f}")
+            if e.get("gap") is not None:
+                opts.append(f"gap={float(e['gap']):g}")
+            lines.append(e["path"] + (f" | {' '.join(opts)}" if opts else ""))
+        self.playlist_path(name).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def delete_playlist(self, name: str) -> None:
+        p = self.playlist_path(name)
+        if p.is_file():
+            p.unlink()
+
+    def queue_playlist(self, name: str, shuffle: bool = False, replace: bool = False) -> list[dict]:
+        entries = [e for e in self.read_playlist(name) if not e.get("missing")]
+        if replace:
+            self.clear()
+        return self.add([e["path"] for e in entries], shuffle,
+                        tempos=[e["tempo"] for e in entries], gaps=[e["gap"] for e in entries])
+
+    # -- upload and arrange ------------------------------------------------------
+
+    def plans(self) -> list[str]:
+        return sorted(p.name[: -len(".plan.yaml")] for p in self.cfg.plans.glob("*.plan.yaml"))
+
+    def _run_cmd(self, cmd: list[str]) -> tuple[int, str]:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+    def start_arrange(self, filename: str, data: bytes, plan: str | None, transpose: str | None,
+                      background: bool = True) -> str:
+        stem = grinder.Song(Path(filename)).name              # 'x.organ.mid' and 'x.mid' both give 'x'
+        safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in stem).strip("-").lower() or "upload"
+        job_id = uuid.uuid4().hex[:8]
+        job = {"id": job_id, "state": "running", "name": safe, "log": "", "output": None,
+               "started": time.time(), "plan": plan or "", "transpose": transpose or "auto"}
+        self.jobs[job_id] = job
+        srcdir = self.cfg.uploads / "src"
+        srcdir.mkdir(parents=True, exist_ok=True)
+        suffix = Path(filename).suffix.lower()
+        src = srcdir / f"{safe}{suffix if suffix in SOURCE_SUFFIXES else '.mid'}"
+        src.write_bytes(data)
+        if filename.lower().endswith(".organ.mid"):
+            out = self.cfg.uploads / f"{safe}.organ.mid"
+            out.write_bytes(data)
+            job.update(state="done", output=out.relative_to(self.cfg.library).as_posix(),
+                       log="already arranged: added to uploads")
+            return job_id
+        if background:
+            threading.Thread(target=self._arrange, args=(job, src, plan, transpose), daemon=True).start()
+        else:
+            self._arrange(job, src, plan, transpose)
+        return job_id
+
+    def _arrange(self, job: dict, src: Path, plan: str | None, transpose: str | None) -> None:
+        arranger = TOOLS / "organ-arranger"
+        fororgan = src.with_name(f"{job['name']}.fororgan.mid")
+        out = self.cfg.uploads / f"{job['name']}.organ.mid"
+        cmd = [self.cfg.python, str(arranger / "organ_transcribe.py"), str(src), "--organ", str(self.cfg.organ),
+               "-o", str(fororgan), "--report", str(fororgan.with_suffix(".txt"))]
+        if plan:
+            planfile = self.cfg.plans / f"{plan}.plan.yaml"
+            if not planfile.is_file():
+                job.update(state="failed", log=f"no plan {plan!r}")
+                return
+            cmd += ["--plan", str(planfile)]
+        else:
+            cmd += ["--write-plan", str(src.with_name(f"{job['name']}.plan.yaml"))]
+        if transpose and transpose != "auto":
+            cmd += ["--transpose", str(transpose)]
+        rc, log = self.run_cmd(cmd)
+        job["log"] = log
+        if rc != 0 or not fororgan.is_file():
+            job.update(state="failed", log=log or f"transcriber exited {rc}")
+            return
+        cmd = [self.cfg.python, str(arranger / "organ_arranger.py"), str(fororgan), "--organ", str(self.cfg.organ),
+               "-o", str(out), "--report", str(out.with_suffix(".txt"))]
+        rc, log2 = self.run_cmd(cmd)
+        job["log"] = log + "\n" + log2
+        if rc != 0 or not out.is_file():
+            job.update(state="failed")
+            return
+        job.update(state="done", output=out.relative_to(self.cfg.library).as_posix())
+
+    # -- service ----------------------------------------------------------------
+
+    def reset_boards(self) -> dict:
+        if self.cfg.dry_run:
+            return {"reset": "dry run", "pins": self.cfg.reset_pins}
+        try:
+            sys.path.insert(0, str(TOOLS / "organ-config"))
+            import organ_reset
+        except ImportError as e:
+            raise RuntimeError(f"organ_reset not available: {e}")
+        for pin in self.cfg.reset_pins:
+            organ_reset.pulse(pin, 0.1)
+        return {"reset": "pulsed", "pins": self.cfg.reset_pins}
+
+    def _open_port(self):
+        if self.cfg.dry_run:
+            return grinder.NullPort()
+        import serial
+        return serial.Serial(self.cfg.device, baudrate=grinder.MIDI_BAUD)
+
+    def keys_act(self, what: str, body: dict) -> dict:
+        with self.lock:
+            snap_busy = self.status.get("state") in ("playing", "pause", "skipped", "warming up") or self.queue or self.pending
+            if snap_busy and what != "off":
+                raise RuntimeError("the player is busy: stop it before using the keys")
+        return self.keys.act(what, body)
+
+    def close(self) -> None:
+        self.keys.close()
+        self.player.close()
+        self.pump_set(False)
+        if self.pump is not None:
+            try:
+                self.pump.close()
+            except Exception:
+                pass
+
+
+# ----------------------------------------------------------------------------
+# HTTP
+# ----------------------------------------------------------------------------
+
+def create_app(desk: Desk):
+    from flask import Flask, jsonify, request, send_from_directory
+
+    app = Flask(__name__, static_folder=str(HERE / "static"), static_url_path="/static")
+
+    def body() -> dict:
+        return request.get_json(silent=True) or {}
+
+    def fail(e, code=400):
+        return jsonify({"error": str(e)}), code
+
+    @app.errorhandler(Exception)
+    def on_error(e):
+        code = 404 if isinstance(e, FileNotFoundError) else 409 if isinstance(e, RuntimeError) else 400
+        if not isinstance(e, (ValueError, FileNotFoundError, RuntimeError, KeyError, TypeError)):
+            code = 500
+        return fail(e, code)
+
+    @app.get("/")
+    def index():
+        return send_from_directory(app.static_folder, "index.html")
+
+    @app.get("/api/state")
+    def state():
+        return jsonify(desk.snapshot())
+
+    @app.get("/api/library")
+    def library():
+        return jsonify({"root": str(desk.cfg.library), "tunes": desk.library.tunes(), "folders": desk.library.folders()})
+
+    @app.post("/api/queue/add")
+    def queue_add():
+        b = body()
+        paths = b.get("paths") or ([b["path"]] if b.get("path") else [])
+        if not paths:
+            return fail("nothing to add")
+        return jsonify({"added": desk.add(paths, bool(b.get("shuffle")), bool(b.get("play_now")))})
+
+    @app.post("/api/queue/remove")
+    def queue_remove():
+        desk.remove(int(body()["id"]))
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/queue/move")
+    def queue_move():
+        b = body()
+        desk.move(int(b["id"]), int(b["to"]))
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/queue/clear")
+    def queue_clear():
+        desk.clear()
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/queue/shuffle")
+    def queue_shuffle():
+        desk.shuffle()
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/queue/save")
+    def queue_save():
+        name = body().get("name", "")
+        desk.write_playlist(name, [{"path": e["path"], "tempo": e.get("tempo"), "gap": e.get("gap")}
+                                   for e in desk.queue + desk.pending])
+        return jsonify({"saved": name, "playlists": desk.playlists()})
+
+    @app.post("/api/player/skip")
+    def player_skip():
+        return jsonify({"skipped": desk.skip()})
+
+    @app.post("/api/player/stop")
+    def player_stop():
+        desk.stop()
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/settings")
+    def settings():
+        return jsonify(desk.set_settings(body()))
+
+    @app.get("/api/playlists")
+    def playlists():
+        return jsonify({"playlists": desk.playlists()})
+
+    @app.get("/api/playlists/<name>")
+    def playlist(name):
+        return jsonify({"name": name, "entries": desk.read_playlist(name)})
+
+    @app.put("/api/playlists/<name>")
+    def playlist_put(name):
+        desk.write_playlist(name, body().get("entries") or [])
+        return jsonify({"saved": name, "playlists": desk.playlists()})
+
+    @app.delete("/api/playlists/<name>")
+    def playlist_delete(name):
+        desk.delete_playlist(name)
+        return jsonify({"deleted": name, "playlists": desk.playlists()})
+
+    @app.post("/api/playlists/<name>/queue")
+    def playlist_queue(name):
+        b = body()
+        added = desk.queue_playlist(name, bool(b.get("shuffle")), bool(b.get("replace")))
+        return jsonify({"added": added})
+
+    @app.get("/api/plans")
+    def plans():
+        return jsonify({"plans": desk.plans()})
+
+    @app.post("/api/arrange")
+    def arrange():
+        f = request.files.get("file")
+        if f is None or not f.filename:
+            return fail("no file")
+        plan = request.form.get("plan") or None
+        transpose = request.form.get("transpose") or None
+        job_id = desk.start_arrange(f.filename, f.read(), plan, transpose)
+        return jsonify({"job": desk.jobs[job_id]})
+
+    @app.get("/api/jobs/<job_id>")
+    def job(job_id):
+        if job_id not in desk.jobs:
+            raise FileNotFoundError(f"no job {job_id}")
+        return jsonify({"job": desk.jobs[job_id]})
+
+    @app.get("/api/jobs")
+    def jobs():
+        return jsonify({"jobs": sorted(desk.jobs.values(), key=lambda j: -j["started"])[:20]})
+
+    @app.get("/api/keys/layout")
+    def keys_layout():
+        return jsonify(desk.keys.layout())
+
+    @app.post("/api/keys/<what>")
+    def keys_act(what):
+        return jsonify(desk.keys_act(what, body()))
+
+    @app.post("/api/service/reset")
+    def service_reset():
+        return jsonify(desk.reset_boards())
+
+    @app.post("/api/service/pump")
+    def service_pump():
+        if desk.pump is None:
+            return fail("no pump relay configured (--pump GPIO)", 409)
+        desk.pump_set(bool(body().get("on")))
+        return jsonify(desk.snapshot()["pump"])
+
+    return app
+
+
+def housekeeping(desk: Desk, stop: threading.Event) -> None:
+    while not stop.is_set():
+        try:
+            desk.housekeep()
+        except Exception as e:                      # keep the loop alive; the next tick may do better
+            print(f"housekeeping: {e}", file=sys.stderr, flush=True)
+        stop.wait(HOUSEKEEP_S)
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="organ_web", description="The organ's front desk: a web page served by the Pi.")
+    p.add_argument("--library", required=True, help="folder of arranged tunes (subfolders are sections of the library)")
+    p.add_argument("--organ", required=True, help="organ.yaml")
+    p.add_argument("--state", default=str(Path.home() / ".local" / "share" / "organ-web"),
+                   help="where the queue, status, settings and playlists live")
+    p.add_argument("--plans", default=str(TOOLS / "organ-arranger" / "tunes"), help="folder of *.plan.yaml for uploads")
+    p.add_argument("--device", default=grinder.DEFAULT_DEVICE, help="serial device driving the MIDI line")
+    p.add_argument("--python", default=sys.executable, help="interpreter for the player and the arranger (default: this one)")
+    p.add_argument("--pump", type=int, metavar="GPIO", help="BCM GPIO of the bellows pump relay")
+    p.add_argument("--pump-active-low", action="store_true")
+    p.add_argument("--reset-pins", default="17", help="BCM GPIOs of the boards' reset line(s), comma-separated (default 17)")
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--port", type=int, default=DEFAULT_PORT)
+    p.add_argument("--dry-run", action="store_true", help="no serial port, no GPIO: the player plays to nowhere")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    a = p.parse_args(argv)
+
+    try:
+        import flask  # noqa: F401
+    except ImportError:
+        print("error: needs flask: pip install flask", file=sys.stderr)
+        return 2
+    cfg = Config(library=Path(a.library).expanduser(), organ=Path(a.organ).expanduser(), state=Path(a.state).expanduser(),
+                 plans=Path(a.plans).expanduser(), device=a.device, python=a.python, pump_pin=a.pump,
+                 pump_active_low=a.pump_active_low, dry_run=a.dry_run, host=a.host, port=a.port,
+                 reset_pins=[int(x) for x in a.reset_pins.split(",") if x.strip()])
+    if not cfg.organ.is_file():
+        print(f"error: no organ definition at {cfg.organ}", file=sys.stderr)
+        return 2
+    cfg.library.mkdir(parents=True, exist_ok=True)
+    pump = None
+    if cfg.pump_pin is not None:
+        if cfg.dry_run:
+            pump = FakePump()
+        else:
+            try:
+                pump = grinder.Pump(cfg.pump_pin, cfg.pump_active_low)
+            except ImportError:
+                print("error: --pump needs gpiozero: pip install gpiozero lgpio", file=sys.stderr)
+                return 2
+    desk = Desk(cfg, pump=pump)
+    app = create_app(desk)
+    stop = threading.Event()
+    threading.Thread(target=housekeeping, args=(desk, stop), name="housekeeping", daemon=True).start()
+    print(f"organ_web {__version__}: library {cfg.library}, state {cfg.state}, http://{cfg.host}:{cfg.port}/"
+          + ("  (dry run)" if cfg.dry_run else ""), flush=True)
+    try:
+        app.run(host=cfg.host, port=cfg.port, threaded=True, use_reloader=False)
+    finally:
+        stop.set()
+        desk.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

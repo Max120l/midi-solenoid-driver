@@ -50,3 +50,6 @@ __pycache__/
 
 # Tune sources are not committed (they are other people's music); their plans are.
 tools/organ-arranger/tunes/*.mid
+
+# Claude Code desktop launch config (machine-specific paths)
+.claude/

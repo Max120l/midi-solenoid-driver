@@ -57,12 +57,15 @@ class FakePort:
 
 
 class FakeTime:
-    """sleep() advances the clock; sleeps can be told to raise (Ctrl+C in a pause)."""
+    """sleep() advances the clock; sleeps can be told to raise (Ctrl+C in a
+    pause) or to run a hook (someone edits the queue while we sleep)."""
 
     def __init__(self):
         self.now = 1000.0
         self.slept = []
-        self.interrupt_sleeps = set()     # indexes of sleep calls that raise
+        self.interrupt_sleeps = set()     # indexes of sleep calls that raise KeyboardInterrupt
+        self.quit_sleeps = set()          # indexes of sleep calls that raise Quit (SIGTERM)
+        self.hooks = {}                   # index -> callable run after that sleep
 
     def clock(self):
         return self.now
@@ -71,8 +74,12 @@ class FakeTime:
         idx = len(self.slept)
         self.slept.append(round(s, 6))
         self.now += s
+        if idx in self.hooks:
+            self.hooks[idx]()
         if idx in self.interrupt_sleeps:
             raise KeyboardInterrupt
+        if idx in self.quit_sleeps:
+            raise g.Quit()
 
 
 # ----------------------------------------------------------------------------
@@ -351,6 +358,18 @@ def test_status_file_follows_the_run_and_is_valid_json(tmp_path):
     assert not (tmp_path / "status.json.tmp").exists()
 
 
+def test_status_ticks_keep_coming_when_the_music_is_dense(tmp_path):
+    # sixteenth notes for 3 s: no single wait is ever as long as the status period
+    notes = [(i * 0.25, 0.2, 40 + (i % 3)) for i in range(24)]
+    s = song_file(tmp_path / "dense.organ.mid", notes)
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    st = Recorder(tmp_path / "status.json")
+    assert g.run([g.Song(s)], port, g.Settings(), ft.sleep, ft.clock, out, status=st) == 0
+    positions = [f["position_s"] for f in st.seen if f["state"] == "playing"]
+    assert positions == [0.0, 1.0, 2.0]
+    assert len([n for t, n in port.notes() if t == "note_on"]) == 24     # and nothing on the wire moved
+
+
 class FakePump:
     def __init__(self):
         self.log = []
@@ -386,6 +405,70 @@ def test_cli_pump_without_gpiozero_explains_itself(tmp_path, monkeypatch, capsys
     assert "gpiozero" in capsys.readouterr().err
     assert g.main([str(tmp_path), "--dry-run", "--pump", "40"]) == 2
     assert g.main([str(tmp_path), "--dry-run", "--warm-up", "-1"]) == 2
+
+
+# ----------------------------------------------------------------------------
+# the live queue
+# ----------------------------------------------------------------------------
+
+def write_queue(path, entries):
+    path.write_text("".join(f"{p} | id={i}\n" for i, p in entries), encoding="utf-8")
+
+
+def test_watch_plays_what_is_added_while_it_idles_and_never_replays_an_id(tmp_path):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 1, 40)])
+    b = song_file(tmp_path / "b.organ.mid", [(0, 1, 41)])
+    c = song_file(tmp_path / "c.organ.mid", [(0, 1, 42)])
+    q = tmp_path / "queue.m3u"
+    write_queue(q, [(1, a), (2, b)])
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    st = Recorder(tmp_path / "status.json")
+    # sleeps: a 0.5, gap 3 (b waiting), b 0.5, idle poll -> the front end appends c and drops the played lines
+    ft.hooks[3] = lambda: write_queue(q, [(3, c)])
+    ft.interrupt_sleeps = {5}                                    # Ctrl+C while idle again: quit
+    rc = g.run_watch(q, port, g.Settings(gap=3.0), ft.sleep, ft.clock, out, status=st)
+    assert rc == 130
+    assert [n for t, n in port.notes() if t == "note_on"] == [40, 41, 42]
+    assert ft.slept == pytest.approx([0.5, 3.0, 0.5, 1.0, 0.5, 1.0])   # no gap after b: nothing was waiting yet
+    states = [f["state"] for f in st.seen]
+    assert states.count("idle") == 2 and states[-1] == "stopped"
+    assert [f.get("id") for f in st.seen if f["state"] == "playing"] == [1, 2, 3]
+    assert "idle: waiting for the queue" in out.getvalue()
+    assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
+
+
+def test_watch_survives_a_missing_or_broken_file_and_repeat_goes_round(tmp_path):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 1, 40)])
+    q = tmp_path / "queue.m3u"
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    ft.hooks[0] = lambda: q.write_text("a.organ.mid | speed=2\n", encoding="utf-8")   # broken line
+    ft.hooks[1] = lambda: write_queue(q, [(1, a)])
+    ft.quit_sleeps = {6}                                          # SIGTERM during a later pause
+    rc = g.run_watch(q, port, g.Settings(gap=2.0, repeat=True), ft.sleep, ft.clock, out)
+    assert rc == 130
+    assert "queue:" in out.getvalue() and "speed" in out.getvalue()
+    # idle (missing), idle (broken), then a plays; with repeat the same id plays again after each gap
+    assert [n for t, n in port.notes() if t == "note_on"] == [40, 40, 40]
+    assert ft.slept == pytest.approx([1.0, 1.0, 0.5, 2.0, 0.5, 2.0, 0.5])
+    assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
+
+
+def test_quit_from_outside_stops_cleanly_with_the_pump_off(tmp_path):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 4, 40)])
+    ft, port, out, pump = FakeTime(), FakePort(), io.StringIO(), FakePump()
+    ft.quit_sleeps = {0}                                          # SIGTERM in the middle of the note
+    assert g.run([g.Song(a)], port, g.Settings(), ft.sleep, ft.clock, out, pump=pump) == 130
+    assert pump.log == ["on", "off"] and "Stopped." in out.getvalue()
+    assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
+
+
+def test_cli_watch_wants_one_playlist_and_no_ordering_flags(tmp_path, capsys):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 1, 40)])
+    assert g.main([str(a), "--watch", "--dry-run"]) == 2
+    assert "one playlist" in capsys.readouterr().err
+    assert g.main([str(tmp_path / "q.m3u"), str(a), "--watch", "--dry-run"]) == 2
+    assert g.main([str(tmp_path / "q.m3u"), "--watch", "--shuffle", "--dry-run"]) == 2
+    assert "writer decides" in capsys.readouterr().err
 
 
 # ----------------------------------------------------------------------------
