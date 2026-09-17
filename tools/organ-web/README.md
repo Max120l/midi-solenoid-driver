@@ -122,7 +122,7 @@ mkdir -p ~/.config/autostart && cp kiosk/organ-kiosk.desktop ~/.config/autostart
 ```
 
 Edit the `Exec=` path in the copied `.desktop` file if the repo is not at
-`/home/pi/midi-solenoid-driver`. Then in `sudo raspi-config`: *System
+`/home/massie/organ`. Then in `sudo raspi-config`: *System
 Options → Boot / Auto Login → Desktop Autologin*, and *Display Options →
 Screen Blanking → off*, so the page stays lit. Reboot: the Pi comes up on the
 Play tab with nothing else on the screen. To get a desktop back for

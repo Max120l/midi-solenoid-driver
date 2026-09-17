@@ -4,8 +4,9 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now organ-web
 #
-# Adjust User, the repo path and the options below to the Pi. The venv must
-# have flask, mido, pyserial, pyyaml and (for --pump / reset) gpiozero lgpio.
+# Adjust User, the repo path and the options below to the Pi. The Python it
+# names must have flask, mido, pyserial, pyyaml and (for --pump / reset)
+# gpiozero lgpio; here that is the system python3.
 # The user needs the dialout group for /dev/serial0 and gpio for the pins.
 
 [Unit]
@@ -15,12 +16,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/midi-solenoid-driver/tools/organ-web
-ExecStart=/home/pi/midi-solenoid-driver/.venv/bin/python organ_web.py \
-    --library /home/pi/organ/tunes \
-    --organ /home/pi/midi-solenoid-driver/tools/organ-arranger/instrument/organ.yaml \
-    --state /home/pi/.local/share/organ-web \
+User=massie
+WorkingDirectory=/home/massie/organ/tools/organ-web
+ExecStart=/usr/bin/python3 organ_web.py \
+    --library /home/massie/tunes \
+    --organ /home/massie/organ/tools/organ-arranger/instrument/organ.yaml \
+    --state /home/massie/.local/share/organ-web \
     --device /dev/serial0 \
     --port 8080
 # When the pump relay exists, add:  --pump 24 --pump-active-low
