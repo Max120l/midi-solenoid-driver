@@ -56,6 +56,9 @@ marches/
 | `--start 62` | begin the first song this far in, in seconds at the chosen tempo |
 | `--organ organ.yaml` | read the organ's minimum note and gap, and its registers, from the definition |
 | `--pattern '*.mid'` | what a folder contributes (default `*.organ.mid`, so source files in the same folder are not played) |
+| `--status FILE` | rewrite a one-line JSON file about once a second with what is playing (below) |
+| `--pump GPIO`, `--pump-active-low` | drive the bellows pump relay from a Pi GPIO: on before the music, off after (below) |
+| `--warm-up 8` | wait this many seconds for wind before the first note, with or without a pump pin |
 | `--device /dev/ttyUSB0` | the serial device (default `/dev/serial0`) |
 | `--dry-run` | no serial port: play in real time to nowhere |
 
@@ -77,11 +80,47 @@ Notes already sounding at the start point are not restarted.
 
 | Key | Does |
 |---|---|
-| `Ctrl+C` during a song | skip it; the organ is silenced |
+| `Ctrl+C` during a song | skip it |
 | `Ctrl+C` again within two seconds | quit |
-| `Ctrl+C` during the pause between songs | quit |
+| `Ctrl+C` during the pause or the warm-up | quit |
 
-Either way the last thing on the wire is All Notes Off.
+A skip does not cut the organ dead. The notes sounding at that moment end
+where they are written, as long as that is within half a second; anything
+held longer is cut then, but never before its minimum length. Then All Notes
+Off, which is the last thing on the wire whichever way the player leaves.
+
+## The status file
+
+With `--status FILE` the player rewrites one line of JSON about once a
+second, replacing the file atomically so a reader never sees half of it:
+
+```json
+{"time": 1789756123.4, "state": "playing", "song": "skaters-waltz", "path": "tunes/skaters-waltz.organ.mid",
+ "index": 3, "total": 12, "round": 1, "length_s": 172.1, "tempo": 0.9, "start_s": 0, "position_s": 41.0}
+```
+
+`state` runs through `warming up`, `playing`, `played`, `pause`, `skipped`,
+`finished` and `stopped`; `seconds` accompanies a warm-up or a pause. It is
+what a phone page or a screen reads, and a log if you keep the lines. Put it
+somewhere in RAM on the Pi, `/run/user/1000/grinder.json` or `/dev/shm`, so
+the SD card is not written every second.
+
+## The bellows pump
+
+`--pump 24` drives a relay module from BCM GPIO 24 (physical pin 18): the
+relay pulls in before the warm-up, stays in across the pauses between songs,
+and drops out when the queue ends or the player quits, however it quits.
+Most cheap relay modules pull in on a *low* input; add `--pump-active-low`
+for those. Only the relay's coil side touches the Pi; its contacts switch the
+pump's own supply, so the isolation between the Pi and the organ is
+untouched. The Pi's GPIOs default to pull-down at boot, so a booting Pi
+leaves an active-high relay off; with an active-low module put the pump on
+the relay's normally-open contact for the same reason.
+
+`--warm-up 8` waits eight seconds after the relay pulls in before the first
+note, for the reservoir to fill. It works without `--pump` too, for a pump
+switched by hand. Neither is needed until the relay exists; the player behaves
+exactly as before when they are not given.
 
 ## The Pi's serial port
 

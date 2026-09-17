@@ -207,7 +207,7 @@ def test_play_events_waits_from_a_fixed_origin_so_delays_do_not_accumulate():
 
     def slow_sleep(s):                    # the machine oversleeps by 100 ms every time
         real_sleep(s + 0.1)
-    g.play_events(evs, port, slow_sleep, ft.clock)
+    g.Playback(evs).play(port, slow_sleep, ft.clock)
     assert [m.note for m in port.msgs] == [1, 1, 2, 2]
     # the first message is due at once (no sleep); the oversleep before the second
     # leaves the third already due (no sleep), and the last wait is shortened to 0.4
@@ -242,9 +242,16 @@ def test_ctrl_c_in_a_song_skips_it_and_a_second_within_the_window_quits(tmp_path
     # again, but the second Ctrl+C lands in the window
     ft, port, out = FakeTime(), FakePort(), io.StringIO()
     port.interrupt_at = 2
-    ft.interrupt_sleeps = {2}                                    # sleeps: 0.5 (note), 1.0 (to the 2nd note), then the window
+    ft.interrupt_sleeps = {3}                # sleeps: 0.5 (note), 0.5 (to the 2nd note), 0.5 (its written end), then the window
     rc = g.run(songs, port, g.Settings(gap=3.0), ft.sleep, ft.clock, out)
     assert rc == 130 and ("note_on", 41) not in port.notes() and "Stopped." in out.getvalue()
+    assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
+    # hammered: the second Ctrl+C lands in the fade itself
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    port.interrupt_at = 2
+    ft.interrupt_sleeps = {2}
+    rc = g.run(songs, port, g.Settings(gap=3.0), ft.sleep, ft.clock, out)
+    assert rc == 130 and "skipped" not in out.getvalue()
     assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
 
 
@@ -289,6 +296,96 @@ def test_start_restores_the_registration_when_the_organ_is_known(tmp_path):
     ons = [n for t, n in port.notes() if t == "note_on"]
     assert ons == [0, 3, 41]                                     # both registers re-pulsed, then the music from 2.5 s
     assert "from 0:03" in out.getvalue()
+
+
+# ----------------------------------------------------------------------------
+# skipping cleanly, the status file, the pump
+# ----------------------------------------------------------------------------
+
+def test_a_skip_lets_sounding_notes_end_where_written_within_the_fade_and_cuts_the_rest(tmp_path):
+    # written: 40 at 0-0.2 s, 41 at 0-3 s, 42 at 0.5-1.0 s; Ctrl+C lands on 41's note_on
+    s = song_file(tmp_path / "s.organ.mid", [(0, 0.4, 40), (0, 6, 41), (1, 1, 42)])
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    port.interrupt_at = 2
+    assert g.run([g.Song(s)], port, g.Settings(), ft.sleep, ft.clock, out) == 0
+    notes = port.notes()
+    assert notes == [("note_on", 40), ("note_on", 41), ("note_off", 40)]     # 40 ends where written; 41 is cut; 42 never starts
+    assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123   # All Notes Off is the last thing
+    assert 0.2 in ft.slept and g.QUIT_WINDOW_S in ft.slept
+    assert "skipped at 0:00" in out.getvalue()
+
+
+def test_a_skip_never_cuts_a_note_before_its_minimum_length(tmp_path):
+    s = song_file(tmp_path / "s.organ.mid", [(0, 6, 41)])
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    port.interrupt_at = 1
+    assert g.run([g.Song(s)], port, g.Settings(), ft.sleep, ft.clock, out) == 0
+    assert ft.slept[0] == pytest.approx(g.MIN_NOTE_S)                          # the note gets its 50 ms first
+    assert port.msgs[-1].type == "control_change" and port.msgs[-1].control == 123
+
+
+class Recorder(g.Status):
+    def __init__(self, path):
+        super().__init__(path)
+        self.seen = []
+
+    def write(self, **fields):
+        super().write(**fields)
+        self.seen.append(dict(self.fields))
+
+
+def test_status_file_follows_the_run_and_is_valid_json(tmp_path):
+    import json
+    a = song_file(tmp_path / "a.organ.mid", [(0, 5, 40)])                      # 2.5 s
+    b = song_file(tmp_path / "b.organ.mid", [(0, 1, 41)])                      # 0.5 s
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    st = Recorder(tmp_path / "status.json")
+    assert g.run([g.Song(a), g.Song(b)], port, g.Settings(gap=2.0), ft.sleep, ft.clock, out, status=st) == 0
+    assert [(f["state"], f.get("position_s")) for f in st.seen] == [
+        ("playing", 0.0), ("playing", 1.0), ("playing", 2.0), ("played", 2.5), ("pause", 2.5),
+        ("playing", 0.0), ("played", 0.5), ("finished", 0.5)]
+    assert ft.slept == pytest.approx([1.0, 1.0, 0.5, 2.0, 0.5])               # waits sliced for the ticks; the wire timing is unchanged
+    last = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert last["state"] == "finished" and last["song"] == "b" and last["index"] == 2 and last["total"] == 2
+    assert last["tempo"] == 1.0 and last["length_s"] == 0.5 and "time" in last
+    assert not (tmp_path / "status.json.tmp").exists()
+
+
+class FakePump:
+    def __init__(self):
+        self.log = []
+
+    def on(self):
+        self.log.append("on")
+
+    def off(self):
+        self.log.append("off")
+
+
+def test_the_pump_goes_on_before_the_warm_up_and_off_at_the_end_or_on_quit(tmp_path):
+    a = song_file(tmp_path / "a.organ.mid", [(0, 1, 40)])
+    ft, port, out, pump = FakeTime(), FakePort(), io.StringIO(), FakePump()
+    assert g.run([g.Song(a)], port, g.Settings(warm_up=8.0), ft.sleep, ft.clock, out, pump=pump) == 0
+    assert pump.log == ["on", "off"] and ft.slept[0] == 8.0
+    assert "pump on" in out.getvalue() and "waiting 8 s for wind" in out.getvalue()
+    # Ctrl+C during the warm-up: nothing plays, the pump still goes off
+    ft, port, out, pump = FakeTime(), FakePort(), io.StringIO(), FakePump()
+    ft.interrupt_sleeps = {0}
+    assert g.run([g.Song(a)], port, g.Settings(warm_up=8.0), ft.sleep, ft.clock, out, pump=pump) == 130
+    assert pump.log == ["on", "off"] and port.notes() == []
+    # a warm-up with no pump pin is just the wait
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    assert g.run([g.Song(a)], port, g.Settings(warm_up=3.0), ft.sleep, ft.clock, out) == 0
+    assert ft.slept == pytest.approx([3.0, 0.5]) and "pump" not in out.getvalue()
+
+
+def test_cli_pump_without_gpiozero_explains_itself(tmp_path, monkeypatch, capsys):
+    song_file(tmp_path / "a.organ.mid", [(0, 1, 40)])
+    monkeypatch.setitem(sys.modules, "gpiozero", None)
+    assert g.main([str(tmp_path), "--dry-run", "--pump", "24"]) == 2
+    assert "gpiozero" in capsys.readouterr().err
+    assert g.main([str(tmp_path), "--dry-run", "--pump", "40"]) == 2
+    assert g.main([str(tmp_path), "--dry-run", "--warm-up", "-1"]) == 2
 
 
 # ----------------------------------------------------------------------------
