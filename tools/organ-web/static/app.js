@@ -50,7 +50,22 @@ function showTab(name) {
 /* ---- state ------------------------------------------------------------ */
 async function refresh() {
   try { state = await api("/api/state"); } catch (e) { $("now-line").textContent = "no connection"; return; }
-  renderNow(); renderQueue(); renderSettings(); renderService();
+  renderNow(); renderQueue(); renderSettings(); renderService(); renderNav();
+}
+
+/* the sidebar's small numbers: readings, not decoration */
+function renderNav() {
+  const c = state.counts || {}, st = state.status || {};
+  const secs = state.queue.reduce((a, e) => a + (e.length_s || 0), 0);
+  const code = {
+    play: state.queue.length ? `${state.queue.length} queued · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
+    library: `${c.tunes ?? "–"} tunes · ${c.folders ?? "–"} folders`,
+    playlists: `${c.playlists ?? "–"} lists`,
+    upload: c.jobs_running ? `${c.jobs_running} arranging` : (c.jobs_done ? `${c.jobs_done} done` : "ready"),
+    service: state.pump.on ? "pump on" : (state.idle ? "idle" : "busy"),
+    settings: `tempo ${Math.round((state.settings.tempo || 1) * 100)} %` + (state.settings.repeat ? " · repeat" : ""),
+  };
+  document.querySelectorAll("#tabs button").forEach((b) => { if (code[b.dataset.tab]) b.dataset.code = code[b.dataset.tab]; });
 }
 
 function renderNow() {
@@ -118,7 +133,8 @@ async function loadLibrary() {
 }
 function renderLibrary() {
   const chips = [""].concat(library.folders);
-  $("folders").innerHTML = chips.map((f) => `<button data-folder="${esc(f)}" class="${f === folder ? "active" : ""}">${f ? esc(f) : "everything"}</button>`).join("");
+  const inFolder = (f) => library.tunes.filter((t) => !f || t.folder === f || t.folder.startsWith(f + "/")).length;
+  $("folders").innerHTML = chips.map((f) => `<button data-folder="${esc(f)}" class="${f === folder ? "active" : ""}">${f ? esc(f) : "everything"} <span class="count">${inFolder(f)}</span></button>`).join("");
   $("folders").querySelectorAll("button").forEach((b) => b.onclick = () => { folder = b.dataset.folder; renderLibrary(); });
   const q = $("search").value.trim().toLowerCase();
   const tunes = library.tunes.filter((t) => (!folder || t.folder === folder || t.folder.startsWith(folder + "/")) && (!q || t.name.toLowerCase().includes(q)));

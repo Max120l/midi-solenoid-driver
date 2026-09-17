@@ -320,6 +320,8 @@ def client(desk):
 def test_routes_cover_the_desk(client, desk):
     r = client.get("/api/state")
     assert r.status_code == 200 and r.get_json()["settings"]["gap"] == 3.0
+    assert r.get_json()["counts"] == {"tunes": 3, "folders": 2, "by_folder": {"marches": 1, "waltzes": 2},
+                                      "playlists": 0, "jobs_running": 0, "jobs_done": 0}
     lib = client.get("/api/library").get_json()
     assert len(lib["tunes"]) == 3 and lib["folders"] == ["marches", "waltzes"]
     r = client.post("/api/queue/add", json={"paths": ["marches/bogey.organ.mid", "waltzes/danube.organ.mid"]})

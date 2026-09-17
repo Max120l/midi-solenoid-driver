@@ -572,11 +572,29 @@ class Desk:
             if self.keys.console is not None and busy:
                 self.keys.close()
 
+    def counts(self) -> dict:
+        """Library and playlist sizes for the sidebar, rescanned at most every few seconds."""
+        now = self.now()
+        cached = getattr(self, "_counts", None)
+        if cached and now - cached[0] < 5.0:
+            return cached[1]
+        tunes = self.library.tunes()
+        by_folder: dict[str, int] = {}
+        for tune in tunes:
+            by_folder[tune["folder"]] = by_folder.get(tune["folder"], 0) + 1
+        data = {"tunes": len(tunes), "folders": len(by_folder), "by_folder": by_folder,
+                "playlists": len(list(self.cfg.playlists.glob("*.m3u")))}
+        self._counts = (now, data)
+        return data
+
     def snapshot(self) -> dict:
         with self.lock:
             st = dict(self.status)
+            jobs = list(self.jobs.values())
             return {
                 "status": st,
+                "counts": {**self.counts(), "jobs_running": sum(1 for j in jobs if j["state"] == "running"),
+                           "jobs_done": sum(1 for j in jobs if j["state"] == "done")},
                 "queue": self.upcoming(),
                 "pending": [dict(e) for e in self.pending],
                 "warming_up_s": (max(0.0, self.wind_ready_at - self.now())
@@ -650,6 +668,7 @@ class Desk:
         p = self.playlist_path(name)
         if p.is_file():
             p.unlink()
+        self._counts = None
 
     def queue_playlist(self, name: str, shuffle: bool = False, replace: bool = False) -> list[dict]:
         entries = [e for e in self.read_playlist(name) if not e.get("missing")]
@@ -721,6 +740,7 @@ class Desk:
             job.update(state="failed")
             return
         job.update(state="done", output=out.relative_to(self.cfg.library).as_posix())
+        self._counts = None
 
     # -- service ----------------------------------------------------------------
 

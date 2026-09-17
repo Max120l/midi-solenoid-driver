@@ -57,6 +57,7 @@ main { flex: 1; padding: 14px; max-width: 1100px; width: 100%; margin: 0 auto; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
 .row.buttons > * { flex: 0 1 auto; }
 .row.chips button { border-radius: 999px; padding: 8px 14px; min-height: 40px; }
+.row.chips .count { opacity: .65; font-size: .85em; margin-left: 4px; }
 
 .now .bar { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin-top: 10px; }
 .now .bar div { height: 100%; width: 0; background: var(--brass); transition: width .5s linear; }
