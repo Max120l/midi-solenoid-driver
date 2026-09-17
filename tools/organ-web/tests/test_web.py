@@ -107,7 +107,7 @@ def test_a_stale_idle_report_does_not_clear_a_freshly_written_queue(desk):
     assert [e["name"] for e in desk.queue] == ["bogey"]           # the player has not seen the file yet
     status(desk, state="idle")
     desk.housekeep()
-    assert desk.queue == []                                       # this one it wrote after reading it
+    assert [e["done"] for e in desk.queue] == [True]              # this one it wrote after reading it
 
 
 def queue_lines(d):
@@ -153,13 +153,17 @@ def test_housekeeping_prunes_what_the_player_reports_as_done(desk):
     desk.add(["marches/bogey.organ.mid", "waltzes/danube.organ.mid", "waltzes/skaters.organ.mid"])
     status(desk, state="playing", id=2, song="danube")
     desk.housekeep()
-    assert [e["id"] for e in desk.queue] == [2, 3] and desk.upcoming()[0]["now"] is True
+    # nothing leaves the programme: bogey is played, danube is now, skaters to come
+    assert [(e["id"], e["done"], e["now"]) for e in desk.upcoming()] == [(1, True, False), (2, False, True), (3, False, False)]
+    assert [ln.split("id=")[1].split()[0] for ln in queue_lines(desk)] == ["2", "3"]     # the player sees what is left
     status(desk, state="played", id=2)
     desk.housekeep()
-    assert [e["id"] for e in desk.queue] == [3]
+    assert [e["done"] for e in desk.upcoming()] == [True, True, False]
     status(desk, state="idle", queue=1)
     desk.housekeep()
-    assert desk.queue == [] and desk.snapshot()["idle"] is True
+    assert all(e["done"] for e in desk.upcoming()) and desk.snapshot()["idle"] is True and queue_lines(desk) == []
+    desk.clear_played()
+    assert desk.queue == []
 
 
 def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
@@ -170,13 +174,13 @@ def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
     desk.add(["waltzes/skaters.organ.mid"], play_now=True)
     assert [e["name"] for e in desk.queue] == ["bogey", "skaters", "danube"]
     assert desk.procs[0].signals == [10]
-    desk.move(2, 5)
-    assert [e["name"] for e in desk.queue] == ["bogey", "skaters", "danube"] or [e["name"] for e in desk.queue][0] == "bogey"
-    desk.move(3, 0)                                              # cannot go above the playing song
+    desk.move(2, 0)                                              # danube up: it cannot go above the playing song
+    assert [e["name"] for e in desk.queue] == ["bogey", "danube", "skaters"]
+    desk.move(1, 2)                                              # the playing song does not move either
     assert [e["name"] for e in desk.queue][0] == "bogey"
     desk.remove(3)
     assert [e["name"] for e in desk.queue] == ["bogey", "danube"]
-    # stop: the song ends, the queue stays with it at the head, the player gets an empty file
+    # stop: the song ends, the programme stays with it selected, the player gets an empty file
     desk.stop()
     assert desk.held and [e["name"] for e in desk.queue] == ["bogey", "danube"] and desk.procs[0].signals == [10, 10]
     assert queue_lines(desk) == [] and desk.upcoming()[0]["now"] is True
@@ -184,15 +188,39 @@ def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
     desk.housekeep()
     status(desk, state="idle", queue=0)
     desk.housekeep()
-    assert [e["name"] for e in desk.queue] == ["bogey", "danube"]         # the player's reports do not touch a held queue
+    assert [(e["name"], e["done"]) for e in desk.upcoming()] == [("bogey", False), ("danube", False)]   # reports do not touch a held programme
     assert desk.snapshot()["idle"] is True and desk.snapshot()["held"] is True
     desk.keys_act("pulse", {"solenoid": 1}); desk.keys.close()          # the wire is free while stopped
-    # play: fresh ids, from the head
+    # play: fresh ids, from the selected song
     desk.play()
     assert not desk.held and [e["id"] for e in desk.queue] == [4, 5]
     assert [ln.split("| ")[1].split()[0] for ln in queue_lines(desk)] == ["id=4", "id=5"]
+    # a played song can be moved past: after bogey plays, a play-now lands after danube, the one now playing
+    status(desk, state="playing", id=5)
+    desk.housekeep()
+    assert [e["done"] for e in desk.upcoming()] == [True, False]
+    desk.add(["waltzes/skaters.organ.mid"], play_now=True)
+    assert [e["name"] for e in desk.queue] == ["bogey", "danube", "skaters"]
+    desk.shuffle()
+    assert [e["name"] for e in desk.queue][:2] == ["bogey", "danube"]   # played and playing stay put
+    # a tap on a played song: the programme goes back there, fresh ids from it on, the current song is skipped
+    bogey_id = desk.queue[0]["id"]
+    before = list(desk.procs[0].signals)
+    desk.jump(bogey_id)
+    assert [(e["name"], e["done"]) for e in desk.upcoming()] == [("bogey", False), ("danube", False), ("skaters", False)]
+    assert [e["id"] for e in desk.queue] == [7, 8, 9] and desk.procs[0].signals == before + [10]
+    assert [ln.split("id=")[1].split()[0] for ln in queue_lines(desk)] == ["7", "8", "9"]
+    # a tap further down jumps ahead: what is passed over counts as played
+    status(desk, state="playing", id=7)
+    desk.housekeep()
+    desk.jump(9)
+    assert [(e["name"], e["done"]) for e in desk.upcoming()] == [("bogey", True), ("danube", True), ("skaters", False)]
+    with pytest.raises(FileNotFoundError):
+        desk.jump(999)
     # pause is a signal, only while something plays
     desk.player.pause_signal = 12
+    status(desk, state="idle")
+    desk.housekeep()
     assert desk.pause() is False
     status(desk, state="playing", id=4)
     desk.housekeep()
@@ -220,11 +248,13 @@ def test_repeat_queues_the_round_again_when_the_player_goes_idle(desk):
     desk.add(["marches/bogey.organ.mid", "waltzes/danube.organ.mid"])
     status(desk, state="idle", queue=2)
     desk.housekeep()
-    assert [(e["id"], e["name"]) for e in desk.queue] == [(3, "bogey"), (4, "danube")]
+    # everything played -> the same programme again, fresh ids, nothing marked done
+    assert [(e["id"], e["name"], e["done"]) for e in desk.queue] == [(3, "bogey", False), (4, "danube", False)]
+    assert [ln.split("id=")[1].split()[0] for ln in queue_lines(desk)] == ["3", "4"]
     desk.set_settings({"repeat": False})
     status(desk, state="idle", queue=2)
     desk.housekeep()
-    assert desk.queue == []
+    assert all(e["done"] for e in desk.queue) and queue_lines(desk) == []
 
 
 def test_the_pump_goes_off_after_the_idle_time_out(desk):
@@ -367,6 +397,7 @@ def test_routes_cover_the_desk(client, desk):
     assert client.delete("/api/playlists/Two").get_json()["playlists"] == [{"name": "Tonight", "count": 2}]
     r = client.post("/api/queue/clear")
     assert r.get_json()["queue"] == []
+    assert client.post("/api/queue/clear-played").status_code == 200
     assert client.post("/api/player/skip").get_json() == {"skipped": False}     # nothing running yet
     r = client.post("/api/service/pump", json={"on": True})
     assert r.status_code == 409

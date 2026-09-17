@@ -57,9 +57,10 @@ async function refresh() {
 /* the sidebar's small numbers: readings, not decoration */
 function renderNav() {
   const c = state.counts || {}, st = state.status || {};
-  const secs = state.queue.reduce((a, e) => a + (e.length_s || 0), 0);
+  const left = state.queue.filter((e) => !e.done);
+  const secs = left.reduce((a, e) => a + (e.length_s || 0), 0);
   const code = {
-    play: state.held ? `stopped · ${state.queue.length} queued` : state.queue.length ? `${state.queue.length} queued · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
+    play: state.held ? `stopped · ${left.length} to play` : left.length ? `${left.length} to play · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
     library: `${c.tunes ?? "–"} tunes · ${c.folders ?? "–"} folders`,
     playlists: `${c.playlists ?? "–"} lists`,
     upload: `${(c.by_folder || {}).uploads || 0} in uploads`,
@@ -83,7 +84,7 @@ function renderNow() {
   else if (paused) line = `paused  ${st.song}  ${fmt(st.position_s)} / ${fmt(st.length_s)}`;
   else if (st.state === "pause") line = `pause ${st.seconds ? st.seconds + " s" : ""}`;
   else if (state.warming_up_s > 0) line = "waiting for wind";
-  else if (state.queue.length) line = "starting…";
+  else if (state.queue.some((e) => !e.done) && !state.held) line = "starting…";
   else line = state.player.running ? "idle" : "player not running";
   $("now-line").textContent = line;
   if (st.state === "playing" || st.state === "pause" || paused) {
@@ -94,7 +95,7 @@ function renderNow() {
     $("now-bar").style.width = p + "%";
     $("now-pos").textContent = fmt(st.position_s); $("now-len").textContent = fmt(st.length_s);
   } else {
-    $("now-title").textContent = state.queue.length ? "Starting…" : (state.pending.length ? "Waiting for wind" : "Nothing");
+    $("now-title").textContent = state.queue.some((e) => !e.done) ? "Starting…" : (state.pending.length ? "Waiting for wind" : "Nothing");
     $("now-sub").textContent = ""; $("now-bar").style.width = "0"; $("now-pos").textContent = "0:00"; $("now-len").textContent = "0:00";
   }
   $("btn-skip").disabled = !playing;
@@ -103,10 +104,11 @@ function renderNow() {
   $("btn-pause").textContent = paused ? "Resume" : "Pause";
   $("btn-pause").classList.toggle("active", paused);
   $("btn-play").hidden = !state.held;
-  $("btn-play").disabled = !state.queue.length;
+  const selected = state.queue.find((e) => e.now);
+  $("btn-play").disabled = !selected;
   $("btn-stop").hidden = state.held;
-  if (state.held && state.queue.length) {
-    $("now-title").textContent = state.queue[0].name;
+  if (state.held && selected) {
+    $("now-title").textContent = selected.name;
     $("now-sub").textContent = "stopped · Play starts it from the top";
   }
   $("chk-repeat").checked = !!state.settings.repeat;
@@ -115,21 +117,37 @@ function renderNow() {
 function renderQueue() {
   const ul = $("queue");
   const items = state.queue;
-  $("queue-label").textContent = items.length ? `${state.held ? "Stopped · " : "Queue · "}${items.length}` : "Queue is empty";
+  const toCome = items.filter((e) => !e.done && !e.now).length;
+  const played = items.filter((e) => e.done).length;
+  $("queue-label").textContent = !items.length ? "Queue is empty"
+    : state.held ? `Stopped · ${toCome + 1} to play` : `${toCome} to play${played ? ` · ${played} played` : ""}`;
   ul.innerHTML = items.map((e, i) => `
-    <li class="${e.now ? "now" : ""}">
-      <span class="meta">${e.now ? (state.held ? "■" : "▶") : i + 1}</span>
+    <li class="${e.now ? "now" : e.done ? "done" : ""}">
+      <span class="meta">${e.now ? (state.held ? "■" : "▶") : e.done ? "✓" : i + 1}</span>
       <span class="name">${esc(e.name)}<br><span class="meta">${esc(e.path.split("/").slice(0, -1).join("/"))}</span></span>
       <span class="meta">${fmt(e.length_s)}${e.tempo ? " · " + Math.round(e.tempo * 100) + " %" : ""}</span>
-      ${e.now && !state.held ? "" : `<button data-move="${e.id}" data-dir="-1" title="earlier">▲</button>
+      ${e.done ? `<button data-again="${esc(e.path)}" title="queue again">↻</button><button data-remove="${e.id}" class="danger" title="remove">✕</button>`
+        : e.now && !state.held ? ""
+        : `<button data-move="${e.id}" data-dir="-1" title="earlier">▲</button>
       <button data-move="${e.id}" data-dir="1" title="later">▼</button>
       <button data-remove="${e.id}" class="danger" title="remove">✕</button>`}
     </li>`).join("");
   ul.querySelectorAll("[data-remove]").forEach((b) => b.onclick = () => act("/api/queue/remove", { id: +b.dataset.remove }));
+  ul.querySelectorAll("[data-again]").forEach((b) => b.onclick = () => act("/api/queue/add", { path: b.dataset.again }, "queued again"));
+  // a tap on the song itself moves the programme there: play it (again) and carry on from it
+  ul.querySelectorAll("li").forEach((li, i) => {
+    const e = items[i];
+    li.querySelector(".name").classList.add("tappable");
+    li.querySelector(".name").onclick = () => {
+      if (e.now && !state.held) { act("/api/queue/jump", { id: e.id }, `${e.name} from the top`); return; }
+      act("/api/queue/jump", { id: e.id }, state.held ? `${e.name} selected` : `jumping to ${e.name}`);
+    };
+  });
   ul.querySelectorAll("[data-move]").forEach((b) => b.onclick = () => {
     const id = +b.dataset.move, idx = items.findIndex((e) => e.id === id);
     act("/api/queue/move", { id, to: idx + (+b.dataset.dir) });
   });
+  $("btn-clear-played").hidden = !played;
   $("pending-box").hidden = !state.pending.length;
   $("pending").innerHTML = state.pending.map((e) => `<li><span class="name">${esc(e.name)}</span><span class="meta">${fmt(e.length_s)}</span></li>`).join("");
 }
@@ -140,6 +158,7 @@ $("btn-play").onclick = () => act("/api/player/play", {}, "playing");
 $("btn-pause").onclick = async () => { const d = await act("/api/player/pause"); if (d && !d.paused) toast("nothing playing, or no signal on this platform", true); };
 $("btn-shuffle").onclick = () => act("/api/queue/shuffle", {}, "shuffled");
 $("btn-clear").onclick = () => act("/api/queue/clear", {}, "queue cleared");
+$("btn-clear-played").onclick = () => act("/api/queue/clear-played", {}, "played songs cleared");
 $("btn-save").onclick = () => { const name = prompt("Playlist name"); if (name) act("/api/queue/save", { name }, `saved "${name}"`); };
 $("chk-repeat").onchange = (e) => act("/api/settings", { repeat: e.target.checked });
 
@@ -277,8 +296,11 @@ function renderSettings() {
   $("about").textContent = `organ_web ${state.version}${state.dry_run ? " · dry run: nothing reaches the organ" : ""}`;
 }
 ["set-tempo", "set-gap", "set-warm", "set-idle"].forEach((id) => $(id).oninput = () => { settingsDirty = true; $("set-tempo-v").textContent = `${$("set-tempo").value} %`; });
+/* the tempo rail on the Play screen applies as soon as the finger lifts */
+$("set-tempo").onchange = async () => { settingsDirty = false; await act("/api/settings", { tempo: `${$("set-tempo").value}%` }, `tempo ${$("set-tempo").value} %`); };
+$("tempo-reset").onclick = async () => { $("set-tempo").value = 100; $("set-tempo-v").textContent = "100 %"; settingsDirty = false; await act("/api/settings", { tempo: "100%" }, "tempo 100 %"); };
 $("btn-save-settings").onclick = async () => {
-  const body = { tempo: `${$("set-tempo").value}%`, gap: +$("set-gap").value, warm_up: +$("set-warm").value, idle_off: +$("set-idle").value };
+  const body = { gap: +$("set-gap").value, warm_up: +$("set-warm").value, idle_off: +$("set-idle").value };
   settingsDirty = false;
   await act("/api/settings", body, "settings saved");
 };

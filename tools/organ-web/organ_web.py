@@ -403,14 +403,20 @@ class Desk:
         tmp.replace(self.cfg.settings_file)
 
     def write_queue(self) -> None:
+        """What the player should play: the entries not yet played, none while
+        stopped. Rewritten only when the text changes."""
         lines = ["# organ_web queue: edited by the app, read by grinder --watch before every song"]
-        for e in ([] if self.held else self.queue):
+        for e in ([] if self.held else [e for e in self.queue if not e.get("done")]):
             opts = [f"id={e['id']}", f"tempo={e.get('tempo') or self.settings['tempo']:.3f}",
                     f"gap={e.get('gap') if e.get('gap') is not None else self.settings['gap']:g}"]
             lines.append(f"{e['abs']} | {' '.join(opts)}")
+        text = "\n".join(lines) + "\n"
+        if text == getattr(self, "_queue_text", None) and self.cfg.queue_file.is_file():
+            return
         tmp = self.cfg.queue_file.with_suffix(".tmp")
-        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp.write_text(text, encoding="utf-8")
         tmp.replace(self.cfg.queue_file)
+        self._queue_text = text
         self.last_write = time.time()
 
     def read_status(self) -> dict:
@@ -419,16 +425,36 @@ class Desk:
         except (OSError, ValueError):
             return {}
 
-    # -- the queue ----------------------------------------------------------
+    # -- the queue: the whole programme, with a cursor --------------------------
 
     def entry(self, rel: str, tempo=None, gap=None) -> dict:
         p = self.library.resolve(rel)
         if not p.is_file():
             raise FileNotFoundError(f"{rel}: not in the library")
         e = {"id": self.next_id, "path": rel, "abs": str(p), "name": grinder.Song(p).name,
-             "tempo": tempo, "gap": gap, "length_s": self.library.length(p)}
+             "tempo": tempo, "gap": gap, "length_s": self.library.length(p), "done": False}
         self.next_id += 1
         return e
+
+    def current_id(self):
+        """The id the player is on, or was on a moment ago."""
+        if self.status.get("state") in ("playing", "paused", "pause", "skipped", "played"):
+            return self.status.get("id")
+        return None
+
+    def cursor(self) -> int:
+        """Index of the first entry not yet played: the one playing, or the next up."""
+        for i, e in enumerate(self.queue):
+            if not e.get("done"):
+                return i
+        return len(self.queue)
+
+    def floor(self) -> int:
+        """The first index a song may be moved to: after the one that is playing."""
+        c = self.cursor()
+        playing = (self.status.get("state") in ("playing", "paused") and c < len(self.queue)
+                   and self.queue[c]["id"] == self.status.get("id") and not self.held)
+        return c + 1 if playing else c
 
     def add(self, rels: list[str], shuffle: bool = False, play_now: bool = False,
             tempos: list | None = None, gaps: list | None = None) -> list[dict]:
@@ -438,13 +464,13 @@ class Desk:
             if shuffle:
                 random.shuffle(entries)
             self._save_settings()
-            self.round += entries
             if self.held and play_now:
-                # the new song first, then the queue that was frozen, back to life
+                # the new song first, then what was still to come, back to life
                 self.held = False
-                self._renumber()
-                entries = entries + self.queue
-                self.queue = []
+                upcoming = [e for e in self.queue if not e.get("done")]
+                self.queue = [e for e in self.queue if e.get("done")]
+                self._renumber(upcoming)
+                entries = entries + upcoming
             if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
                 self.pump_set(True)
                 self.wind_ready_at = self.now() + float(self.settings["warm_up"])
@@ -452,12 +478,11 @@ class Desk:
                 self.pending = entries + self.pending if play_now else self.pending + entries
                 return entries
             if play_now:
-                current = self.status.get("id") if self.status.get("state") == "playing" else None
-                keep = [e for e in self.queue if e["id"] == current]
-                rest = [e for e in self.queue if e["id"] != current]
-                self.queue = keep + entries + rest
+                at = self.floor()
+                playing = at > self.cursor()
+                self.queue[at:at] = entries
                 self.write_queue()
-                if current is not None:
+                if playing:
                     self.player.skip()
             else:
                 self.queue += entries
@@ -473,37 +498,62 @@ class Desk:
     def move(self, ident: int, to: int) -> None:
         with self.lock:
             e = next((x for x in self.queue if x["id"] == ident), None)
-            if e is None:
-                return
+            playing_now = (not self.held and e is not None and e["id"] == self.status.get("id")
+                           and self.status.get("state") in ("playing", "paused"))
+            if e is None or e.get("done") or playing_now:
+                return                              # what has played, and what is playing, stays where it is
             rest = [x for x in self.queue if x["id"] != ident]
-            current = self.status.get("id") if self.status.get("state") == "playing" else None
-            floor = 1 if rest and current is not None and rest[0]["id"] == current else 0
-            rest.insert(max(floor, min(to, len(rest))), e)
+            self.queue = rest
+            at = max(self.floor(), min(to, len(rest)))
+            rest.insert(at, e)
             self.queue = rest
             self.write_queue()
 
     def clear(self) -> None:
+        """Everything but the song that is playing, played ones included."""
         with self.lock:
-            current = self.status.get("id") if self.status.get("state") == "playing" else None
-            self.queue = [e for e in self.queue if e["id"] == current]
+            current = self.status.get("id") if self.status.get("state") in ("playing", "paused") else None
+            self.queue = [e for e in self.queue if e["id"] == current and not self.held]
             self.pending = []
-            self.round = []
             self.held = False
             self.write_queue()
 
-    def _renumber(self) -> None:
-        """Fresh ids for the whole queue, so the player takes every entry as new
-        -- including one it has already played or skipped."""
-        for e in self.queue:
+    def clear_played(self) -> None:
+        with self.lock:
+            self.queue = [e for e in self.queue if not e.get("done")]
+            self.write_queue()
+
+    def jump(self, ident: int) -> None:
+        """Move the cursor to this song: everything before it counts as played,
+        it and everything after are to come, and it starts now -- or, while
+        stopped, it becomes the selected one for Play."""
+        with self.lock:
+            ids = [e["id"] for e in self.queue]
+            if ident not in ids:
+                raise FileNotFoundError(f"no entry {ident} in the queue")
+            i = ids.index(ident)
+            playing = self.status.get("state") in ("playing", "paused") and not self.held
+            for e in self.queue[:i]:
+                e["done"] = True
+            self._renumber(self.queue[i:])
+            self.write_queue()
+            if playing:
+                self.player.skip()
+
+    def _renumber(self, entries: list[dict]) -> None:
+        """Fresh ids, so the player takes every one as new -- including one it
+        has already played or skipped -- and marked as still to come."""
+        for e in entries:
             e["id"] = self.next_id
+            e["done"] = False
             self.next_id += 1
         self._save_settings()
 
     def shuffle(self) -> None:
+        """What is still to come, in a new order; what has played stays put."""
         with self.lock:
-            current = self.status.get("id") if self.status.get("state") == "playing" else None
-            head = [e for e in self.queue if e["id"] == current]
-            rest = [e for e in self.queue if e["id"] != current]
+            at = self.floor()
+            head, rest = self.queue[:at], self.queue[at:]
             random.shuffle(rest)
             self.queue = head + rest
             self.write_queue()
@@ -518,8 +568,8 @@ class Desk:
         return self.player.pause()
 
     def stop(self) -> None:
-        """End what is playing and hold the queue where it is: the song that was
-        playing stays at the head, selected, and Play starts it from the top."""
+        """End what is playing and hold: the song that was playing stays the
+        selected one, and Play starts it from the top."""
         with self.lock:
             self.held = True
             self.queue += self.pending          # anything still waiting for wind is kept too
@@ -529,25 +579,34 @@ class Desk:
             self.player.skip()
 
     def play(self) -> None:
-        """After a stop: the queue as it stands, from its head."""
+        """After a stop: from the selected song on."""
         with self.lock:
             if not self.held:
                 return
             self.held = False
-            self._renumber()
+            upcoming = [e for e in self.queue if not e.get("done")]
+            self._renumber(upcoming)
             if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
                 self.pump_set(True)
                 self.wind_ready_at = self.now() + float(self.settings["warm_up"])
             if self.wind_ready_at is not None and self.now() < self.wind_ready_at:
-                self.pending = self.queue + self.pending
-                self.queue = []
+                self.queue = [e for e in self.queue if e.get("done")]
+                self.pending = upcoming + self.pending
             self.write_queue()
 
     def upcoming(self) -> list[dict]:
-        current = self.status.get("id") if self.status.get("state") in ("playing", "skipped", "played") else None
-        if self.held:
-            return [dict(e, now=(i == 0)) for i, e in enumerate(self.queue)]
-        return [dict(e, now=(e["id"] == current)) for e in self.queue]
+        """The programme: each entry with done (already played), now (playing,
+        or selected while stopped)."""
+        current = self.current_id()
+        c = self.cursor()
+        out = []
+        for i, e in enumerate(self.queue):
+            now = (i == c) if self.held else (e["id"] == current and not e.get("done"))
+            out.append(dict(e, now=now, done=bool(e.get("done"))))
+        return out
+
+    def to_come(self) -> list[dict]:
+        return [e for e in self.queue if not e.get("done")]
 
     # -- settings -----------------------------------------------------------
 
@@ -590,38 +649,32 @@ class Desk:
             self.status = st
             state = st.get("state")
             current = st.get("id")
+            fresh = st.get("time", 0) > getattr(self, "last_write", 0)
             if self.held:
-                pass                                # the queue is frozen; the player's reports are about the past
-            elif state == "playing" and current is not None:
+                pass                                # the programme is frozen; the player's reports are about the past
+            elif state in ("playing", "paused") and current is not None:
                 ids = [e["id"] for e in self.queue]
                 if current in ids:
-                    self.queue = self.queue[ids.index(current):]
+                    for e in self.queue[:ids.index(current)]:
+                        e["done"] = True
             elif state in ("played", "skipped") and current is not None:
-                self.queue = [e for e in self.queue if e["id"] != current]
-            elif state == "idle":
-                # only an idle reported after our last write means the player saw
-                # the file and found nothing to play; an older one is just late
-                if self.queue and not self.pending and st.get("time", 0) > self.last_write:
-                    self.queue = []
-            if self.queue != getattr(self, "_written", None):
-                self.write_queue()
-                self._written = list(self.queue)
+                for e in self.queue:
+                    if e["id"] == current:
+                        e["done"] = True
+            elif state == "idle" and fresh and not self.pending:
+                # an idle reported after our last write means the player saw the
+                # file and found nothing left; an older one is just late
+                for e in self.queue:
+                    e["done"] = True
             # the warm-up is over: release what was held back
             if self.pending and (self.wind_ready_at is None or now >= self.wind_ready_at):
                 self.queue += self.pending
                 self.pending = []
-                self.write_queue()
-                self._written = list(self.queue)
-            # repeat: when everything has been played, queue the round again
-            if (state == "idle" and not self.queue and not self.pending and not self.held
-                    and self.settings["repeat"] and self.round):
-                again = [dict(e, id=self.next_id + i) for i, e in enumerate(self.round)]
-                self.next_id += len(again)
-                self._save_settings()
-                self.queue = again
-                self.round = again
-                self.write_queue()
-                self._written = list(self.queue)
+            # repeat: when the whole programme has played, start it again
+            if (state == "idle" and fresh and self.queue and not self.to_come() and not self.pending
+                    and not self.held and self.settings["repeat"]):
+                self._renumber(self.queue)
+            self.write_queue()
             # the pump: off after idling long enough
             busy = self.busy()
             if busy:
@@ -832,7 +885,7 @@ class Desk:
     def busy(self) -> bool:
         """Is the wire spoken for: a song on it, one about to be, or one waiting for wind."""
         return (self.status.get("state") in ("playing", "paused", "pause", "skipped", "warming up")
-                or (bool(self.queue) and not self.held) or bool(self.pending))
+                or (bool(self.to_come()) and not self.held) or bool(self.pending))
 
     def apply_boards(self, values: dict, command: str | None = None, board: int | None = None) -> dict:
         """Send solenoid parameters and/or a command to the driver boards over
@@ -975,11 +1028,21 @@ def create_app(desk: Desk):
         desk.shuffle()
         return jsonify(desk.snapshot())
 
+    @app.post("/api/queue/clear-played")
+    def queue_clear_played():
+        desk.clear_played()
+        return jsonify(desk.snapshot())
+
+    @app.post("/api/queue/jump")
+    def queue_jump():
+        desk.jump(int(body()["id"]))
+        return jsonify(desk.snapshot())
+
     @app.post("/api/queue/save")
     def queue_save():
         name = body().get("name", "")
         desk.write_playlist(name, [{"path": e["path"], "tempo": e.get("tempo"), "gap": e.get("gap")}
-                                   for e in desk.queue + desk.pending])
+                                   for e in desk.queue + desk.pending])          # the whole programme, played or not
         return jsonify({"saved": name, "playlists": desk.playlists()})
 
     @app.post("/api/player/skip")

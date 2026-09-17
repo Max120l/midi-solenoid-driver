@@ -25,9 +25,14 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 ```
 
 - **The queue file** is the only thing the two processes share. The app
-  appends lines with an `id=`; the player plays the first id it has not
-  played and idles when none is left. Reordering is rewriting the file;
-  the player notices before its next song.
+  writes the songs still to come, each with an `id=`; the player plays the
+  first id it has not played and idles when none is left. Reordering is
+  rewriting the file; the player notices before its next song. The page
+  itself keeps the whole programme: what has played stays in the list,
+  shaded, the current song is highlighted, and "Clear played" tidies up. A
+  tap on any song moves the programme there: a played one plays again and
+  the rest follow; one further down is jumped to, and what was passed over
+  counts as played.
 - **Skip** is a `SIGUSR1` to the player. **Stop** empties the file and skips,
   but keeps the queue in the app with the stopped song still at its head;
   **Play** writes the queue back with fresh ids, so that song starts again
@@ -47,13 +52,13 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 
 | Tab | What it does |
 |---|---|
-| **Play** | what is playing, with position; pause and resume; skip; stop, which keeps the queue with the stopped song selected, and play, which starts it again from the top; the queue with move up/down and remove; shuffle and clear the queue; save it as a playlist; repeat |
+| **Play** | what is playing, with position; a vertical tempo rail (50–150 %, applied as the finger lifts, 100 to reset); pause and resume; skip; stop, which keeps the programme with the stopped song selected, and play, which starts it again from the top; the programme with played songs shaded and the current one highlighted, move up/down and remove for what is to come, queue-again for what has played; shuffle what is to come, clear, clear played; save the programme as a playlist; repeat |
 | **Library** | the folders under `--library` as chips, the arranged tunes in each; ＋ queues one, ▶ plays it next; queue or shuffle a whole folder, or everything |
 | **Playlists** | the saved lists: open, queue, queue shuffled, "play instead" (replaces the queue), delete |
 | **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
 | **Arrange** | drop a raw `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source |
 | **Service** | reset the boards; pump on and off by hand; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
-| **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The card starts locked and relocks after every send and after three minutes; the boards cannot be read back, so the fields show what was last sent from here, or this organ's usual values before anything has been |
+| **Settings** | the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The card starts locked and relocks after every send and after three minutes; the boards cannot be read back, so the fields show what was last sent from here, or this organ's usual values before anything has been |
 
 The keys tester shares the serial line with the player, so it only answers
 while the player is idle; the moment something is queued it closes.
@@ -79,7 +84,7 @@ a script or a home-automation box can do the same.
 | `GET /api/state` | | status, queue, pending, pump, settings, player |
 | `GET /api/library` | | tunes with folder and length |
 | `POST /api/queue/add` | `{paths:[…], shuffle?, play_now?}` or `{path}` | queue tunes (library-relative paths) |
-| `POST /api/queue/remove` `/move` `/clear` `/shuffle` | `{id}`, `{id,to}` | edit the queue |
+| `POST /api/queue/remove` `/move` `/clear` `/clear-played` `/shuffle` `/jump` | `{id}`, `{id,to}` | edit the programme; jump moves the cursor to a song |
 | `POST /api/queue/save` | `{name}` | save the queue as a playlist |
 | `POST /api/player/skip` `/stop` `/play` `/pause` | | transport: stop keeps the queue, play restarts it from its head, pause toggles |
 | `POST /api/settings` | `{tempo?, gap?, repeat?, warm_up?, idle_off?}` | change settings |

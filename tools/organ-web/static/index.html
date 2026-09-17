@@ -33,6 +33,7 @@
 <main>
   <!-- Play ----------------------------------------------------------------- -->
   <section id="tab-play" class="tab active">
+    <div class="play-main">
     <div class="card now" id="now-card">
       <div class="label">Now playing</div>
       <div class="title" id="now-title">Nothing</div>
@@ -47,6 +48,7 @@
       <button class="big danger" id="btn-stop">Stop</button>
       <button id="btn-shuffle">Shuffle</button>
       <button id="btn-clear">Clear</button>
+      <button id="btn-clear-played">Clear played</button>
       <button id="btn-save">Save as playlist</button>
       <label class="toggle"><input type="checkbox" id="chk-repeat"> Repeat</label>
     </div>
@@ -56,6 +58,13 @@
       <div class="label">Waiting for wind</div>
       <ul id="pending" class="list"></ul>
     </div>
+    </div>
+    <aside class="tempo-rail" title="tempo for every song">
+      <span class="label">Tempo</span>
+      <span id="set-tempo-v" class="tempo-v">100 %</span>
+      <input type="range" id="set-tempo" min="50" max="150" step="1" value="100" orient="vertical">
+      <button id="tempo-reset" title="back to the written tempo">100</button>
+    </aside>
   </section>
 
   <!-- Library --------------------------------------------------------------- -->
@@ -149,8 +158,6 @@
   <!-- Settings -------------------------------------------------------------- -->
   <section id="tab-settings" class="tab">
     <div class="card">
-      <label class="setting">Tempo <span id="set-tempo-v">100 %</span>
-        <input type="range" id="set-tempo" min="50" max="150" step="1" value="100"></label>
       <label class="setting">Pause between songs <input type="number" id="set-gap" min="0" max="60" step="0.5"> s</label>
       <label class="setting">Pump warm-up before the first note <input type="number" id="set-warm" min="0" max="120" step="1"> s</label>
       <label class="setting">Pump off after idling <input type="number" id="set-idle" min="0" max="3600" step="10"> s</label>

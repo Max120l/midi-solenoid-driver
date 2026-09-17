@@ -49,6 +49,14 @@ nav#tabs button.active { background: var(--bg); color: var(--brass); border-colo
 main { flex: 1; padding: 14px; max-width: 1100px; width: 100%; margin: 0 auto; }
 .tab { display: none; }
 .tab.active { display: block; }
+#tab-play.active { display: flex; gap: 14px; align-items: stretch; }
+.play-main { flex: 1; min-width: 0; }
+.tempo-rail { width: 78px; flex: 0 0 78px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 6px 0;
+  position: sticky; top: 0; align-self: flex-start; height: min(440px, calc(100vh - 120px)); }
+.tempo-rail .label { margin: 0; }
+.tempo-rail .tempo-v { font-variant-numeric: tabular-nums; font-weight: 600; }
+.tempo-rail input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 44px; height: auto; flex: 1; min-height: 200px; }
+.tempo-rail button { min-width: 0; padding: 8px 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; }
 .label { color: var(--ink-dim); font-size: .85em; text-transform: uppercase; letter-spacing: .08em; margin: 10px 0 6px; }
 .title { font-size: 1.5em; font-weight: 600; }
@@ -67,6 +75,9 @@ ul.list { list-style: none; margin: 0; padding: 0; }
 ul.list li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); min-height: 56px; }
 ul.list li.now { background: var(--panel); border-left: 4px solid var(--brass); }
 ul.list li.missing { opacity: .5; }
+ul.list li.done { opacity: .45; }
+ul.list .name.tappable { cursor: pointer; }
+ul.list .name.tappable:active { color: var(--brass); }
 ul.list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 ul.list .meta { color: var(--ink-dim); font-size: .85em; font-variant-numeric: tabular-nums; }
 ul.list button { padding: 8px 12px; min-height: 44px; min-width: 44px; }
@@ -172,6 +183,9 @@ label.setting input[type=number] { margin-left: 10px; }
 [data-theme="lcars"] main { grid-area: main; padding: 18px 20px 20px 24px; max-width: none; }
 [data-theme="lcars"] .card { background: #000; border: none; border-left: 14px solid var(--lc-lav); border-radius: 0 20px 20px 0; padding: 10px 16px 14px; }
 [data-theme="lcars"] .card.now { border-left-color: var(--lc-orange); }
+[data-theme="lcars"] .tempo-rail { border-right: 14px solid var(--lc-tan); border-radius: 20px 0 0 20px; padding-right: 10px; }
+[data-theme="lcars"] .tempo-rail .tempo-v { color: var(--lc-peach); font-size: 1.1em; }
+[data-theme="lcars"] .tempo-rail button { background: var(--lc-tan); text-align: center; }
 [data-theme="lcars"] .label { color: var(--lc-lav); letter-spacing: .12em; }
 [data-theme="lcars"] .title { color: var(--lc-peach); font-size: 1.9em; line-height: 1.05; }
 [data-theme="lcars"] .sub, [data-theme="lcars"] .hint { color: var(--lc-blue); }
@@ -201,6 +215,7 @@ label.setting input[type=number] { margin-left: 10px; }
 [data-theme="lcars"] ul.list li.now { background: #1a1000; border-left-color: var(--lc-orange); }
 [data-theme="lcars"] ul.list li:nth-child(even) { border-left-color: var(--lc-lav); }
 [data-theme="lcars"] ul.list li.now:nth-child(even) { border-left-color: var(--lc-orange); }
+[data-theme="lcars"] ul.list li.done { opacity: .4; border-left-color: #6b5a3a; }
 [data-theme="lcars"] ul.list .name { color: var(--lc-peach); }
 [data-theme="lcars"] ul.list .meta { color: var(--lc-tan); }
 [data-theme="lcars"] ul.list button { padding: 8px 14px; }
@@ -255,6 +270,8 @@ main.dragging { cursor: grabbing; }
   [data-theme="lcars"] .lamp { padding: 0 6px; font-size: .72em; }
   [data-theme="lcars"] .now-line { display: block; left: calc(var(--nav-w) + 54px); right: 10px; top: 36px; font-size: 1em; }
   ul.list [data-move] { display: none; }                  /* on a phone the names matter more than reordering */
+  .tempo-rail { width: 56px; flex-basis: 56px; }
+  .tempo-rail input[type=range] { width: 36px; min-height: 160px; }
   ul.list button { min-width: 40px; padding: 6px 10px; }
   [data-theme="lcars"] .lamp { line-height: 26px; min-width: 0; }
   [data-theme="lcars"] .stardate { display: none; }
