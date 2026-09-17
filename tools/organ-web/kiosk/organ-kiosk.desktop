@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Band organ kiosk
+Comment=The organ's front desk, full screen on the case's touchscreen
+Exec=/home/pi/midi-solenoid-driver/tools/organ-web/kiosk/organ-kiosk.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true

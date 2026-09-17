@@ -110,16 +110,30 @@ restarts the player on its own if it ever exits. `systemctl stop organ-web`
 sends SIGTERM, which the player takes as a clean stop: the organ is silenced
 and the pump switched off before anything exits.
 
-For a touchscreen on the organ, run a browser in kiosk mode at boot. On Pi
-OS with the desktop, `~/.config/wayfire.ini` (or an autostart entry) with
+For a touchscreen on the organ, the desktop session starts Chromium in kiosk
+mode on the page. [`kiosk/organ-kiosk.sh`](kiosk/organ-kiosk.sh) waits until
+the front desk answers and then runs the browser full screen, no address bar,
+no tabs, no "restore session?" bubble; [`kiosk/organ-kiosk.desktop`](kiosk/organ-kiosk.desktop)
+is the autostart entry that launches it. On Pi OS with the desktop (Bookworm,
+Wayland or X11 alike):
 
-```
-chromium-browser --kiosk --noerrdialogs --disable-infobars http://localhost:8080/
+```bash
+mkdir -p ~/.config/autostart && cp kiosk/organ-kiosk.desktop ~/.config/autostart/ && chmod +x kiosk/organ-kiosk.sh
 ```
 
-gives a full-screen page with no chrome; the page remembers its last tab.
-The layout is touch-first: every control is at least 44 px, and it reflows
-for a phone in portrait.
+Edit the `Exec=` path in the copied `.desktop` file if the repo is not at
+`/home/pi/midi-solenoid-driver`. Then in `sudo raspi-config`: *System
+Options → Boot / Auto Login → Desktop Autologin*, and *Display Options →
+Screen Blanking → off*, so the page stays lit. Reboot: the Pi comes up on the
+Play tab with nothing else on the screen. To get a desktop back for
+maintenance, plug in a keyboard and press Alt+F4, or SSH in and
+`pkill chromium`. The page remembers its last tab, and every control is at
+least 44 px, so it reflows for a phone in portrait and fills a 7-inch
+screen in landscape.
+
+A touchscreen on HDMI with USB touch needs no driver on Pi OS. If the
+picture is upside down for the way it is mounted, rotate it in the desktop's
+*Screen Configuration*; touch follows the rotation there.
 
 ## Tests
 
