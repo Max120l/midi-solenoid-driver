@@ -50,6 +50,13 @@ It is deliberately a converter rather than a live translator, so every
 decision it makes is inspectable before the organ hears it. The player stays
 dumb and plays the arranged file.
 
+*Update, September 2026:* the engine, [`tools/player/grinder.py`](tools/player/),
+now covers the transport side without a screen: queues from files, folders
+and `.m3u` playlists, shuffle and repeat, a tempo that respects the
+solenoids' minimum note and gap, the pause between songs, a start offset that
+restores the registration, and Ctrl+C to skip. A touchscreen or phone layer
+would start it and read its output rather than replace it.
+
 ## Configuring the boards from the touchscreen
 
 The appeal is obvious: no digging inside the organ for DIP switches.
