@@ -49,7 +49,7 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 | **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
 | **Arrange** | drop a raw `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source |
 | **Service** | reset the boards; pump on and off by hand; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
-| **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The boards cannot be read back, so the fields show what was last sent from here |
+| **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The card starts locked and relocks after every send and after three minutes; the boards cannot be read back, so the fields show what was last sent from here, or this organ's usual values before anything has been |
 
 The keys tester shares the serial line with the player, so it only answers
 while the player is idle; the moment something is queued it closes.

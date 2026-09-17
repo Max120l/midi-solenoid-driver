@@ -157,17 +157,18 @@
       <div class="row buttons"><button class="big" id="btn-save-settings">Save</button><span id="settings-note" class="hint"></span></div>
     </div>
     <div class="card" id="boards-card">
-      <div class="label">Solenoid boards</div>
-      <label class="setting">Pull-in duty <input type="number" id="bd-peak" min="1" max="100" step="1" placeholder="60"> %</label>
-      <label class="setting">Pull-in window <input type="number" id="bd-peak-ms" min="1" max="127" step="1" placeholder="ms"> ms</label>
-      <label class="setting">Hold duty <input type="number" id="bd-hold" min="0" max="40" step="1" placeholder="25"> %</label>
-      <label class="setting">Stuck-note watchdog <input type="number" id="bd-max-note" min="0" max="127" step="1" placeholder="s"> s, 0 = off</label>
-      <label class="setting">Exercise passes at power-up <input type="number" id="bd-exercise" min="0" max="10" step="1" placeholder="0-10"></label>
+      <div class="row buttons"><span class="label">Solenoid boards</span><button class="danger" id="bd-lock">Unlock</button><span id="bd-lock-note" class="hint">locked</span></div>
+      <label class="setting">Pull-in duty <input type="number" id="bd-peak" min="1" max="100" step="1" disabled> %</label>
+      <label class="setting">Pull-in window <input type="number" id="bd-peak-ms" min="1" max="127" step="1" disabled> ms</label>
+      <label class="setting">Hold duty <input type="number" id="bd-hold" min="0" max="40" step="1" disabled> %</label>
+      <label class="setting">Stuck-note watchdog <input type="number" id="bd-max-note" min="0" max="127" step="1" disabled> s, 0 = off</label>
+      <label class="setting">Exercise passes at power-up <input type="number" id="bd-exercise" min="0" max="10" step="1" disabled></label>
       <div class="row buttons">
-        <button class="big" id="bd-apply">Apply</button>
-        <button id="bd-apply-save">Apply and save to boards</button>
-        <button id="bd-reload">Reload from boards</button>
-        <button class="danger" id="bd-factory">Factory defaults</button>
+        <button class="big" id="bd-apply" disabled>Apply</button>
+        <button id="bd-apply-save" disabled>Apply and save to boards</button>
+        <button id="bd-reload" disabled>Reload from boards</button>
+        <button class="danger" id="bd-factory" disabled>Factory defaults</button>
+        <button id="bd-defaults" disabled>Our defaults</button>
       </div>
       <p class="hint" id="bd-note">The boards cannot be read back: these fields show what was last sent from here. Apply changes them until power-off; save writes them to each board's memory, and every board clicks once to say so. Only while the player is idle.</p>
     </div>

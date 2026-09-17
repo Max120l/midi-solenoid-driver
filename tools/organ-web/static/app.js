@@ -270,18 +270,39 @@ $("btn-save-settings").onclick = async () => {
 /* ---- the driver boards' solenoid parameters ---------------------------- */
 const BOARD_FIELDS = { peak: "bd-peak", hold: "bd-hold", peak_ms: "bd-peak-ms", max_note: "bd-max-note", exercise: "bd-exercise" };
 let boardsDirty = false;
+let boardsLocked = true;                 // always starts locked; unlock is a deliberate tap, and it relocks after a while
+let relockTimer = null;
+const BOARD_BUTTONS = ["bd-apply", "bd-apply-save", "bd-reload", "bd-factory", "bd-defaults"];
 Object.values(BOARD_FIELDS).forEach((id) => $(id).oninput = () => (boardsDirty = true));
+function setBoardsLock(locked) {
+  boardsLocked = locked;
+  clearTimeout(relockTimer);
+  if (!locked) relockTimer = setTimeout(() => setBoardsLock(true), 3 * 60 * 1000);
+  $("bd-lock").textContent = locked ? "Unlock" : "Lock";
+  $("bd-lock").classList.toggle("danger", locked);
+  $("bd-lock-note").textContent = locked ? "locked" : "unlocked: relocks in 3 minutes";
+  Object.values(BOARD_FIELDS).forEach((id) => ($(id).disabled = locked));
+  if (state) renderBoards();
+}
+$("bd-lock").onclick = () => setBoardsLock(!boardsLocked);
 function renderBoards() {
-  const b = state.settings.boards || {};
-  if (!boardsDirty) Object.entries(BOARD_FIELDS).forEach(([k, id]) => { $(id).value = b[k] ?? ""; });
+  const b = state.settings.boards || {}, ours = state.board_defaults || {}, fw = state.firmware_defaults || {};
+  if (!boardsDirty) Object.entries(BOARD_FIELDS).forEach(([k, id]) => { $(id).value = b[k] ?? ours[k] ?? ""; });
+  Object.entries(BOARD_FIELDS).forEach(([k, id]) => { $(id).placeholder = fw[k] != null ? `firmware ${fw[k]}` : ""; });
   const when = (t) => new Date(t * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-  let note = "The boards cannot be read back: these fields show what was last sent from here. ";
-  if (b.sent_at) note += `Last sent ${when(b.sent_at)}${b.saved_at ? `, saved to the boards ${when(b.saved_at)}` : ", not saved to the boards"}. `;
+  let note = "The boards cannot be read back. ";
+  if (b.sent_at) note += `These are the values last sent from here, ${when(b.sent_at)}${b.saved_at ? `, saved to the boards ${when(b.saved_at)}` : ", not yet saved to the boards"}. `;
+  else note += "Nothing has been sent from here yet; the fields show this organ's usual values, and the hints the firmware's own. ";
   note += state.idle ? "Apply changes them until power-off; save writes them to each board's memory, and every board clicks once to say so."
                      : "The player is busy: stop it before retuning.";
   $("bd-note").textContent = note;
-  ["bd-apply", "bd-apply-save", "bd-reload", "bd-factory"].forEach((id) => $(id).disabled = !state.idle);
+  BOARD_BUTTONS.forEach((id) => $(id).disabled = boardsLocked || !state.idle);
 }
+$("bd-defaults").onclick = () => {
+  Object.entries(BOARD_FIELDS).forEach(([k, id]) => { $(id).value = (state.board_defaults || {})[k] ?? ""; });
+  boardsDirty = true;
+  toast("this organ's usual values filled in; Apply sends them");
+};
 function boardValues() {
   const out = {};
   Object.entries(BOARD_FIELDS).forEach(([k, id]) => { if ($(id).value !== "") out[k] = +$(id).value; });
@@ -291,6 +312,7 @@ async function sendBoards(body, okText) {
   try {
     const d = await api("/api/boards", "POST", body);
     boardsDirty = false;
+    setBoardsLock(true);                 // one change per unlock
     toast(d.warnings && d.warnings.length ? d.warnings.join("; ") : okText, !!(d.warnings && d.warnings.length));
     await refresh();
   } catch (e) { toast(e.message, true); }

@@ -401,7 +401,10 @@ def test_board_parameters_go_out_as_organ_config_ccs_and_are_remembered(client, 
     # not while the player has work
     desk.add(["marches/bogey.organ.mid"])
     assert client.post("/api/boards", json={"peak": 60}).status_code == 409
-    assert client.get("/api/state").get_json()["settings"]["boards"] == d["boards"]
+    st = client.get("/api/state").get_json()
+    assert st["settings"]["boards"] == d["boards"]
+    assert st["board_defaults"] == {"peak": 60, "hold": 25, "peak_ms": 40, "max_note": 30, "exercise": 2}
+    assert st["firmware_defaults"]["peak"] == 100 and st["firmware_defaults"]["hold"] == 25
 
 
 def test_upload_route_runs_a_job(client, desk):

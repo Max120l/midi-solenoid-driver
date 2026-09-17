@@ -67,6 +67,10 @@ BOARD_FIELDS = {"peak": (1, 100), "hold": (0, organ_config.HOLD_DUTY_MAX_PERCENT
                 "peak_ms": (1, organ_config.PEAK_DURATION_MAX_MS), "max_note": (0, 127),
                 "exercise": (0, organ_config.EXERCISE_CYCLES_MAX)}
 BOARD_COMMANDS = {"save": organ_config.CMD_SAVE, "reload": organ_config.CMD_RELOAD, "factory": organ_config.CMD_FACTORY}
+# what this organ runs at (the bench values in the README) and what the firmware
+# compiles in; the page fills its fields with the first and shows the second as hints
+BOARD_DEFAULTS = {"peak": 60, "hold": 25, "peak_ms": 40, "max_note": 30, "exercise": 2}
+FIRMWARE_DEFAULTS = {"peak": 100, "hold": 25, "peak_ms": 40, "max_note": 30, "exercise": 2}
 PLAYER_RESTART_S = 2.0
 HOUSEKEEP_S = 1.0
 KEYS_TICK_S = 0.01
@@ -609,6 +613,8 @@ class Desk:
                 "pump": {"configured": self.pump is not None, "on": self.pump_on},
                 "player": {"running": self.player.running(), "pid": st.get("pid")},
                 "settings": dict(self.settings),
+                "board_defaults": dict(BOARD_DEFAULTS),
+                "firmware_defaults": dict(FIRMWARE_DEFAULTS),
                 "keys_open": self.keys.console is not None,
                 "idle": st.get("state") in (None, "idle", "finished", "stopped") and not self.queue,
                 "dry_run": self.cfg.dry_run,
