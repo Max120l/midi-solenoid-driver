@@ -16,6 +16,7 @@ const keys = { layout: null, view: "section", hold: false, sounding: new Set(), 
 function toast(text, error) {
   const t = $("toast");
   t.textContent = text; t.hidden = false; t.className = error ? "error" : "";
+  if (error && typeof chirp === "function") chirp("deny");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), error ? 5000 : 2200);
 }
 
@@ -280,6 +281,50 @@ function stardate() {
 }
 setInterval(() => { $("stardate").textContent = "Stardate " + stardate(); }, 6000);
 $("stardate").textContent = "Stardate " + stardate();
+
+/* ---- panel sounds ------------------------------------------------------ */
+/* Synthesised, not sampled: a short two-tone chirp on a tap, lower on the red
+   buttons, a flat buzz on a refusal. The browser only lets a page make sound
+   after a gesture, so the audio context is made on the first tap. */
+const sound = { ctx: null, on: true };
+try { sound.on = localStorage.getItem("organ-sound") !== "off"; } catch (e) { /* fine */ }
+$("set-sound").checked = sound.on;
+$("set-sound").onchange = (e) => {
+  sound.on = e.target.checked;
+  try { localStorage.setItem("organ-sound", sound.on ? "on" : "off"); } catch (err) { /* fine */ }
+  if (sound.on) chirp("tap");
+};
+function chirp(kind) {
+  if (!sound.on || document.documentElement.dataset.theme !== "lcars") return;
+  try {
+    if (!sound.ctx) sound.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = sound.ctx;
+    if (ctx.state === "suspended") ctx.resume();
+    const t0 = ctx.currentTime;
+    const tone = (freq1, freq2, start, len, gain, type) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type || "sine";
+      o.frequency.setValueAtTime(freq1, t0 + start);
+      if (freq2 !== freq1) o.frequency.exponentialRampToValueAtTime(freq2, t0 + start + len);
+      g.gain.setValueAtTime(0.0001, t0 + start);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + start + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + len);
+      o.connect(g).connect(ctx.destination);
+      o.start(t0 + start); o.stop(t0 + start + len + 0.02);
+    };
+    if (kind === "danger") { tone(740, 740, 0, 0.07, 0.18); tone(560, 560, 0.08, 0.09, 0.18); }
+    else if (kind === "deny") { tone(220, 200, 0, 0.16, 0.16, "square"); }
+    else if (kind === "nav") { tone(1480, 1480, 0, 0.05, 0.14); tone(1960, 1960, 0.055, 0.06, 0.14); }
+    else { tone(1250, 1850, 0, 0.055, 0.16); tone(2200, 2200, 0.06, 0.05, 0.12); }
+  } catch (e) { /* no audio here; the button still works */ }
+}
+document.addEventListener("pointerdown", (ev) => {
+  const b = ev.target.closest("button, input[type=checkbox], select, input[type=range], .key");
+  if (!b) return;
+  if (b.closest("#tabs")) chirp("nav");
+  else if (b.classList.contains("danger")) chirp("danger");
+  else chirp("tap");
+}, { passive: true });
 
 /* ---- go --------------------------------------------------------------- */
 let startTab = "play";
