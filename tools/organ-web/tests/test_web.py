@@ -359,6 +359,25 @@ def test_routes_cover_the_desk(client, desk):
     assert client.get("/").status_code == 200 and b"<title>" in client.get("/").data
 
 
+def test_upload_puts_a_finished_file_in_a_folder_and_refuses_junk(client, desk, tmp_path):
+    good = song_file(tmp_path / "x.mid", 1.5).read_bytes()
+    data = {"file": (io.BytesIO(good), "Skaters Waltz.organ.mid"), "folder": "waltzes"}
+    r = client.post("/api/upload", data=data, content_type="multipart/form-data")
+    assert r.status_code == 200
+    up = r.get_json()["uploaded"][0]
+    assert up["path"] == "waltzes/Skaters Waltz.organ.mid" and up["length_s"] == 1.5
+    assert (desk.cfg.library / "waltzes" / "Skaters Waltz.organ.mid").is_file()
+    data = {"file": (io.BytesIO(good), "new.mid"), "folder": "christmas"}      # a new folder, a plain .mid name
+    up = client.post("/api/upload", data=data, content_type="multipart/form-data").get_json()["uploaded"][0]
+    assert up["path"] == "christmas/new.organ.mid" and "christmas" in desk.library.folders()
+    r = client.post("/api/upload", data={"file": (io.BytesIO(b"not midi"), "junk.mid")}, content_type="multipart/form-data")
+    assert r.status_code == 400 and "not a MIDI file" in r.get_json()["error"]
+    assert not (desk.cfg.uploads / "junk.organ.mid").exists()
+    r = client.post("/api/upload", data={"file": (io.BytesIO(good), "x.mid"), "folder": "../out"}, content_type="multipart/form-data")
+    assert r.status_code == 400
+    assert client.post("/api/upload", data={}, content_type="multipart/form-data").status_code == 400
+
+
 def test_upload_route_runs_a_job(client, desk):
     data = {"file": (io.BytesIO(b"MThd"), "Uploaded Tune.mid"), "plan": "", "transpose": "auto"}
     r = client.post("/api/arrange", data=data, content_type="multipart/form-data")

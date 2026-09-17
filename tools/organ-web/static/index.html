@@ -10,7 +10,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="lcars-only">LCARS 47 · </span>Pellevoisin</div>
+  <div class="brand"><span class="lcars-only brand-code">LCARS 47</span><span class="brand-name">Pellevoisin</span></div>
   <div id="now-line" class="now-line">connecting…</div>
   <div id="stardate" class="stardate lcars-only"></div>
   <div class="lamps">
@@ -24,8 +24,9 @@
   <button data-tab="library" data-code="02-4077">Library</button>
   <button data-tab="playlists" data-code="03-2893">Playlists</button>
   <button data-tab="upload" data-code="04-6119">Upload</button>
-  <button data-tab="service" data-code="05-3947">Service</button>
-  <button data-tab="settings" data-code="06-8241">Settings</button>
+  <button data-tab="arrange" data-code="05-1138">Arrange</button>
+  <button data-tab="service" data-code="06-3947">Service</button>
+  <button data-tab="settings" data-code="07-8241">Settings</button>
   <div class="nav-fill"></div>
 </nav>
 
@@ -83,6 +84,26 @@
 
   <!-- Upload ---------------------------------------------------------------- -->
   <section id="tab-upload" class="tab">
+    <div class="card">
+      <div class="label">Add arranged files to the library</div>
+      <form id="upload-files-form">
+        <input type="file" id="upload-files" accept=".mid,.midi" multiple required>
+        <div class="row">
+          <label>Folder <select id="upload-folder"></select></label>
+          <label>or new <input type="text" id="upload-new-folder" placeholder="folder name" size="12"></label>
+          <button type="submit" class="big">Upload</button>
+        </div>
+      </form>
+      <p class="hint">For files that have already been through the arranger: single track, every note a solenoid.
+        They are stored as <code>name.organ.mid</code> in the folder you pick and show up in the Library at once.
+        A raw MIDI file belongs on the Arrange tab instead.</p>
+    </div>
+    <div class="label">Uploaded</div>
+    <ul id="uploaded" class="list"></ul>
+  </section>
+
+  <!-- Arrange --------------------------------------------------------------- -->
+  <section id="tab-arrange" class="tab">
     <div class="card">
       <div class="label">Arrange a MIDI file for the organ</div>
       <form id="upload-form">

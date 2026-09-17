@@ -43,7 +43,8 @@ function showTab(name) {
   try { localStorage.setItem("organ-tab", name); } catch (e) { /* fine */ }
   if (name === "library") loadLibrary();
   if (name === "playlists") loadPlaylists();
-  if (name === "upload") { loadPlans(); loadJobs(); }
+  if (name === "upload") loadUploadFolders();
+  if (name === "arrange") { loadPlans(); loadJobs(); }
   if (name === "service") loadKeys();
 }
 
@@ -61,7 +62,8 @@ function renderNav() {
     play: state.queue.length ? `${state.queue.length} queued · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
     library: `${c.tunes ?? "–"} tunes · ${c.folders ?? "–"} folders`,
     playlists: `${c.playlists ?? "–"} lists`,
-    upload: c.jobs_running ? `${c.jobs_running} arranging` : (c.jobs_done ? `${c.jobs_done} done` : "ready"),
+    upload: `${(c.by_folder || {}).uploads || 0} in uploads`,
+    arrange: c.jobs_running ? `${c.jobs_running} arranging` : (c.jobs_done ? `${c.jobs_done} done` : "ready"),
     service: state.pump.on ? "pump on" : (state.idle ? "idle" : "busy"),
     settings: `tempo ${Math.round((state.settings.tempo || 1) * 100)} %` + (state.settings.repeat ? " · repeat" : ""),
   };
@@ -183,7 +185,40 @@ $("pl-delete").onclick = async () => {
   catch (e) { toast(e.message, true); }
 };
 
-/* ---- upload ----------------------------------------------------------- */
+/* ---- upload: finished files into a folder --------------------------------- */
+const uploaded = [];
+async function loadUploadFolders() {
+  try { library = await api("/api/library"); } catch (e) { return; }
+  const current = $("upload-folder").value;
+  const folders = library.folders.filter((f) => f).concat(library.folders.includes("uploads") ? [] : ["uploads"]);
+  $("upload-folder").innerHTML = folders.map((f) => `<option ${f === (current || "uploads") ? "selected" : ""}>${esc(f)}</option>`).join("");
+}
+function renderUploaded() {
+  $("uploaded").innerHTML = uploaded.map((u) => `
+    <li><span class="name">${esc(u.name)}<br><span class="meta">${esc(u.folder)}</span></span><span class="meta">${fmt(u.length_s)}</span>
+      <button data-play="${esc(u.path)}" title="play now">▶</button><button data-queue="${esc(u.path)}" title="add to queue">＋</button></li>`).join("")
+    || `<li><span class="name hint">Nothing uploaded in this session.</span></li>`;
+  $("uploaded").querySelectorAll("[data-queue]").forEach((b) => b.onclick = () => act("/api/queue/add", { path: b.dataset.queue }, "queued"));
+  $("uploaded").querySelectorAll("[data-play]").forEach((b) => b.onclick = () => act("/api/queue/add", { path: b.dataset.play, play_now: true }, "playing next"));
+}
+$("upload-files-form").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const files = $("upload-files").files;
+  if (!files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("file", f);
+  fd.append("folder", $("upload-new-folder").value.trim() || $("upload-folder").value);
+  try {
+    const d = await api("/api/upload", "POST", fd);
+    uploaded.unshift(...d.uploaded); renderUploaded();
+    toast(`${d.uploaded.length} file${d.uploaded.length === 1 ? "" : "s"} added`);
+    $("upload-files").value = ""; $("upload-new-folder").value = "";
+    loadUploadFolders();
+  } catch (e) { toast(e.message, true); }
+};
+renderUploaded();
+
+/* ---- arrange: raw MIDI through the transcriber and the arranger ---------- */
 async function loadPlans() {
   try {
     const d = await api("/api/plans");

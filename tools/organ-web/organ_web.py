@@ -18,8 +18,9 @@ What it does:
   Play        the queue: what is playing, what is next; skip, stop, reorder
   Library     the tune folders under --library; tap to queue or play now
   Playlists   saved lists in the state folder; load, save the queue as one
-  Upload      drop a .mid: the transcriber and the arranger run on it, with a
-              plan if one is chosen, and the result lands in library/uploads
+  Upload      drop arranged .organ.mid files straight into a library folder
+  Arrange     drop a raw .mid: the transcriber and the arranger run on it,
+              with a plan if one is chosen; the result lands in library/uploads
   Service     reset the boards, the pump by hand, and a touch version of
               organ_keys for when the player is idle
   Settings    tempo, the pause between songs, repeat, the pump's warm-up
@@ -742,6 +743,25 @@ class Desk:
         job.update(state="done", output=out.relative_to(self.cfg.library).as_posix())
         self._counts = None
 
+    def upload(self, filename: str, data: bytes, folder: str = "uploads") -> dict:
+        """An already arranged file into a library folder, named STEM.organ.mid.
+        Refused if it is not a MIDI file the player could read."""
+        import mido
+        stem = grinder.Song(Path(filename)).name
+        safe = "".join(c if c.isalnum() or c in "-_ ()" else "-" for c in stem).strip("- ") or "tune"
+        folder = folder.strip().strip("/") or "uploads"
+        target_dir = self.library.resolve(folder)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        out = target_dir / f"{safe}.organ.mid"
+        out.write_bytes(data)
+        try:
+            length = round(mido.MidiFile(str(out)).length, 1)
+        except Exception as e:
+            out.unlink(missing_ok=True)
+            raise ValueError(f"{filename}: not a MIDI file the player can read ({e})")
+        self._counts = None
+        return {"path": out.relative_to(self.cfg.library).as_posix(), "name": safe, "folder": folder, "length_s": length}
+
     # -- service ----------------------------------------------------------------
 
     def reset_boards(self) -> dict:
@@ -886,6 +906,15 @@ def create_app(desk: Desk):
         b = body()
         added = desk.queue_playlist(name, bool(b.get("shuffle")), bool(b.get("replace")))
         return jsonify({"added": added})
+
+    @app.post("/api/upload")
+    def upload():
+        files = request.files.getlist("file")
+        if not files or not any(f.filename for f in files):
+            return fail("no file")
+        folder = request.form.get("folder") or "uploads"
+        done = [desk.upload(f.filename, f.read(), folder) for f in files if f.filename]
+        return jsonify({"uploaded": done})
 
     @app.get("/api/plans")
     def plans():

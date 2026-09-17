@@ -46,7 +46,8 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 | **Play** | what is playing, with position; skip, stop; the queue with move up/down and remove; shuffle and clear the queue; save it as a playlist; repeat |
 | **Library** | the folders under `--library` as chips, the arranged tunes in each; ＋ queues one, ▶ plays it next; queue or shuffle a whole folder, or everything |
 | **Playlists** | the saved lists: open, queue, queue shuffled, "play instead" (replaces the queue), delete |
-| **Upload** | drop a `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source; a `.organ.mid` is just added |
+| **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
+| **Arrange** | drop a raw `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source |
 | **Service** | reset the boards; pump on and off by hand; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
 | **Settings** | tempo for every song (50–150 %), the pause between songs, the pump's warm-up and idle time-out |
 
@@ -81,6 +82,7 @@ a script or a home-automation box can do the same.
 | `GET /api/playlists`, `GET /PUT /DELETE /api/playlists/<name>` | `{entries:[{path,tempo?,gap?}]}` | playlists |
 | `POST /api/playlists/<name>/queue` | `{shuffle?, replace?}` | queue a playlist |
 | `GET /api/plans` | | the arranger's plans |
+| `POST /api/upload` | multipart `file` (repeatable), `folder` | store arranged files in a library folder |
 | `POST /api/arrange` | multipart `file`, `plan`, `transpose` | start an arrange job |
 | `GET /api/jobs`, `GET /api/jobs/<id>` | | job state, output path, log |
 | `GET /api/keys/layout`, `POST /api/keys/pulse` `/hold` `/roll` `/off` | `{solenoid, ms?}`, `{solenoid,on}`, `{solenoids?,interval_ms?,on}` | the keys tester |
