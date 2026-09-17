@@ -99,6 +99,8 @@ ul.list li.job pre { white-space: pre-wrap; background: var(--panel-2); padding:
 label.setting { display: block; padding: 10px 0; border-bottom: 1px solid var(--line); }
 label.setting input[type=number] { margin-left: 10px; }
 
+#dim { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 50; }
+#screen-off { position: fixed; inset: 0; background: #000; z-index: 60; cursor: none; }
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--brass); color: #1b1a17; padding: 12px 20px; border-radius: 999px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.4); z-index: 10; max-width: 90vw; }
 #toast.error { background: var(--red); color: white; }
 

@@ -7,6 +7,7 @@
 # The organ_web service must be enabled; this only shows its page.
 
 URL="${ORGAN_URL:-http://localhost:8080/}"
+PAGE="${URL}?kiosk=1"          # the page remembers it is the case screen: the screen time-out defaults on
 
 until curl -fs "${URL}api/state" >/dev/null 2>&1; do
     sleep 1
@@ -15,7 +16,7 @@ done
 BROWSER=$(command -v chromium-browser || command -v chromium)
 
 exec "$BROWSER" \
-    --kiosk "$URL" \
+    --kiosk "$PAGE" \
     --noerrdialogs \
     --disable-infobars \
     --disable-session-crashed-bubble \

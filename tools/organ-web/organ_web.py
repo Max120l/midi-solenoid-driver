@@ -95,6 +95,7 @@ class Config:
     dry_run: bool = False
     host: str = "0.0.0.0"
     port: int = DEFAULT_PORT
+    backlight: Path = Path("/sys/class/backlight")     # where the kernel exposes a display's backlight, if any
 
     @property
     def queue_file(self) -> Path:
@@ -733,6 +734,7 @@ class Desk:
                 "board_defaults": dict(BOARD_DEFAULTS),
                 "firmware_defaults": dict(FIRMWARE_DEFAULTS),
                 "keys_open": self.keys.console is not None,
+                "backlight": self.backlight_dir() is not None,
                 "idle": not self.busy(),
                 "held": self.held,
                 "dry_run": self.cfg.dry_run,
@@ -945,6 +947,38 @@ class Desk:
             self._save_settings()
         return {"sent": [organ_config.describe(m) for m in messages], "warnings": warnings, "boards": boards}
 
+    # -- the screen: a real backlight when the Pi has one ----------------------------
+
+    def backlight_dir(self) -> Path | None:
+        try:
+            for d in sorted(self.cfg.backlight.iterdir()):
+                if (d / "brightness").is_file() and (d / "max_brightness").is_file():
+                    return d
+        except OSError:
+            pass
+        return None
+
+    def screen(self, brightness: int | None = None, power: str | None = None) -> dict:
+        """Set the backlight's brightness (0-100 %) and/or power ('on'/'off').
+        Without a backlight, reports so; the page then dims itself."""
+        d = self.backlight_dir()
+        if d is None:
+            return {"backlight": False}
+        try:
+            maximum = int((d / "max_brightness").read_text().strip() or 255)
+            if brightness is not None:
+                b = max(0, min(100, int(brightness)))
+                (d / "brightness").write_text(str(round(maximum * b / 100)))
+            if power is not None:
+                if power not in ("on", "off"):
+                    raise ValueError("power must be on or off")
+                (d / "bl_power").write_text("0" if power == "on" else "1")
+            current = int((d / "brightness").read_text().strip() or 0)
+            powered = (d / "bl_power").read_text().strip() == "0" if (d / "bl_power").is_file() else True
+            return {"backlight": True, "device": d.name, "brightness": round(100 * current / maximum), "power": "on" if powered else "off"}
+        except OSError as e:
+            raise RuntimeError(f"cannot drive the backlight at {d}: {e}")
+
     def reset_boards(self) -> dict:
         if self.cfg.dry_run:
             return {"reset": "dry run", "pins": self.cfg.reset_pins}
@@ -1152,6 +1186,11 @@ def create_app(desk: Desk):
         b = body()
         board = b.get("board")
         return jsonify(desk.apply_boards(b, b.get("command"), int(board) if board not in (None, "") else None))
+
+    @app.post("/api/screen")
+    def screen():
+        b = body()
+        return jsonify(desk.screen(b.get("brightness"), b.get("power")))
 
     @app.post("/api/service/reset")
     def service_reset():

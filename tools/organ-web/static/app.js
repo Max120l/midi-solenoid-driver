@@ -51,7 +51,7 @@ function showTab(name) {
 /* ---- state ------------------------------------------------------------ */
 async function refresh() {
   try { state = await api("/api/state"); } catch (e) { $("now-line").textContent = "no connection"; return; }
-  renderNow(); renderQueue(); renderSettings(); renderBoards(); renderService(); renderNav();
+  renderNow(); renderQueue(); renderSettings(); renderBoards(); renderService(); renderNav(); renderScreen();
 }
 
 /* the sidebar's small numbers: readings, not decoration */
@@ -304,6 +304,69 @@ $("btn-save-settings").onclick = async () => {
   settingsDirty = false;
   await act("/api/settings", body, "settings saved");
 };
+
+/* ---- this screen: brightness and a time-out, per browser ----------------- */
+/* With a real backlight (the Pi's own touch display) the Pi drives it; on an
+   HDMI panel the page dims itself with a dark layer, and "off" is a black
+   screen. The first touch on a dark screen only wakes it. */
+const screen = { bright: 100, timeout: 0, off: false, timer: null, hw: false };
+try {
+  screen.bright = +(localStorage.getItem("organ-bright") || 100);
+  const kiosk = new URLSearchParams(location.search).get("kiosk");
+  if (kiosk) localStorage.setItem("organ-kiosk", "1");
+  const isKiosk = localStorage.getItem("organ-kiosk") === "1";
+  screen.timeout = localStorage.getItem("organ-timeout") != null ? +localStorage.getItem("organ-timeout") : (isKiosk ? 10 : 0);
+} catch (e) { /* fine */ }
+$("scr-bright").value = screen.bright; $("scr-bright-v").textContent = `${screen.bright} %`;
+$("scr-timeout").value = screen.timeout;
+async function applyBrightness(save) {
+  $("scr-bright-v").textContent = `${screen.bright} %`;
+  if (save) { try { localStorage.setItem("organ-bright", String(screen.bright)); } catch (e) { /* fine */ } }
+  if (screen.hw) {
+    try { await api("/api/screen", "POST", { brightness: screen.bright }); $("dim").style.opacity = 0; return; } catch (e) { /* fall back to the layer */ }
+  }
+  $("dim").style.opacity = String((100 - screen.bright) / 100 * 0.85);
+}
+$("scr-bright").oninput = () => { screen.bright = +$("scr-bright").value; applyBrightness(false); };
+$("scr-bright").onchange = () => applyBrightness(true);
+$("scr-timeout").onchange = () => {
+  screen.timeout = Math.max(0, +$("scr-timeout").value || 0);
+  try { localStorage.setItem("organ-timeout", String(screen.timeout)); } catch (e) { /* fine */ }
+  armScreenTimer();
+  toast(screen.timeout ? `screen off after ${screen.timeout} min` : "screen stays on");
+};
+function armScreenTimer() {
+  clearTimeout(screen.timer);
+  if (screen.timeout > 0 && !screen.off) screen.timer = setTimeout(screenOff, screen.timeout * 60 * 1000);
+}
+async function screenOff() {
+  screen.off = true;
+  $("screen-off").hidden = false;
+  if (screen.hw) { try { await api("/api/screen", "POST", { power: "off" }); } catch (e) { /* the black layer stands */ } }
+}
+async function screenOn() {
+  if (!screen.off) return;
+  screen.off = false;
+  $("screen-off").hidden = true;
+  if (screen.hw) { try { await api("/api/screen", "POST", { power: "on", brightness: screen.bright }); } catch (e) { /* fine */ } }
+  armScreenTimer();
+}
+$("scr-off-now").onclick = () => setTimeout(screenOff, 300);
+// any touch wakes; a touch on a dark screen does nothing else
+["pointerdown", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, (e) => {
+  if (screen.off) { e.stopPropagation(); e.preventDefault(); screenOn(); return; }
+  armScreenTimer();
+}, { capture: true, passive: false }));
+["pointermove", "wheel"].forEach((ev) => document.addEventListener(ev, () => { if (!screen.off) armScreenTimer(); }, { passive: true }));
+$("screen-off").addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); }, true);
+function renderScreen() {
+  const hw = !!state.backlight;
+  if (hw !== screen.hw) { screen.hw = hw; applyBrightness(false); }
+  $("scr-note").textContent = hw ? "This display's backlight is under the Pi's control."
+                                 : "No backlight control on this display: the page dims itself, and off is a black screen.";
+}
+applyBrightness(false);
+armScreenTimer();
 
 /* ---- the driver boards' solenoid parameters ---------------------------- */
 const BOARD_FIELDS = { peak: "bd-peak", hold: "bd-hold", peak_ms: "bd-peak-ms", max_note: "bd-max-note", exercise: "bd-exercise" };

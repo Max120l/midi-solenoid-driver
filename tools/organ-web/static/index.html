@@ -165,6 +165,13 @@
       <label class="setting">Panel sounds <input type="checkbox" id="set-sound"> <span class="hint">a chirp on every tap, in the LCARS look</span></label>
       <div class="row buttons"><button class="big" id="btn-save-settings">Save</button><span id="settings-note" class="hint"></span></div>
     </div>
+    <div class="card" id="screen-card">
+      <div class="label">This screen</div>
+      <label class="setting">Brightness <span id="scr-bright-v">100 %</span>
+        <input type="range" id="scr-bright" min="15" max="100" step="5" value="100"></label>
+      <label class="setting">Screen off after <input type="number" id="scr-timeout" min="0" max="240" step="1" value="0"> minutes of no touch, 0 = never</label>
+      <div class="row buttons"><button id="scr-off-now">Screen off now</button><span id="scr-note" class="hint"></span></div>
+    </div>
     <div class="card" id="boards-card">
       <div class="row buttons"><span class="label">Solenoid boards</span><button class="danger" id="bd-lock">Unlock</button><span id="bd-lock-note" class="hint">locked</span></div>
       <label class="setting">Pull-in duty <input type="number" id="bd-peak" min="1" max="100" step="1" disabled> %</label>
@@ -186,6 +193,8 @@
 </main>
 
 <div id="toast" hidden></div>
+<div id="dim"></div>
+<div id="screen-off" hidden></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

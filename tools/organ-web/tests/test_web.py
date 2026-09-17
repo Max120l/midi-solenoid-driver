@@ -497,6 +497,26 @@ def test_board_parameters_go_out_as_organ_config_ccs_and_are_remembered(client, 
     assert st["firmware_defaults"]["peak"] == 100 and st["firmware_defaults"]["hold"] == 25
 
 
+def test_screen_drives_a_backlight_when_there_is_one(client, desk, tmp_path):
+    assert client.get("/api/state").get_json()["backlight"] is False        # nothing under the (missing) sysfs dir
+    r = client.post("/api/screen", json={"brightness": 50})
+    assert r.status_code == 200 and r.get_json() == {"backlight": False}
+    bl = tmp_path / "backlight" / "rpi_backlight"
+    bl.mkdir(parents=True)
+    (bl / "max_brightness").write_text("255")
+    (bl / "brightness").write_text("255")
+    (bl / "bl_power").write_text("0")
+    desk.cfg.backlight = tmp_path / "backlight"
+    assert client.get("/api/state").get_json()["backlight"] is True
+    d = client.post("/api/screen", json={"brightness": 40}).get_json()
+    assert d["backlight"] and d["device"] == "rpi_backlight" and d["brightness"] == 40 and (bl / "brightness").read_text() == "102"
+    d = client.post("/api/screen", json={"power": "off"}).get_json()
+    assert d["power"] == "off" and (bl / "bl_power").read_text() == "1"
+    d = client.post("/api/screen", json={"power": "on", "brightness": 100}).get_json()
+    assert d["power"] == "on" and (bl / "brightness").read_text() == "255"
+    assert client.post("/api/screen", json={"power": "dim"}).status_code == 400
+
+
 def test_upload_route_runs_a_job(client, desk):
     data = {"file": (io.BytesIO(b"MThd"), "Uploaded Tune.mid"), "plan": "", "transpose": "auto"}
     r = client.post("/api/arrange", data=data, content_type="multipart/form-data")
