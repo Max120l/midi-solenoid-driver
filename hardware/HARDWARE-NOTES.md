@@ -320,6 +320,43 @@ network and the pull-down network: RN7/RN1 for channels 1-4, RN8/RN5 for
 5-8, RN9/RN2 for 9-12, RN10/RN6 for 13-16. On the series networks the gate
 for channel *n* of the group is pin *n* and its MCU input is pin 9 - *n*.
 
+## The bellows pump
+
+Wind comes from a bellows driven by a 1/2 HP single-phase mains motor: about
+10 A at 120 V running, a starting surge of several times that. The Pi
+switches it through a **solid-state relay of the Fotek SSR-xx DA pattern**
+(DC input 3-32 V, AC load, zero-crossing), bought as an 80 A unit on
+2026-09-17 and treated as a 30 A one, since the clones' labels run high.
+The SSR is itself an optocoupler -- LED in, light across, triac out -- so
+the Pi drives it directly, no further isolation:
+
+```
+Pi GPIO 24 ── SSR terminal 3 (+)        Pi side
+Pi GND ────── SSR terminal 4 (-)
+              ───────────────────────── isolation, inside the SSR
+mains live ── SSR terminal 1 ── terminal 2 ── motor
+```
+
+GPIO 24 rests low at boot, so the pump is off until organ_web says otherwise
+(`--pump 24`, no active-low flag). organ_web owns the relay: on when songs
+are released to the player, held for the warm-up, off after the idle
+time-out or when the service stops.
+
+What the rating does not buy: an SSR drops about 1.5 V whatever its label,
+so at 10 A it makes ~15 W and lives on its heat sink with thermal paste and
+moving air; and an SSR fails *shorted*, so the mains line keeps a switch
+within reach, a fuse or breaker sized for the motor, and the motor's own
+thermal protector. An MOV across terminals 1 and 2 takes the motor's
+switch-off kick. The output leaks a milliamp or two when off: the motor
+does not turn, but the wires are live until the switch says otherwise.
+
+The SSR lives in a metal box with the organ's 12 V supply, the Pi's 5 V
+supply and a fan. Mains earth to the box; **neither DC negative bonded to
+it**, and no shared ground strip: the 12 V negative is the organ's ground,
+the 5 V negative is the Pi's, and the three optos (MIDI, reset, pump) are
+what keep them apart. Mains side and low-voltage side on opposite sides of
+a partition; the heat sink in the fan's stream.
+
 ## Remote reset from the Pi
 
 `/RESET` is on **pin 5 of the ISP header, with GND on pin 6** beside it,
