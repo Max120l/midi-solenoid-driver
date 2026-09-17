@@ -102,6 +102,7 @@ def status(d, **fields):
 def test_a_stale_idle_report_does_not_clear_a_freshly_written_queue(desk):
     desk.pump = None
     desk.add(["marches/bogey.organ.mid"])
+    desk.play()
     desk.cfg.status_file.write_text(json.dumps({"time": desk.last_write - 0.5, "state": "idle"}), encoding="utf-8")
     desk.housekeep()
     assert [e["name"] for e in desk.queue] == ["bogey"]           # the player has not seen the file yet
@@ -127,11 +128,38 @@ def test_library_lists_arranged_tunes_by_folder_with_lengths(desk):
         desk.library.resolve("../outside.mid")
 
 
-def test_adding_starts_the_pump_and_holds_the_songs_for_the_warm_up(desk):
+def test_adding_to_an_idle_programme_waits_for_play(desk):
+    desk.pump = None
+    added = desk.add(["marches/bogey.organ.mid", "waltzes/danube.organ.mid"])
+    assert desk.held and [e["name"] for e in desk.queue] == ["bogey", "danube"] and queue_lines(desk) == []
+    assert desk.upcoming()[0]["now"] is True and desk.snapshot()["idle"] is True
+    desk.add(["waltzes/skaters.organ.mid"])                        # more while waiting: still waiting
+    assert desk.held and len(desk.queue) == 3 and queue_lines(desk) == []
+    desk.play()
+    assert not desk.held and len(queue_lines(desk)) == 3
+    # while it plays, additions flow straight in
+    status(desk, state="playing", id=desk.queue[0]["id"])
+    desk.housekeep()
+    desk.add(["marches/bogey.organ.mid"])
+    assert not desk.held and len(queue_lines(desk)) == 4
+    # after everything has played, a new addition waits again
+    status(desk, state="idle")
+    desk.housekeep()
+    assert not desk.to_come()
+    desk.add(["waltzes/danube.organ.mid"])
+    assert desk.held and queue_lines(desk) == []
+    # the play-now arrow does not wait
+    desk.add(["waltzes/skaters.organ.mid"], play_now=True)
+    assert not desk.held and [ln for ln in queue_lines(desk)] and "skaters" in queue_lines(desk)[0]
+
+
+def test_play_starts_the_pump_and_holds_the_songs_for_the_warm_up(desk):
     desk.set_settings({"warm_up": 8, "tempo": "90%", "gap": 4})
     added = desk.add(["waltzes/skaters.organ.mid", "marches/bogey.organ.mid"])
-    assert [e["id"] for e in added] == [1, 2] and desk.pump_on
-    assert desk.pending and not desk.queue and queue_lines(desk) == []
+    assert [e["id"] for e in added] == [1, 2] and not desk.pump_on and desk.held
+    desk.play()
+    assert desk.pump_on and desk.pending and not desk.to_come() and queue_lines(desk) == []
+    assert [e["id"] for e in desk.pending] == [1, 2]                     # never given to the player: ids kept
     desk.housekeep()
     assert desk.pending                                          # still warming up
     desk.clock.t += 8
@@ -142,15 +170,17 @@ def test_adding_starts_the_pump_and_holds_the_songs_for_the_warm_up(desk):
     assert desk.procs and "--watch" in desk.procs[0].cmd and "--dry-run" in desk.procs[0].cmd
 
 
-def test_without_a_pump_songs_go_straight_to_the_file(desk):
+def test_without_a_pump_play_writes_the_file_at_once(desk):
     desk.pump = None
     desk.add(["marches/bogey.organ.mid"])
+    desk.play()
     assert queue_lines(desk) == [f"{desk.library.root / 'marches' / 'bogey.organ.mid'} | id=1 tempo=1.000 gap=3"]
 
 
 def test_housekeeping_prunes_what_the_player_reports_as_done(desk):
     desk.pump = None
     desk.add(["marches/bogey.organ.mid", "waltzes/danube.organ.mid", "waltzes/skaters.organ.mid"])
+    desk.play()
     status(desk, state="playing", id=2, song="danube")
     desk.housekeep()
     # nothing leaves the programme: bogey is played, danube is now, skaters to come
@@ -169,6 +199,7 @@ def test_housekeeping_prunes_what_the_player_reports_as_done(desk):
 def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
     desk.pump = None
     desk.add(["marches/bogey.organ.mid", "waltzes/danube.organ.mid"])
+    desk.play()
     status(desk, state="playing", id=1)
     desk.housekeep()
     desk.add(["waltzes/skaters.organ.mid"], play_now=True)
@@ -193,7 +224,7 @@ def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
     desk.keys_act("pulse", {"solenoid": 1}); desk.keys.close()          # the wire is free while stopped
     # play: fresh ids, from the selected song
     desk.play()
-    assert not desk.held and [e["id"] for e in desk.queue] == [4, 5]
+    assert not desk.held and [e["id"] for e in desk.queue] == [4, 5]          # both were on the player's list once
     assert [ln.split("| ")[1].split()[0] for ln in queue_lines(desk)] == ["id=4", "id=5"]
     # a played song can be moved past: after bogey plays, a play-now lands after danube, the one now playing
     status(desk, state="playing", id=5)
@@ -233,6 +264,7 @@ def test_play_now_goes_right_after_the_current_song_and_skips_it(desk):
 def test_settings_reach_the_lines_not_yet_played_and_bad_values_are_refused(desk):
     desk.pump = None
     desk.add(["marches/bogey.organ.mid"])
+    desk.play()
     desk.set_settings({"tempo": 1.2, "gap": 1, "repeat": True})
     assert queue_lines(desk)[0].endswith("id=1 tempo=1.200 gap=1")
     assert json.loads(desk.cfg.settings_file.read_text())["repeat"] is True
@@ -246,6 +278,7 @@ def test_repeat_queues_the_round_again_when_the_player_goes_idle(desk):
     desk.pump = None
     desk.set_settings({"repeat": True})
     desk.add(["marches/bogey.organ.mid", "waltzes/danube.organ.mid"])
+    desk.play()
     status(desk, state="idle", queue=2)
     desk.housekeep()
     # everything played -> the same programme again, fresh ids, nothing marked done
@@ -260,6 +293,7 @@ def test_repeat_queues_the_round_again_when_the_player_goes_idle(desk):
 def test_the_pump_goes_off_after_the_idle_time_out(desk):
     desk.set_settings({"warm_up": 1, "idle_off": 60})
     desk.add(["marches/bogey.organ.mid"])
+    desk.play()
     desk.clock.t += 1
     desk.housekeep()
     status(desk, state="playing", id=1)
@@ -290,6 +324,7 @@ def test_playlists_round_trip_with_per_entry_settings(desk):
     entries = desk.read_playlist("Sunday")
     assert entries[0]["tempo"] == 0.9 and entries[1]["gap"] == 6 and entries[2]["missing"] is True
     added = desk.queue_playlist("Sunday")
+    desk.play()
     assert [e["name"] for e in added] == ["skaters", "bogey"]
     assert queue_lines(desk)[0].endswith("tempo=0.900 gap=3") and queue_lines(desk)[1].endswith("tempo=1.000 gap=6")
     desk.write_playlist("From queue", [{"path": e["path"], "tempo": e["tempo"], "gap": e["gap"]} for e in desk.queue])
@@ -337,6 +372,7 @@ def test_keys_layout_and_actions_and_the_busy_guard(desk):
     assert r == {"sounding": [], "rolling": []}
     desk.pump = None
     desk.add(["marches/bogey.organ.mid"])
+    desk.play()
     with pytest.raises(RuntimeError):
         desk.keys_act("pulse", {"solenoid": 1})
     desk.housekeep()
@@ -453,6 +489,7 @@ def test_board_parameters_go_out_as_organ_config_ccs_and_are_remembered(client, 
     assert set(d["boards"]) == {"sent_at"}
     # not while the player has work
     desk.add(["marches/bogey.organ.mid"])
+    desk.play()
     assert client.post("/api/boards", json={"peak": 60}).status_code == 409
     st = client.get("/api/state").get_json()
     assert st["settings"]["boards"] == d["boards"]

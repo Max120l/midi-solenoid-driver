@@ -60,7 +60,7 @@ function renderNav() {
   const left = state.queue.filter((e) => !e.done);
   const secs = left.reduce((a, e) => a + (e.length_s || 0), 0);
   const code = {
-    play: state.held ? `stopped · ${left.length} to play` : left.length ? `${left.length} to play · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
+    play: state.held ? `ready · ${left.length} to play` : left.length ? `${left.length} to play · ${fmt(secs)}` : (state.pending.length ? `${state.pending.length} waiting` : "idle"),
     library: `${c.tunes ?? "–"} tunes · ${c.folders ?? "–"} folders`,
     playlists: `${c.playlists ?? "–"} lists`,
     upload: `${(c.by_folder || {}).uploads || 0} in uploads`,
@@ -95,7 +95,7 @@ function renderNow() {
     $("now-bar").style.width = p + "%";
     $("now-pos").textContent = fmt(st.position_s); $("now-len").textContent = fmt(st.length_s);
   } else {
-    $("now-title").textContent = state.queue.some((e) => !e.done) ? "Starting…" : (state.pending.length ? "Waiting for wind" : "Nothing");
+    $("now-title").textContent = state.queue.some((e) => !e.done) ? (state.held ? "Ready" : "Starting…") : (state.pending.length ? "Waiting for wind" : "Nothing");
     $("now-sub").textContent = ""; $("now-bar").style.width = "0"; $("now-pos").textContent = "0:00"; $("now-len").textContent = "0:00";
   }
   $("btn-skip").disabled = !playing;
@@ -109,7 +109,7 @@ function renderNow() {
   $("btn-stop").hidden = state.held;
   if (state.held && selected) {
     $("now-title").textContent = selected.name;
-    $("now-sub").textContent = "stopped · Play starts it from the top";
+    $("now-sub").textContent = st.state === "skipped" || st.state === "paused" ? "stopped · Play starts it from the top" : "ready · press Play";
   }
   $("chk-repeat").checked = !!state.settings.repeat;
 }
@@ -120,7 +120,7 @@ function renderQueue() {
   const toCome = items.filter((e) => !e.done && !e.now).length;
   const played = items.filter((e) => e.done).length;
   $("queue-label").textContent = !items.length ? "Queue is empty"
-    : state.held ? `Stopped · ${toCome + 1} to play` : `${toCome} to play${played ? ` · ${played} played` : ""}`;
+    : state.held ? `Ready · ${toCome + 1} to play` : `${toCome} to play${played ? ` · ${played} played` : ""}`;
   ul.innerHTML = items.map((e, i) => `
     <li class="${e.now ? "now" : e.done ? "done" : ""}">
       <span class="meta">${e.now ? (state.held ? "■" : "▶") : e.done ? "✓" : i + 1}</span>

@@ -53,8 +53,8 @@ main { flex: 1; padding: 14px; max-width: 1100px; width: 100%; margin: 0 auto; }
 .play-main { flex: 1; min-width: 0; }
 .tempo-rail { width: 78px; flex: 0 0 78px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 6px 0;
   position: sticky; top: 0; align-self: flex-start; height: min(440px, calc(100vh - 120px)); }
-.tempo-rail .label { margin: 0; }
-.tempo-rail .tempo-v { font-variant-numeric: tabular-nums; font-weight: 600; }
+.tempo-rail .label { margin: 0; font-size: .7em; }
+.tempo-rail .tempo-v { font-variant-numeric: tabular-nums; font-weight: 600; font-size: .85em; white-space: nowrap; }
 .tempo-rail input[type=range] { writing-mode: vertical-lr; direction: rtl; width: 44px; height: auto; flex: 1; min-height: 200px; }
 .tempo-rail button { min-width: 0; padding: 8px 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 14px; }
@@ -184,8 +184,9 @@ label.setting input[type=number] { margin-left: 10px; }
 [data-theme="lcars"] .card { background: #000; border: none; border-left: 14px solid var(--lc-lav); border-radius: 0 20px 20px 0; padding: 10px 16px 14px; }
 [data-theme="lcars"] .card.now { border-left-color: var(--lc-orange); }
 [data-theme="lcars"] .tempo-rail { border-right: 14px solid var(--lc-tan); border-radius: 20px 0 0 20px; padding-right: 10px; }
-[data-theme="lcars"] .tempo-rail .tempo-v { color: var(--lc-peach); font-size: 1.1em; }
-[data-theme="lcars"] .tempo-rail button { background: var(--lc-tan); text-align: center; }
+[data-theme="lcars"] .tempo-rail .tempo-v { color: var(--lc-peach); font-size: .9em; letter-spacing: 0; }
+[data-theme="lcars"] .tempo-rail .label { font-size: .65em; letter-spacing: .06em; }
+[data-theme="lcars"] .tempo-rail button { background: var(--lc-tan); text-align: center; font-size: .85em; padding: 6px 10px; }
 [data-theme="lcars"] .label { color: var(--lc-lav); letter-spacing: .12em; }
 [data-theme="lcars"] .title { color: var(--lc-peach); font-size: 1.9em; line-height: 1.05; }
 [data-theme="lcars"] .sub, [data-theme="lcars"] .hint { color: var(--lc-blue); }

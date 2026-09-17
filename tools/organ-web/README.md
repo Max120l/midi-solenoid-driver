@@ -36,7 +36,9 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 - **Skip** is a `SIGUSR1` to the player. **Stop** empties the file and skips,
   but keeps the queue in the app with the stopped song still at its head;
   **Play** writes the queue back with fresh ids, so that song starts again
-  from the top and the rest follow. **Pause** is a `SIGUSR2`: the player lets
+  from the top and the rest follow. Songs added while nothing is playing
+  wait the same way: the programme fills up and Play starts it; the ▶ on a
+  tune, and "play instead" on a playlist, start at once. **Pause** is a `SIGUSR2`: the player lets
   the sounding notes end where they are written, silences the organ and
   waits; the same signal resumes from that position, registration first.
 - **The pump relay** belongs to this app, not the player. A play request

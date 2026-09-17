@@ -410,6 +410,7 @@ class Desk:
             opts = [f"id={e['id']}", f"tempo={e.get('tempo') or self.settings['tempo']:.3f}",
                     f"gap={e.get('gap') if e.get('gap') is not None else self.settings['gap']:g}"]
             lines.append(f"{e['abs']} | {' '.join(opts)}")
+            e["sent"] = True                    # the player may know this id from now on
         text = "\n".join(lines) + "\n"
         if text == getattr(self, "_queue_text", None) and self.cfg.queue_file.is_file():
             return
@@ -471,6 +472,14 @@ class Desk:
                 self.queue = [e for e in self.queue if e.get("done")]
                 self._renumber(upcoming)
                 entries = entries + upcoming
+            flowing = (self.status.get("state") in ("playing", "paused", "pause", "skipped")
+                       or bool(self.to_come()) or bool(self.pending))
+            if not play_now and (self.held or not flowing):
+                # nothing is playing: the songs take their place and wait for Play
+                self.held = True
+                self.queue += entries
+                self.write_queue()
+                return entries
             if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
                 self.pump_set(True)
                 self.wind_ready_at = self.now() + float(self.settings["warm_up"])
@@ -541,12 +550,15 @@ class Desk:
                 self.player.skip()
 
     def _renumber(self, entries: list[dict]) -> None:
-        """Fresh ids, so the player takes every one as new -- including one it
-        has already played or skipped -- and marked as still to come."""
+        """Marked as still to come, and, for any the player may already know,
+        a fresh id so it takes them as new -- including one it has played or
+        skipped. Entries it has never been given keep theirs."""
         for e in entries:
-            e["id"] = self.next_id
+            if e.get("sent"):
+                e["id"] = self.next_id
+                self.next_id += 1
+                e["sent"] = False
             e["done"] = False
-            self.next_id += 1
         self._save_settings()
 
     def shuffle(self) -> None:
@@ -793,8 +805,11 @@ class Desk:
         entries = [e for e in self.read_playlist(name) if not e.get("missing")]
         if replace:
             self.clear()
-        return self.add([e["path"] for e in entries], shuffle,
-                        tempos=[e["tempo"] for e in entries], gaps=[e["gap"] for e in entries])
+        added = self.add([e["path"] for e in entries], shuffle,
+                         tempos=[e["tempo"] for e in entries], gaps=[e["gap"] for e in entries])
+        if replace:
+            self.play()                         # "play instead" means now
+        return added
 
     # -- upload and arrange ------------------------------------------------------
 
