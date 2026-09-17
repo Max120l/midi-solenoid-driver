@@ -120,32 +120,33 @@ label.setting input[type=number] { margin-left: 10px; }
   display: grid; grid-template-columns: var(--nav-w) 1fr; grid-template-rows: 76px 1fr;
   grid-template-areas: "header header" "nav main"; min-height: 100vh;
 }
-/* the elbow: header bar across the top, curving down into the sidebar */
+/* the elbow: the bar along the very top, curving down into the sidebar; the
+   name sits inside the bar in black, the readings hang below it */
 [data-theme="lcars"] header {
-  grid-area: header; position: relative; background: #000; border: none; padding: 4px 20px 0 calc(var(--nav-w) + 72px);
-  align-items: flex-start;
+  grid-area: header; position: relative; background: #000; border: none; padding: 0; display: block;
 }
 [data-theme="lcars"] header::before {           /* the L, outer corner rounded */
   content: ""; position: absolute; left: 0; top: 0; width: calc(var(--nav-w) + 60px); height: 76px;
   background: var(--lc-orange); border-top-left-radius: 56px;
 }
-[data-theme="lcars"] header::after {            /* the inner corner cut out of the L */
+[data-theme="lcars"] header::after {            /* the inner corner cut out of the L, under the bar */
   content: ""; position: absolute; left: var(--nav-w); top: 30px; width: 60px; height: 46px;
   background: #000; border-top-left-radius: 34px;
 }
 [data-theme="lcars"] header .brand, [data-theme="lcars"] header .now-line, [data-theme="lcars"] header .lamps, [data-theme="lcars"] header .stardate {
-  position: relative; z-index: 1;
+  position: absolute; z-index: 1;
 }
-[data-theme="lcars"] .brand { color: var(--lc-orange); font-size: 1.4em; line-height: 1; padding-top: 2px; }
-[data-theme="lcars"] .now-line { color: var(--lc-peach); font-size: 1.05em; padding-top: 6px; }
-[data-theme="lcars"] .stardate { color: var(--lc-lav); font-size: .95em; padding-top: 8px; white-space: nowrap; }
-/* the top bar, a strip along the header's bottom with coloured segments */
-[data-theme="lcars"] header .lamps { position: absolute; left: calc(var(--nav-w) + 60px); right: 0; bottom: 0; height: 30px; gap: 4px; align-items: stretch; }
+/* the bar: from the elbow to the right edge, 30 px, with the lamps as its last segments */
+[data-theme="lcars"] header .lamps { left: calc(var(--nav-w) + 60px); right: 0; top: 0; height: 30px; gap: 4px; align-items: stretch; display: flex; }
 [data-theme="lcars"] header .lamps::before { content: ""; flex: 1; background: var(--lc-orange); }
 [data-theme="lcars"] header .lamps::after { content: ""; width: 60px; background: var(--lc-lav); border-radius: 0 999px 999px 0; }
 [data-theme="lcars"] .lamp { border: none; border-radius: 0; background: var(--lc-tan); color: #000; padding: 0 14px; line-height: 30px; min-width: 110px; text-align: right; font-size: .95em; }
 [data-theme="lcars"] .lamp.on { background: var(--lc-sky); color: #000; }
 [data-theme="lcars"] .lamp.warm { background: var(--lc-red); color: #000; }
+[data-theme="lcars"] header .brand { left: calc(var(--nav-w) + 76px); top: 0; line-height: 30px; color: #000; font-size: .95em; font-weight: 700; letter-spacing: .1em; z-index: 3; }
+/* under the bar: what is playing, and the stardate */
+[data-theme="lcars"] .now-line { left: calc(var(--nav-w) + 76px); right: 230px; top: 38px; color: var(--lc-peach); font-size: 1.15em; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-theme="lcars"] .stardate { right: 20px; top: 40px; color: var(--lc-lav); font-size: .95em; line-height: 1; white-space: nowrap; }
 
 /* the sidebar: coloured blocks, text bottom-right, as on every bridge display */
 [data-theme="lcars"] nav#tabs {
@@ -221,19 +222,19 @@ label.setting input[type=number] { margin-left: 10px; }
 @media (max-width: 600px) {
   :root[data-theme="lcars"] { --nav-w: 92px; }
   [data-theme="lcars"] body { grid-template-rows: 64px 1fr; }
-  [data-theme="lcars"] header { padding-left: calc(var(--nav-w) + 56px); }
-  [data-theme="lcars"] header::before { width: calc(var(--nav-w) + 44px); }
-  [data-theme="lcars"] header::after { width: 44px; }
-  [data-theme="lcars"] header .lamps { left: calc(var(--nav-w) + 44px); }
+  [data-theme="lcars"] header::before { width: calc(var(--nav-w) + 44px); height: 64px; border-top-left-radius: 40px; }
+  [data-theme="lcars"] header::after { width: 44px; top: 26px; height: 38px; }
+  [data-theme="lcars"] header .lamps { left: calc(var(--nav-w) + 44px); height: 26px; }
   [data-theme="lcars"] .brand .lcars-only { display: none; }
-  [data-theme="lcars"] .brand { font-size: 1.15em; }
+  [data-theme="lcars"] header .brand { left: calc(var(--nav-w) + 50px); line-height: 26px; font-size: .72em; letter-spacing: .06em; }
+  [data-theme="lcars"] header .lamps { gap: 3px; }
+  [data-theme="lcars"] header .lamps::after { width: 16px; }
+  [data-theme="lcars"] .lamp { padding: 0 6px; font-size: .72em; }
+  [data-theme="lcars"] .now-line { display: block; left: calc(var(--nav-w) + 54px); right: 10px; top: 36px; font-size: 1em; }
   ul.list [data-move] { display: none; }                  /* on a phone the names matter more than reordering */
   ul.list button { min-width: 40px; padding: 6px 10px; }
-  [data-theme="lcars"] header::before { height: 64px; border-top-left-radius: 40px; }
-  [data-theme="lcars"] header::after { top: 26px; }
-  [data-theme="lcars"] header .lamps { height: 26px; }
-  [data-theme="lcars"] .lamp { line-height: 26px; min-width: 0; padding: 0 8px; font-size: .8em; }
-  [data-theme="lcars"] .now-line, [data-theme="lcars"] .stardate { display: none; }
+  [data-theme="lcars"] .lamp { line-height: 26px; min-width: 0; }
+  [data-theme="lcars"] .stardate { display: none; }
   [data-theme="lcars"] nav#tabs button { flex-basis: 56px; font-size: .85em; padding: 4px 8px; }
   [data-theme="lcars"] main { padding: 12px 10px 12px 12px; }
   [data-theme="lcars"] button.big { flex: 1 1 40%; text-align: center; }
