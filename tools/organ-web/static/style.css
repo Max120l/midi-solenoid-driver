@@ -221,6 +221,18 @@ label.setting input[type=number] { margin-left: 10px; }
 
 [data-theme="lcars"] main { min-width: 0; }               /* the grid column may shrink below its content */
 
+/* Only the content scrolls; the header and the sidebar stay. No scrollbars:
+   on the case a finger drag scrolls (see app.js), on a phone the thumb does. */
+html, body { height: 100%; }
+body { height: 100vh; overflow: hidden; user-select: none; -webkit-user-select: none; }
+input, textarea, pre { user-select: text; -webkit-user-select: text; }
+main { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -ms-overflow-style: none; }
+main::-webkit-scrollbar { display: none; }
+nav#tabs { scrollbar-width: none; }
+nav#tabs::-webkit-scrollbar { display: none; }
+[data-theme="lcars"] nav#tabs { overflow-y: auto; }
+main.dragging { cursor: grabbing; }
+
 @media (max-height: 560px) {                               /* the 5-inch screen on the case: all seven blocks in view */
   [data-theme="lcars"] nav#tabs button { flex-basis: 50px; font-size: .95em; padding: 4px 10px; }
   [data-theme="lcars"] nav#tabs .nav-fill { min-height: 24px; border-bottom-left-radius: 36px; }

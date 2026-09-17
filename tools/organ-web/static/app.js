@@ -377,6 +377,40 @@ document.addEventListener("pointerdown", (ev) => {
   else chirp("tap");
 }, { passive: true });
 
+/* ---- drag to scroll ---------------------------------------------------- */
+/* A real touch digitiser scrolls the content natively. Many HDMI touch panels
+   report as a mouse instead, where a drag would select text; so a mouse-type
+   drag of more than a few pixels scrolls the content, and the click that would
+   follow it is swallowed so a scroll never presses the button under the finger. */
+(() => {
+  const main = document.querySelector("main");
+  let drag = null, swallow = false;
+  document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "touch" || e.button !== 0) return;
+    if (e.target.closest("input, select, textarea, pre")) return;
+    drag = { x: e.clientX, y: e.clientY, top: main.scrollTop, moved: false };
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y, dx = e.clientX - drag.x;
+    if (!drag.moved) {
+      if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+      drag.moved = true;
+      main.classList.add("dragging");
+    }
+    main.scrollTop = drag.top - dy;
+    e.preventDefault();
+  });
+  const end = () => {
+    if (drag && drag.moved) { swallow = true; setTimeout(() => (swallow = false), 300); }
+    drag = null;
+    main.classList.remove("dragging");
+  };
+  document.addEventListener("pointerup", end);
+  document.addEventListener("pointercancel", end);
+  document.addEventListener("click", (e) => { if (swallow) { e.stopPropagation(); e.preventDefault(); } }, true);
+})();
+
 /* ---- go --------------------------------------------------------------- */
 let startTab = "play";
 try { startTab = localStorage.getItem("organ-tab") || "play"; } catch (e) { /* fine */ }
