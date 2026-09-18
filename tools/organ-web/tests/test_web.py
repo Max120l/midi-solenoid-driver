@@ -464,6 +464,16 @@ def test_the_power_switch_shuts_down_when_opened_and_at_once_if_already_open(des
     desk2_button = FakeButton(pressed=False)
     sw2 = w.PowerSwitch(desk, desk2_button, out=err)
     assert sw2.fired
+    # a switch that has started opening on its own can be ignored from Settings
+    desk.set_settings({"power_switch": False})
+    assert json.loads(desk.cfg.settings_file.read_text())["power_switch"] is False
+    b3 = FakeButton(pressed=True)
+    sw3 = w.PowerSwitch(desk, b3, out=err)
+    b3.open()
+    assert not sw3.fired and "ignored" in err.getvalue()
+    desk.set_settings({"power_switch": True})
+    b3.open()
+    assert sw3.fired
 
 
 def test_the_player_process_is_restarted_after_it_dies(desk):

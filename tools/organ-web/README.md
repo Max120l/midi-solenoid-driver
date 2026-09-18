@@ -93,7 +93,7 @@ a script or a home-automation box can do the same.
 | `POST /api/queue/remove` `/move` `/clear` `/clear-played` `/shuffle` `/jump` | `{id}`, `{id,to}` | edit the programme; jump moves the cursor to a song |
 | `POST /api/queue/save` | `{name}` | save the queue as a playlist |
 | `POST /api/player/skip` `/stop` `/play` `/pause` | | transport: stop keeps the queue, play restarts it from its head, pause toggles |
-| `POST /api/settings` | `{tempo?, gap?, repeat?, warm_up?, idle_off?}` | change settings |
+| `POST /api/settings` | `{tempo?, gap?, repeat?, warm_up?, idle_off?, power_switch?}` | change settings |
 | `GET /api/playlists`, `GET /PUT /DELETE /api/playlists/<name>` | `{entries:[{path,tempo?,gap?}]}` | playlists |
 | `POST /api/playlists/<name>/queue` | `{shuffle?, replace?}` | queue a playlist |
 | `GET /api/plans` | | the arranger's plans |
@@ -153,7 +153,9 @@ Better than the button is a real switch: `--power-switch 3` watches a
 toggle switch wired between GPIO 3 (physical pin 5) and any ground pin.
 Opening it is the Shut down button; closing it again wakes the halted Pi,
 which is a property of that pin and needs no software. Any switch will do,
-since it carries microamps -- an antique 5 A one included. GPIO 3 is the
+since it carries microamps -- an antique 5 A one included. Should the old
+contact start opening on its own, Settings has a tick box that makes the
+app ignore it; closing it still wakes the Pi, since that is hardware. GPIO 3 is the
 I²C clock, so leave I²C off in raspi-config, which it is by default. The
 same sudoers line applies. Cutting the mains with the Pi running usually does no
 harm, but a shutdown first is the habit that makes "usually" go away. `systemctl stop organ-web`

@@ -63,6 +63,7 @@ __version__ = "0.1.0"
 
 DEFAULT_PORT = 8080
 DEFAULT_SETTINGS = {"tempo": 1.0, "gap": 3.0, "repeat": False, "warm_up": 8.0, "idle_off": 180.0,
+                    "power_switch": True,   # the physical on-off switch may shut the organ down; off if it misbehaves
                     "boards": {}}       # what was last sent to the driver boards: they cannot be read back
 BOARD_FIELDS = {"peak": (1, 100), "hold": (0, organ_config.HOLD_DUTY_MAX_PERCENT),
                 "peak_ms": (1, organ_config.PEAK_DURATION_MAX_MS), "max_note": (0, 127),
@@ -639,6 +640,8 @@ class Desk:
                     self.settings[k] = v
             if "repeat" in changes:
                 self.settings["repeat"] = bool(changes["repeat"])
+            if "power_switch" in changes:
+                self.settings["power_switch"] = bool(changes["power_switch"])
             self._save_settings()
             self.write_queue()                  # tempo and gap reach the lines not yet played
             return dict(self.settings)
@@ -1303,6 +1306,9 @@ class PowerSwitch:
 
     def off(self) -> None:
         if self.fired:
+            return
+        if not self.desk.settings.get("power_switch", True):
+            print("power switch opened, ignored: disabled in Settings", file=self.out, flush=True)
             return
         self.fired = True
         print("power switch off: shutting down", file=self.out, flush=True)

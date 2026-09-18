@@ -163,6 +163,7 @@ $("btn-clear").onclick = () => act("/api/queue/clear", {}, "queue cleared");
 $("btn-clear-played").onclick = () => act("/api/queue/clear-played", {}, "played songs cleared");
 $("btn-save").onclick = () => { const name = prompt("Playlist name"); if (name) act("/api/queue/save", { name }, `saved "${name}"`); };
 $("chk-repeat").onchange = (e) => act("/api/settings", { repeat: e.target.checked });
+$("set-power-switch").onchange = (e) => act("/api/settings", { power_switch: e.target.checked }, e.target.checked ? "the switch shuts the organ down" : "the switch is ignored");
 
 /* ---- library ---------------------------------------------------------- */
 async function loadLibrary() {
@@ -295,6 +296,7 @@ function renderSettings() {
   const s = state.settings;
   $("set-tempo").value = Math.round(s.tempo * 100); $("set-tempo-v").textContent = `${Math.round(s.tempo * 100)} %`;
   $("set-gap").value = s.gap; $("set-warm").value = s.warm_up; $("set-idle").value = s.idle_off;
+  $("set-power-switch").checked = s.power_switch !== false;
   $("about").textContent = `organ_web ${state.version}${state.dry_run ? " · dry run: nothing reaches the organ" : ""}`;
 }
 ["set-tempo", "set-gap", "set-warm", "set-idle"].forEach((id) => $(id).oninput = () => { settingsDirty = true; $("set-tempo-v").textContent = `${$("set-tempo").value} %`; });
