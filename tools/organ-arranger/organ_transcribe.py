@@ -360,6 +360,11 @@ class Plan:
     # fractions allowed), optionally within a window in seconds:
     #   pattern: {bass: [1], snare: [2, 3], from: 26, until: 95}
     drum_pattern: dict = field(default_factory=dict)
+    # Held notes re-struck on given beats of the bar, every voice at once,
+    # within a window: [{"from": s, "until": s, "beats": [1, 1.5, 2]}]. The
+    # way to turn a final chord held for three seconds into a half note, two
+    # eighths and a quarter -- the source's rhythm rewritten, on purpose.
+    restrikes: list[dict] = field(default_factory=list)
 
     def shift_at(self, when: float) -> int:
         """The extra semitones in force at a source time."""
@@ -371,6 +376,7 @@ class Plan:
         return {
             "transpose": self.transpose,
             **({"shifts": [dict(s) for s in self.shifts]} if self.shifts else {}),
+            **({"restrikes": [dict(r) for r in self.restrikes]} if self.restrikes else {}),
             "voices": [{k: val for k, val in (("source", v.source), ("rank", v.rank), ("role", v.role),
                                                ("max_poly", v.max_poly), ("weight", v.weight),
                                                ("fallback", v.fallback), ("from", v.start), ("until", v.end),
@@ -430,6 +436,15 @@ class Plan:
                 if "from" in entry and "until" in entry and entry["until"] <= entry["from"]:
                     raise ValueError(f"shift window {entry['from']}-{entry['until']} ends before it starts")
                 shifts.append(entry)
+            restrikes = []
+            for r in d.get("restrikes") or []:
+                beats = [float(b) for b in (r["beats"] if isinstance(r["beats"], (list, tuple)) else [r["beats"]])]
+                if any(b < 1 for b in beats):
+                    raise ValueError("restrike beats count from 1")
+                entry = {"from": float(r["from"]), "until": float(r["until"]), "beats": beats}
+                if entry["until"] <= entry["from"]:
+                    raise ValueError(f"restrike window {entry['from']}-{entry['until']} ends before it starts")
+                restrikes.append(entry)
             pattern: dict = {}
             for k, v in (drums.get("pattern") or {}).items():
                 if k in ("from", "until"):
@@ -441,7 +456,8 @@ class Plan:
                     pattern[str(k)] = beats
             return cls(transpose, voices, drum_source,
                        {int(k): str(v) for k, v in (drums.get("map") or DEFAULT_DRUM_MAP).items()},
-                       str(drums.get("leader", "downbeat")), list(d.get("registration") or []), shifts, pattern)
+                       str(drums.get("leader", "downbeat")), list(d.get("registration") or []), shifts, pattern,
+                       restrikes)
         except (KeyError, TypeError, ValueError) as e:
             raise TranscribeError(f"malformed plan: {e}") from e
 
@@ -935,6 +951,56 @@ def pattern_drums(organ: oa.Organ, plan: Plan, first: float, last: float, tempo_
     return out, counts
 
 
+RESTRIKE_GAP_S = 0.060
+
+
+def bar_starts(last: float, tempo_map: list[tuple[float, int]], timesig: tuple[int, int]):
+    """(bar start in seconds, seconds per beat) for every bar up to `last`."""
+    beats_per_bar = timesig[0] * 4 / timesig[1]
+    t = 0.0
+    seg = 0
+    while t < last - 1e-6:
+        while seg + 1 < len(tempo_map) and tempo_map[seg + 1][0] <= t + 1e-9:
+            seg += 1
+        spb = tempo_map[seg][1] / 1e6
+        yield t, spb
+        t += beats_per_bar * spb
+
+
+def apply_restrikes(placed: list[Placed], plan: Plan, tempo_map: list[tuple[float, int]],
+                    timesig: tuple[int, int], report: list[str]) -> list[Placed]:
+    """Cut every note sounding at a re-strike time and start it again there,
+    leaving a short gap so the pipe speaks anew. Notes are only split where
+    they would still have RESTRIKE_GAP_S to live on either side."""
+    if not plan.restrikes:
+        return placed
+    last = max((p.end for p in placed), default=0.0)
+    strikes: list[float] = []
+    for t, spb in bar_starts(last + 1e-6, tempo_map, timesig):
+        for r in plan.restrikes:
+            for b in r["beats"]:
+                when = t + (b - 1) * spb
+                if r["from"] <= when < r["until"]:
+                    strikes.append(when)
+    strikes.sort()
+    if not strikes:
+        return placed
+    out: list[Placed] = []
+    cuts = 0
+    for p in placed:
+        pieces = [p]
+        for s in strikes:
+            head = pieces[-1]
+            if head.start + RESTRIKE_GAP_S < s < head.end - RESTRIKE_GAP_S:
+                pieces[-1] = Placed(head.track, head.note, head.start, s - RESTRIKE_GAP_S, head.origin)
+                pieces.append(Placed(head.track, head.note, s, head.end, head.origin + " (re-struck)"))
+                cuts += 1
+        out.extend(pieces)
+    if cuts:
+        report.append(f"re-struck {cuts} held note(s) at " + ", ".join(fmt_time(s) for s in strikes))
+    return out
+
+
 def seconds_per_beat(tempo_map: list[tuple[float, int]], at: float) -> float:
     tempo = 500_000
     for t, us in tempo_map:
@@ -1123,6 +1189,7 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
             first = min(n.start for n in selected)
             melody_first = first if melody_first is None else min(melody_first, first)
 
+    placed = apply_restrikes(placed, plan, tempo_map, timesig, lines)
     music_first = min((p.start for p in placed), default=0.0)
     music_last = max((p.end for p in placed), default=0.0)
 
@@ -1343,6 +1410,8 @@ def main(argv: list[str] | None = None) -> int:
             "# of the transposition -- for a key the organ cannot play, kept in tune across the ranks.\n"
             "# drums.pattern: {bass: [1], snare: [2, 3], from: s, until: s} writes a drum part on those\n"
             "# beats of every bar, for a source that has none.\n"
+            "# restrikes: [{from: s, until: s, beats: [1, 1.5, 2]}] re-strikes every held note on those\n"
+            "# beats inside the window -- a rhythm written onto a sustained chord.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:

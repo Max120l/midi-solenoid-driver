@@ -827,3 +827,31 @@ def test_a_drum_pattern_writes_bass_and_snare_on_the_beats_of_every_bar():
     assert again.drum_pattern == {"bass": [1.0], "snare": [2.0, 4.0], "from": 2.0}
     with pytest.raises(ot.TranscribeError):
         ot.Plan.from_dict({"voices": [], "drums": {"pattern": {"bass": [0]}}})
+
+
+def test_restrikes_cut_a_held_chord_into_a_rhythm_for_every_voice():
+    # a chord held for two bars of 4/4 at 120 BPM (4 s): re-struck on beats 1, 1.5 and 2 of bar 2
+    org = organ()
+    hold = notes(0, [[72, 76]], start=0, length=8 * BEAT, step=8 * BEAT)
+    low = notes(1, [48], start=0, length=8 * BEAT, step=8 * BEAT)
+    mid = tune(track("Lead", hold), track("Low", low))
+    plan = ot.Plan.from_dict({
+        "transpose": 0,
+        "restrikes": [{"from": 1.5, "until": 3.5, "beats": [1, 1.5, 2]}],
+        "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "accomp", "max_poly": 2},
+                   {"source": "Low#2", "rank": "Main:low", "role": "bass"}],
+        "drums": {"source": None, "map": {}}, "registration": [],
+    })
+    r = ot.transcribe(mid, org, plan)
+    tpb = r.mid.ticks_per_beat
+    for note in (72, 76, 48):
+        segs = sorted((round(s_ / tpb, 3), round(e_ / tpb, 3)) for s_, e_, n in out_notes(r.mid, "Main") if n == note)
+        starts = [a for a, b in segs]
+        assert starts == [0.0, 4.0, 4.5, 5.0], (note, segs)                # the hold, then bar 2 beats 1, 1.5, 2 (in beats)
+        assert all(b <= nxt - 0.1 for (a, b), (nxt, _) in zip(segs, segs[1:]))   # a gap before each re-strike
+        assert segs[-1][1] == 8.0                                           # the last piece keeps the release
+    assert any(ln.startswith("re-struck 3 held note(s) at 0:02.000, 0:02.250, 0:02.500") for ln in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.restrikes == [{"from": 1.5, "until": 3.5, "beats": [1.0, 1.5, 2.0]}]
+    with pytest.raises(ot.TranscribeError):
+        ot.Plan.from_dict({"voices": [], "restrikes": [{"from": 3, "until": 1, "beats": [1]}]})

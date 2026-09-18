@@ -12,6 +12,11 @@
 transpose: 4
 shifts:
 - {until: 30, shift: -8}
+# The final chord lands on beat 3 of bar 23 and was held three seconds. It is
+# now a half note, two eighths and a quarter: re-struck on beats 1, 1.5 and 2
+# of bar 24 (58.4 s), releasing where it did.
+restrikes:
+- {from: 58.3, until: 59.3, beats: [1, 1.5, 2]}
 voices:
 # the lead -- the horn call in the opening, the trumpet from the flourish on --
 # sits on the tenor: its register, and the tenor has the F sharp the tune
@@ -40,10 +45,10 @@ drums:
   # just bad; no drums through the piece, only the leader on the downbeats.
   # The ending, though, gets what the TNG file has: a snare roll under the
   # final chord (it lands on beat 3 of bar 23, 56.9 s, at 80 BPM), a bass drum
-  # as it lands and a last thump as it releases (bar 24, beat 2.5).
+  # as it lands, on each re-strike, and a last thump as it releases (bar 24, beat 2.5).
   source: null
   map: {}
-  pattern: {bass: [2.5, 3], snare: [1.0, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125, 2.25, 2.375, 2.5, 2.625, 2.75, 2.875, 3.0, 3.125, 3.25, 3.375, 3.5, 3.625, 3.75, 3.875, 4.0, 4.125, 4.25, 4.375, 4.5, 4.625, 4.75, 4.875], from: 56.8, until: 59.7}
+  pattern: {bass: [1, 1.5, 2, 2.5, 3], snare: [1.0, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125, 2.25, 2.375, 2.5, 2.625, 2.75, 2.875, 3.0, 3.125, 3.25, 3.375, 3.5, 3.625, 3.75, 3.875, 4.0, 4.125, 4.25, 4.375, 4.5, 4.625, 4.75, 4.875], from: 56.8, until: 59.7}
   leader: downbeat
 registration:
 - at: start
