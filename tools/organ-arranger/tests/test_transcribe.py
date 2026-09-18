@@ -756,3 +756,19 @@ def test_max_fold_drops_what_would_move_too_far_and_prefers_the_nearer_octave():
     assert pitches == [81, 72]
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
     assert again.voices[0].max_fold == 2
+
+
+def test_min_gap_thins_a_voice_to_one_onset_per_interval():
+    # sixteenths at 120 BPM are 125 ms apart; one per beat keeps every fourth
+    org = organ()
+    line = notes(0, [72, 74, 76, 77] * 4, start=0, length=BEAT // 8, step=BEAT // 4)
+    mid = tune(track("Fig", line))
+    plan = ot.Plan.from_dict({"transpose": 0,
+                              "voices": [{"source": "Fig#1", "rank": "Main:high", "role": "accomp", "max_poly": 1, "min_gap": 500}],
+                              "drums": {"source": None, "map": {}}, "registration": []})
+    r = ot.transcribe(mid, org, plan)
+    out = out_notes(r.mid, "Main")
+    assert [n for _, _, n in out] == [72, 72, 72, 72]
+    assert any("one onset per 500 ms" in ln and "16 notes -> 4" in ln for ln in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.voices[0].min_gap_ms == 500

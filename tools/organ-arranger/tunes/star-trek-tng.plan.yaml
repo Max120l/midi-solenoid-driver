@@ -15,7 +15,13 @@ voices:
 - {source: 'Sequenced#5', rank: TrebCM, role: counter, max_poly: 1, weight: 1.5}
 - {source: 'pennock@euronet.nl#8', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
 - {source: 'Paramount Pictures#10', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0}
-- {source: 'Generation#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0}
+# The string figure is staccato chords, five deep, six a second, over three
+# octaves. Up to bar 60 its top line on the tenor reads as texture; after
+# that the writing thickens and it turned to mud, so from 61 s it keeps one
+# onset per beat (345 ms at 174) -- a line again -- and nothing is hauled up
+# more than an octave to reach the tenor.
+- {source: 'Generation#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0, until: 61}
+- {source: 'Generation#3', rank: TenorCM, role: accomp, max_poly: 1, weight: 1.0, from: 61, min_gap: 340, max_fold: 1}
 - {source: 'Track 5#4', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0}
 - {source: 'The Next#2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
 - {source: 'Cliff Pennock#7', rank: drop}

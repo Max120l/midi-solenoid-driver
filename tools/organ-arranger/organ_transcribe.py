@@ -300,6 +300,10 @@ class Voice:
     # that it is dropped rather than folded: a bass note three octaves up is
     # no longer a bass note, and a rest is better than a wrong register.
     max_fold: int | None = None
+    # Optional: at most one note per this many ms in this voice. A staccato
+    # chord figure sequenced six to the second is texture on a synth and mud
+    # on ten pipes; keeping one onset per beat turns it back into a line.
+    min_gap_ms: int | None = None
 
     @property
     def windowed(self) -> bool:
@@ -356,7 +360,7 @@ class Plan:
                                                ("tremolo", v.tremolo_ms), ("align", v.align_ms),
                                                ("derive", v.derive),
                                                ("derive_step", v.derive_step if v.derive == "arpeggio" else None),
-                                               ("max_fold", v.max_fold))
+                                               ("max_fold", v.max_fold), ("min_gap", v.min_gap_ms))
                         if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
@@ -378,7 +382,8 @@ class Plan:
                             int(v["align"]) if v.get("align") is not None else None,
                             str(v["derive"]).lower() if v.get("derive") else None,
                             float(v.get("derive_step", 0.5)),
-                            int(v["max_fold"]) if v.get("max_fold") is not None else None)
+                            int(v["max_fold"]) if v.get("max_fold") is not None else None,
+                            int(v["min_gap"]) if v.get("min_gap") is not None else None)
                       for v in d.get("voices", [])]
             for v in voices:
                 if v.derive not in (None, "arpeggio", "thirds"):
@@ -659,6 +664,22 @@ def align_onsets(notes: list[Note], anchors: list[float], tolerance_s: float) ->
         else:
             out.append(n)
     return sorted(out, key=lambda n: (n.start, n.pitch)), moved
+
+
+def thin_by_time(notes: list[Note], min_gap_s: float) -> tuple[list[Note], int]:
+    """Keep at most one onset per min_gap_s: the first of each cluster, with
+    what lands on the same onset kept together. The rest are dropped."""
+    out: list[Note] = []
+    dropped = 0
+    last: float | None = None
+    for n in sorted(notes, key=lambda n: (n.start, -n.pitch)):
+        if last is None or n.start - last >= min_gap_s - 1e-9 or abs(n.start - last) < ONSET_GROUP_S:
+            if last is None or n.start - last >= min_gap_s - 1e-9:
+                last = n.start
+            out.append(n)
+        else:
+            dropped += 1
+    return out, dropped
 
 
 def sustain_tremolos(notes: list[Note], max_gap_s: float) -> tuple[list[Note], int]:
@@ -996,6 +1017,12 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
             if any(pc in scale and (pc + 1) % 12 in scale and (pc + 2) % 12 in scale for pc in range(12)):
                 lines.append(f"{src.name} ({v.role}): that scale has three semitones in a row -- a blues or "
                              "chromatic tune -- so the thirds will be unreliable; a plain doubling may sound better")
+        if v.min_gap_ms:
+            before = len(notes)
+            notes, gone = thin_by_time(notes, v.min_gap_ms / 1000)
+            if gone:
+                lines.append(f"{src.name} ({v.role}): thinned to one onset per {v.min_gap_ms} ms, "
+                             f"{before} notes -> {len(notes)}")
         if v.max_poly == 1:
             notes = clip_legato(notes)
         if v.tremolo_ms:
@@ -1221,6 +1248,7 @@ def main(argv: list[str] | None = None) -> int:
             "# derive: arpeggio (chords -> moving line, derive_step beats per tone) or thirds\n"
             "# (a melody a diatonic third above) makes a counter line out of the material.\n"
             "# max_fold: N drops a note that would have to move more than N octaves to fit.\n"
+            "# min_gap: N (ms) keeps at most one onset per N ms in a voice (a staccato figure -> a line).\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:
