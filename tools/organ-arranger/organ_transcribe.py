@@ -349,10 +349,23 @@ class Plan:
     drum_map: dict[int, str]              # GM note -> label fragment
     leader: str                           # "downbeat" | "none"
     registration: list[dict]              # [{"at": "start"|"melody"|seconds, "on": [...], "off": [...]}]
+    # Passages moved by a few semitones on top of the transposition, for every
+    # voice at once: [{"from": s, "until": s, "shift": n}]. A tune that lifts a
+    # semitone for a fanfare lands on pitch classes the organ does not have;
+    # shifting that passage back keeps every voice in tune with the others,
+    # where snapping each note to its nearest pipe would not.
+    shifts: list[dict] = field(default_factory=list)
+
+    def shift_at(self, when: float) -> int:
+        """The extra semitones in force at a source time."""
+        return sum(int(s["shift"]) for s in self.shifts
+                   if (s.get("from") is None or when >= float(s["from"]))
+                   and (s.get("until") is None or when < float(s["until"])))
 
     def to_dict(self) -> dict:
         return {
             "transpose": self.transpose,
+            **({"shifts": [dict(s) for s in self.shifts]} if self.shifts else {}),
             "voices": [{k: val for k, val in (("source", v.source), ("rank", v.rank), ("role", v.role),
                                                ("max_poly", v.max_poly), ("weight", v.weight),
                                                ("fallback", v.fallback), ("from", v.start), ("until", v.end),
@@ -401,9 +414,19 @@ class Plan:
                 drum_source = [str(x) for x in drum_source]
             elif drum_source is not None:
                 drum_source = str(drum_source)
+            shifts = []
+            for s in d.get("shifts") or []:
+                entry = {"shift": int(s["shift"])}
+                if s.get("from") is not None:
+                    entry["from"] = float(s["from"])
+                if s.get("until") is not None:
+                    entry["until"] = float(s["until"])
+                if "from" in entry and "until" in entry and entry["until"] <= entry["from"]:
+                    raise ValueError(f"shift window {entry['from']}-{entry['until']} ends before it starts")
+                shifts.append(entry)
             return cls(transpose, voices, drum_source,
                        {int(k): str(v) for k, v in (drums.get("map") or DEFAULT_DRUM_MAP).items()},
-                       str(drums.get("leader", "downbeat")), list(d.get("registration") or []))
+                       str(drums.get("leader", "downbeat")), list(d.get("registration") or []), shifts)
         except (KeyError, TypeError, ValueError) as e:
             raise TranscribeError(f"malformed plan: {e}") from e
 
@@ -754,7 +777,7 @@ def place_in_rank(p: int, prev: float, rank: Rank, limit: int | None = None) -> 
 
 def fold_voice(notes: list[Note], rank: Rank, shift: int, snap: bool, stats: VoiceStats,
                report: list[str], origin: str, fallback: Rank | None = None,
-               max_fold: int | None = None) -> list[Placed]:
+               max_fold: int | None = None, shift_at=None) -> list[Placed]:
     """Transpose and place each note on its rank; spill to the fallback rank
     when the first has no pipe for it; snap to the nearest pipe (or drop) when
     neither does. With max_fold, a note that would have to move more than
@@ -772,7 +795,7 @@ def fold_voice(notes: list[Note], rank: Rank, shift: int, snap: bool, stats: Voi
         return True
 
     for n in sorted(notes, key=lambda n: (n.start, n.pitch)):
-        p = n.pitch + shift
+        p = n.pitch + shift + (shift_at(n.start) if shift_at else 0)
         target, exact = place_in_rank(p, prev, rank, limit)
         if not exact and fallback is not None:
             alt, alt_exact = place_in_rank(p, prev, fallback, limit)
@@ -1033,7 +1056,8 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
                              f"{before} notes -> {len(notes)}")
         stats.thinned = thinned
         placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
-                                 fallback=ranks.get(v.fallback) if v.fallback else None, max_fold=v.max_fold))
+                                 fallback=ranks.get(v.fallback) if v.fallback else None, max_fold=v.max_fold,
+                                 shift_at=plan.shift_at if plan.shifts else None))
         voice_stats[v.slot] = stats
         if v.role == ROLE_MELODY and selected:
             first = min(n.start for n in selected)
@@ -1136,6 +1160,9 @@ def render_report(r: Result, organ: oa.Organ, ranks: dict[str, Rank], source: st
     L.append(f"Transposition: {r.shift:+d} semitones" + ("" if r.plan.transpose == "auto" else "  (from plan)"))
     for shift, score in r.shifts[:5]:
         L.append(f"  {shift:+3d}  coverage {score * 100:5.1f}%" + ("  <- chosen" if shift == r.shift else ""))
+    for s in r.plan.shifts:
+        L.append(f"  passage {fmt_time(s.get('from', 0.0))}..{fmt_time(s['until']) if s.get('until') is not None else 'end'}"
+                 f" shifted {int(s['shift']):+d} on top, every voice")
     L.append("")
     L.append("Voices")
     by_key = {s.key: s for s in r.sources}
@@ -1249,6 +1276,8 @@ def main(argv: list[str] | None = None) -> int:
             "# (a melody a diatonic third above) makes a counter line out of the material.\n"
             "# max_fold: N drops a note that would have to move more than N octaves to fit.\n"
             "# min_gap: N (ms) keeps at most one onset per N ms in a voice (a staccato figure -> a line).\n"
+            "# shifts: [{from: s, until: s, shift: n}] moves a passage n semitones for every voice, on top\n"
+            "# of the transposition -- for a key the organ cannot play, kept in tune across the ranks.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:

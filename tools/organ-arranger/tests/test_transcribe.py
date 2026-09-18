@@ -772,3 +772,30 @@ def test_min_gap_thins_a_voice_to_one_onset_per_interval():
     assert any("one onset per 500 ms" in ln and "16 notes -> 4" in ln for ln in r.lines)
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
     assert again.voices[0].min_gap_ms == 500
+
+
+def test_a_shifted_passage_moves_every_voice_together_and_lands_on_pipes():
+    # Main:high has C D E F G A: a passage in C sharp (C# F G#) would snap note
+    # by note; shifted down one, it is C E G for the whole window, both voices.
+    org = organ()
+    lead = notes(0, [72, 74, 76], start=0, length=BEAT, step=BEAT) + notes(0, [73, 77, 80], start=3 * BEAT, length=BEAT, step=BEAT)
+    low = notes(1, [48, 50, 52], start=0, length=BEAT, step=BEAT) + notes(1, [49, 53, 56], start=3 * BEAT, length=BEAT, step=BEAT)
+    mid = tune(track("Lead", lead), track("Low", low))
+    plan = ot.Plan.from_dict({
+        "transpose": 0,
+        "shifts": [{"from": 1.5, "until": 3.0, "shift": -1}],
+        "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody"},
+                   {"source": "Low#2", "rank": "Main:low", "role": "bass"}],
+        "drums": {"source": None, "map": {}}, "registration": [],
+    })
+    assert plan.shift_at(1.0) == 0 and plan.shift_at(1.5) == -1 and plan.shift_at(3.0) == 0
+    r = ot.transcribe(mid, org, plan)
+    out = sorted(out_notes(r.mid, "Main"))
+    assert [n for _, _, n in out] == [48, 72, 50, 74, 52, 76, 48, 72, 52, 76, 55, 79]
+    assert r.voice_stats[plan.voices[0].slot].snapped == 0 and r.voice_stats[plan.voices[1].slot].snapped == 0
+    text = ot.render_report(r, org, ot.derive_ranks(org), "s", "d")
+    assert "shifted -1 on top, every voice" in text
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.shifts == [{"from": 1.5, "until": 3.0, "shift": -1}]
+    with pytest.raises(ot.TranscribeError):
+        ot.Plan.from_dict({"voices": [], "shifts": [{"from": 5, "until": 2, "shift": 1}]})
