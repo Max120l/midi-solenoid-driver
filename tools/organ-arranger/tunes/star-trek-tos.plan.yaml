@@ -1,0 +1,41 @@
+# Plan for organ_transcribe: Star Trek, the original series theme (Courage),
+# from a one-track GM file with nine channels: pad (ch2), electric piano
+# (ch3), horn (ch4), piccolo (ch5), clarinet (ch6, doubling the piccolo),
+# two trumpets (ch7, ch8), strings (ch9), a jazz kit (ch10).
+# Shape: a slow opening to bar 9 (the horn call, bars 3-8), a piccolo
+# flourish into the swing theme at bar 11, the trumpets' statement from
+# bar 17, a minute in all.
+# Two keys: the swing sits best four semitones up (434 of 466 notes on
+# pipes); the opening sits best four down, where the horn call loses only
+# two notes of twenty-one instead of six. So +4 overall, and the opening
+# up to 30 s, where the piccolo flourish into the swing begins, shifted eight back on top.
+transpose: 4
+shifts:
+- {until: 30, shift: -8}
+voices:
+# the opening: the horn call is the tune, the pad and piano are the harmony
+- {source: 'Track 1#0/ch4', rank: Melody, role: melody, max_poly: 1, weight: 3.0, until: 30, max_fold: 2}
+- {source: 'Track 1#0/ch2', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0, until: 30, max_fold: 2}
+# the swing: trumpet leads on the Melody rank; the piccolo riff on the tenor,
+# no faster than the pipes can speak; horn pads and trumpet 2 stabs on the
+# accompaniment; walking bass on the Base pipes
+- {source: 'Track 1#0/ch7', rank: Melody, role: melody, max_poly: 1, weight: 3.0, from: 30, max_fold: 2}
+- {source: 'Track 1#0/ch5', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5, min_gap: 100, max_fold: 1}
+- {source: 'Track 1#0/ch4', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0, from: 30, max_fold: 1}
+- {source: 'Track 1#0/ch8', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0, max_fold: 2}
+- {source: 'Track 1#0/ch2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment, from: 30, max_fold: 2}
+# the piano's top line and the strings, sparse, on the treble
+- {source: 'Track 1#0/ch3', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, max_fold: 2}
+- {source: 'Track 1#0/ch9', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, max_fold: 2}
+- {source: 'Track 1#0/ch6', rank: drop}
+drums:
+  source: 'Track 1#0/ch10'
+  # a jazz kit: the ride carries the time, so it goes to the snare; toms and
+  # crashes to the bass drum; the hi-hats are dropped
+  map: {51: snare, 47: bass, 49: bass, 57: bass}
+  leader: downbeat
+registration:
+- at: start
+  'on': [Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody]
+- at: melody
+  'on': [Trombone Base, Trumpet Melody, Violin Melody]
