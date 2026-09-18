@@ -350,6 +350,26 @@ thermal protector. An MOV across terminals 1 and 2 takes the motor's
 switch-off kick. The output leaks a milliamp or two when off: the motor
 does not turn, but the wires are live until the switch says otherwise.
 
+### Book mode: the motor without the electronics
+
+The organ keeps its book-reading keyframe, and in book mode the motor must
+run with every piece of electronics off. The SSR's output is only a switch
+in the motor's live wire, so a mechanical switch across it does it: a
+single-pole double-throw with a centre off, motor-rated (marked 1 HP at
+125 V, or 20 A), on the panel.
+
+```
+mains L ── fuse ──┬── switch common
+       MANUAL  1  ├──────────────────────────────► motor    book mode, SSR bypassed
+       AUTO    2  ├──► SSR terminal 1 ── 2 ──────► motor    the Pi decides
+       OFF     0  ┘                                          motor isolated (the SSR alone leaks a mA)
+mains N ────────────────────────────────────────► motor
+```
+
+Only the live is switched; neutral and earth go straight to the motor. In
+Manual the Pi may be off or unplugged. If it is on and a tune is played, it
+switches the SSR in parallel with the manual contact, which is harmless.
+
 ### The 12 V supply, and switching it from the Pi
 
 The 12 V comes from an **ATX computer supply**, which puts every rail on
