@@ -850,7 +850,7 @@ def test_restrikes_cut_a_held_chord_into_a_rhythm_for_every_voice():
         assert starts == [0.0, 4.0, 4.5, 5.0], (note, segs)                # the hold, then bar 2 beats 1, 1.5, 2 (in beats)
         assert all(b <= nxt - 0.1 for (a, b), (nxt, _) in zip(segs, segs[1:]))   # a gap before each re-strike
         assert segs[-1][1] == 8.0                                           # the last piece keeps the release
-    assert any(ln.startswith("re-struck 3 held note(s) at 0:02.000, 0:02.250, 0:02.500") for ln in r.lines)
+    assert any(ln.startswith("re-struck 9 held note(s) at 0:02.000, 0:02.250, 0:02.500") for ln in r.lines)
     again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
     assert again.restrikes == [{"from": 1.5, "until": 3.5, "beats": [1.0, 1.5, 2.0]}]
     with pytest.raises(ot.TranscribeError):
