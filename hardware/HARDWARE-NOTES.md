@@ -350,6 +350,45 @@ thermal protector. An MOV across terminals 1 and 2 takes the motor's
 switch-off kick. The output leaks a milliamp or two when off: the motor
 does not turn, but the wires are live until the switch says otherwise.
 
+### The box, wired
+
+Everything that is not a pipe, drawn once. Two halves, one aluminium case,
+and exactly four things cross between them, each by light: the MIDI opto,
+the reset opto, the PS_ON opto and the SSR.
+
+```
+MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case ──── motor frame
+                              ├─ N ──────────────┬───────────────┬──────────────── motor N
+                              │                  ATX N          Pi PSU N
+                              └─ L ── PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
+                                       pole A common ─┬─ BOOK ────────────────────────► motor L
+                                                      └─ AUTO ─► SSR 1 ── SSR 2 ───────► motor L
+                                       pole B common ─── AUTO ─► ATX L  and  Pi PSU L
+                                       (OFF: neither pole connected; the ATX fan cools the box in Auto)
+
+ORGAN SIDE (the ATX's ground)                        PI SIDE (the Pi PSU's ground)
+ATX 12 V, several yellows ─► 12 V bus bar            Pi PSU 5 V ─USB-C─► Pi 4
+ATX GND, several blacks ──► organ GND bus bar        DSI ribbon ─► touchscreen
+12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 3 (pin 5) ── antique switch ── Pi GND   on/off
+last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
+RJ12 pin 1 = /RESET bus (jumpered board to board)     3.3 V (pin 1) ────── 6N137 IN+
+RJ12: MIDI signal, GND, as shipped                    GPIO 24 (pin 18) ── SSR 3 (+)                 pump
+                                                      Pi GND ─────────── SSR 4 (-)
+6N137 module: VCC ◄ RJ12 pin 6, GND ◄ RJ12 GND,       GPIO 25 (pin 22) ─[330 Ω]─ PC817 A anode      12 V on
+              OUT ► boards' MIDI in                   Pi GND ─────────────────── PC817 A cathode
+PC817 A: collector ─ ATX PS_ON (green), emitter ─ ATX GND
+                                                      GPIO 17 (pin 11) ─[330 Ω]─ PC817 B anode      reset
+PC817 B: collector ─ RJ12 pin 1, emitter ─ RJ12 GND   Pi GND ─────────────────── PC817 B cathode
+SSR 1 / 2: on the mains side, above; MOV across them
+```
+
+Rules that make the drawing true: no wire, bar or chassis lug between the
+organ GND bus and the Pi's ground; the earth stud carries earth only; mains
+bars shrouded or in covered terminal blocks; mains and low voltage on
+opposite sides of a partition, crossing once at right angles; the SSR's
+heat sink in the ATX fan's stream, paste under it. organ_web: `--pump 24
+--power 25 --power-switch 3`, reset on 17 by default.
+
 ### The panel switch: Off / Book / Auto
 
 The organ keeps its book-reading keyframe, and in book mode the motor must
