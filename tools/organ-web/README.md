@@ -63,7 +63,7 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 | **Playlists** | the saved lists: open, queue, queue shuffled, "play instead" (replaces the queue), delete |
 | **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
 | **Arrange** | drop a raw `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source |
-| **Service** | reset the boards; pump on and off by hand; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
+| **Service** | reset the boards; the 12 V supply and the pump on and off by hand; Shut down, which turns the pump and the supply off and then powers the Pi off, so the panel switch can be turned off safely once the screen is dark; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
 | **Settings** | this screen's brightness and a screen time-out (per browser: set them on the case screen; the kiosk defaults to ten minutes, a phone to never; with a real backlight the Pi drives it, otherwise the page dims itself and "off" is a black screen the first touch wakes); the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The card starts locked and relocks after every send and after three minutes; the boards cannot be read back, so the fields show what was last sent from here, or this organ's usual values before anything has been |
 
 The keys tester shares the serial line with the player, so it only answers
@@ -104,6 +104,7 @@ a script or a home-automation box can do the same.
 | `POST /api/screen` | `{brightness?: 0-100, power?: on\|off}` | the display's backlight, where the Pi has one (`/sys/class/backlight`) |
 | `POST /api/boards` | `{peak?, hold?, peak_ms?, max_note?, exercise?, command?: save\|reload\|factory, board?}` | solenoid parameters to the boards (idle only) |
 | `POST /api/service/reset`, `POST /api/service/pump`, `POST /api/service/power` | , `{on}`, `{on}` | the boards' reset line; the pump and the supply by hand |
+| `POST /api/service/shutdown` | | pump off, 12 V off, then `systemctl poweroff` |
 
 Errors come back as `{"error": "…"}` with 400 (bad request), 404 (no such
 tune, playlist or job) or 409 (the player is busy; no pump configured).
@@ -134,7 +135,19 @@ sudo systemctl daemon-reload && sudo systemctl enable --now organ-web
 ```
 
 The player is a child of the service and restarts with it; the app also
-restarts the player on its own if it ever exits. `systemctl stop organ-web`
+restarts the player on its own if it ever exits.
+
+The Shut down button needs the service's user allowed to power the Pi off
+without a password. One line, as root, in a new file `/etc/sudoers.d/organ`:
+
+```
+massie ALL=(root) NOPASSWD: /bin/systemctl poweroff
+```
+
+Then a shutdown from the page takes the pump and the 12 V down first and
+the Pi powers off within a few seconds; the panel switch is turned off once
+the screen is dark. Cutting the mains with the Pi running usually does no
+harm, but a shutdown first is the habit that makes "usually" go away. `systemctl stop organ-web`
 sends SIGTERM, which the player takes as a clean stop: the organ is silenced
 and the pump switched off before anything exits.
 

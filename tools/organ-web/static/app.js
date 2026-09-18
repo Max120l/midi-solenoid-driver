@@ -429,6 +429,10 @@ $("bd-factory").onclick = () => { if (confirm("Return every board to its compile
 $("btn-reset").onclick = () => { if (confirm("Reset all driver boards? Every note drops and the boards run their exercise routine.")) act("/api/service/reset", {}, "boards reset"); };
 $("btn-power-on").onclick = () => act("/api/service/power", { on: true }, "organ power on");
 $("btn-power-off").onclick = () => act("/api/service/power", { on: false }, "organ power off");
+$("btn-shutdown").onclick = () => {
+  if (!confirm("Shut the organ down? The pump and the 12 V go off, then the Pi powers itself off. Turn the panel switch off once the screen is dark.")) return;
+  act("/api/service/shutdown", {}, "powering off -- turn the switch off when the screen is dark");
+};
 $("btn-pump-on").onclick = () => act("/api/service/pump", { on: true }, "pump on");
 $("btn-pump-off").onclick = () => act("/api/service/pump", { on: false }, "pump off");
 

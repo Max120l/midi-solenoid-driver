@@ -350,25 +350,33 @@ thermal protector. An MOV across terminals 1 and 2 takes the motor's
 switch-off kick. The output leaks a milliamp or two when off: the motor
 does not turn, but the wires are live until the switch says otherwise.
 
-### Book mode: the motor without the electronics
+### The panel switch: Off / Book / Auto
 
 The organ keeps its book-reading keyframe, and in book mode the motor must
-run with every piece of electronics off. The SSR's output is only a switch
-in the motor's live wire, so a mechanical switch across it does it: a
-single-pole double-throw with a centre off, motor-rated (marked 1 HP at
-125 V, or 20 A), on the panel.
+run with every piece of electronics off. One two-pole, three-position,
+centre-off, motor-rated switch (marked 1 HP at 125 V, or 20 A) on the panel
+is the organ's master control:
 
 ```
-mains L ── fuse ──┬── switch common
-       MANUAL  1  ├──────────────────────────────► motor    book mode, SSR bypassed
-       AUTO    2  ├──► SSR terminal 1 ── 2 ──────► motor    the Pi decides
-       OFF     0  ┘                                          motor isolated (the SSR alone leaks a mA)
-mains N ────────────────────────────────────────► motor
+pole A: the motor                                pole B: the electronics
+mains L ─ fuse ─┬─ common                        mains L ─ fuse ─┬─ common
+   BOOK      1  ├──────────────────► motor          BOOK      1  ├── (nothing)
+   AUTO      2  ├─► SSR 1 ── 2 ───► motor           AUTO      2  ├──► ATX mains in, Pi supply, fan
+   OFF       0  ┘                                   OFF       0  ┘
 ```
 
-Only the live is switched; neutral and earth go straight to the motor. In
-Manual the Pi may be off or unplugged. If it is on and a tune is played, it
-switches the SSR in parallel with the manual contact, which is harmless.
+Book: the motor runs, nothing else has power. Auto: the box comes alive,
+the Pi boots and the ATX waits on standby until the Pi pulls PS_ON; the
+motor runs only when the SSR says so. Off: everything isolated, which the
+SSR alone cannot do since it leaks a milliamp. Only the live is switched;
+neutral and earth go straight through. If the Pi is on and a tune is
+played while the switch is in Book, the SSR closes in parallel with the
+manual contact, which is harmless.
+
+Turning Auto off cuts the Pi's mains. The front desk's **Shut down** button
+takes the pump and the 12 V down and powers the Pi off first; turn the
+switch off once the screen is dark. Pi OS usually survives a hard cut, but
+the habit removes the "usually".
 
 ### The 12 V supply, and switching it from the Pi
 

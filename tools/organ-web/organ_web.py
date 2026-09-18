@@ -1020,6 +1020,23 @@ class Desk:
         except OSError as e:
             raise RuntimeError(f"cannot drive the backlight at {d}: {e}")
 
+    def shutdown(self, run=None) -> dict:
+        """Power the organ down in order: pump off, 12 V off, then the Pi
+        itself, so the panel switch can be turned off without cutting a
+        running system. Needs `systemctl poweroff` allowed without a password
+        for the service's user (see the README)."""
+        self.stop()
+        self.pump_set(False)
+        self.power_set(False)
+        if self.cfg.dry_run:
+            return {"shutdown": "dry run: the organ is off, the Pi stays up"}
+        run = run or subprocess.run
+        r = run(["sudo", "-n", "systemctl", "poweroff"], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError("the Pi refused to power off: " + (r.stderr or r.stdout or "").strip()
+                               + " -- allow it with a sudoers line, see the README")
+        return {"shutdown": "powering off"}
+
     def reset_boards(self) -> dict:
         self.ensure_power("a reset")
         if self.cfg.dry_run:
@@ -1253,6 +1270,10 @@ def create_app(desk: Desk):
         desk.pump_set(on)
         desk.idle_since = desk.now() if on else desk.idle_since
         return jsonify(desk.snapshot()["pump"])
+
+    @app.post("/api/service/shutdown")
+    def service_shutdown():
+        return jsonify(desk.shutdown())
 
     @app.post("/api/service/power")
     def service_power():

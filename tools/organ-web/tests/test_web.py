@@ -410,6 +410,29 @@ def test_keys_layout_and_actions_and_the_busy_guard(desk):
     desk.keys.close()
 
 
+def test_shutdown_takes_the_organ_down_before_the_pi(desk):
+    desk.power = w.FakePump()
+    desk.pump = w.FakePump()
+    desk.add(["marches/bogey.organ.mid"])
+    desk.play()
+    assert desk.power_on and desk.pump_on
+    assert desk.shutdown()["shutdown"].startswith("dry run")
+    assert not desk.pump_on and not desk.power_on and desk.held
+    # the real thing runs systemctl poweroff through sudo -n, and says so when refused
+    desk.cfg.dry_run = False
+    calls = []
+
+    class R:
+        def __init__(self, rc, err=""):
+            self.returncode, self.stderr, self.stdout = rc, err, ""
+
+    assert desk.shutdown(run=lambda cmd, **kw: (calls.append(cmd), R(0))[1]) == {"shutdown": "powering off"}
+    assert calls == [["sudo", "-n", "systemctl", "poweroff"]]
+    with pytest.raises(RuntimeError, match="sudoers"):
+        desk.shutdown(run=lambda cmd, **kw: R(1, "sudo: a password is required"))
+    desk.cfg.dry_run = True
+
+
 def test_the_player_process_is_restarted_after_it_dies(desk):
     desk.housekeep()
     assert len(desk.procs) == 1
