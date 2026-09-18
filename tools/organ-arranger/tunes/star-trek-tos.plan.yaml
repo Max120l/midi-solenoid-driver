@@ -37,9 +37,13 @@ voices:
 - {source: 'Track 1#0/ch6', rank: drop}
 drums:
   # the jazz kit (ride on the snare, toms on the bass drum) was tried and was
-  # just bad; no drums, only the leader on the downbeats
+  # just bad; no drums through the piece, only the leader on the downbeats.
+  # The ending, though, gets what the TNG file has: a snare roll under the
+  # final chord (bar 24, 57.0 s, at 80 BPM), a bass drum on its downbeat and a
+  # last thump as it releases.
   source: null
   map: {}
+  pattern: {bass: [1, 4.5], snare: [1.0, 1.125, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125, 2.25, 2.375, 2.5, 2.625, 2.75, 2.875, 3.0, 3.125, 3.25, 3.375, 3.5, 3.625, 3.75, 3.875, 4.0, 4.125, 4.25, 4.375], from: 56.9, until: 59.7}
   leader: downbeat
 registration:
 - at: start
