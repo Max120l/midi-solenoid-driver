@@ -375,8 +375,9 @@ The 5 V standby rail keeps the PS_ON logic alive while the rest is dark.
 organ_web drives it as `--power GPIO`: on before the pump, off after the
 idle time-out, and on again for the Service actions, which wait a moment
 for the boards to boot. Every power-up runs the boards' exercise routine,
-so with the supply switched through the day set exerciseCycles to 0 from
-the Settings card and use the Service tab's reset when the scale is wanted.
+this organ's solenoids start cleanly under wind, so exerciseCycles is 0 here
+(the Settings card's default) and the Service tab's reset plays the scale when
+one is wanted.
 
 The SSR lives in a metal box with the organ's 12 V supply, the Pi's 5 V
 supply and a fan. Mains earth to the box; **neither DC negative bonded to
