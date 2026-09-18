@@ -14,25 +14,27 @@ shifts:
 - {until: 30, shift: -8}
 voices:
 # the opening: the horn call is the tune, the pad and piano are the harmony
-- {source: 'Track 1#0/ch4', rank: Melody, role: melody, max_poly: 1, weight: 3.0, until: 30, max_fold: 2}
-- {source: 'Track 1#0/ch2', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0, until: 30, max_fold: 2}
-# the swing: trumpet leads on the Melody rank; the piccolo riff on the tenor,
+- {source: 'Track 1#0/ch4', rank: Accompainment, role: melody, max_poly: 1, weight: 3.0, until: 30, max_fold: 2}
+- {source: 'Track 1#0/ch2', rank: Melody, role: accomp, max_poly: 1, weight: 1.0, until: 30, max_fold: 2}
+# the swing (Melody and Accompainment swapped at the user's ear: the trumpet
+# lead sits on the accompaniment pipes, horn pads and trumpet 2 on the melody
+# rank; likewise the horn call and the pad in the opening); the piccolo riff on the tenor,
 # no faster than the pipes can speak; horn pads and trumpet 2 stabs on the
 # accompaniment; walking bass on the Base pipes
-- {source: 'Track 1#0/ch7', rank: Melody, role: melody, max_poly: 1, weight: 3.0, from: 30, max_fold: 2}
+- {source: 'Track 1#0/ch7', rank: Accompainment, role: melody, max_poly: 1, weight: 3.0, from: 30, max_fold: 2}
 - {source: 'Track 1#0/ch5', rank: TenorCM, role: counter, max_poly: 1, weight: 1.5, min_gap: 100, max_fold: 1}
-- {source: 'Track 1#0/ch4', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0, from: 30, max_fold: 1}
-- {source: 'Track 1#0/ch8', rank: Accompainment, role: accomp, max_poly: 1, weight: 1.0, max_fold: 2}
+- {source: 'Track 1#0/ch4', rank: Melody, role: accomp, max_poly: 1, weight: 1.0, from: 30, max_fold: 1}
+- {source: 'Track 1#0/ch8', rank: Melody, role: accomp, max_poly: 1, weight: 1.0, max_fold: 2}
 - {source: 'Track 1#0/ch2', rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment, from: 30, max_fold: 2}
 # the piano's top line and the strings, sparse, on the treble
 - {source: 'Track 1#0/ch3', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, max_fold: 2}
 - {source: 'Track 1#0/ch9', rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, max_fold: 2}
 - {source: 'Track 1#0/ch6', rank: drop}
 drums:
-  source: 'Track 1#0/ch10'
-  # a jazz kit: the ride carries the time, so it goes to the snare; toms and
-  # crashes to the bass drum; the hi-hats are dropped
-  map: {51: snare, 47: bass, 49: bass, 57: bass}
+  # the jazz kit (ride on the snare, toms on the bass drum) was tried and was
+  # just bad; no drums, only the leader on the downbeats
+  source: null
+  map: {}
   leader: downbeat
 registration:
 - at: start
