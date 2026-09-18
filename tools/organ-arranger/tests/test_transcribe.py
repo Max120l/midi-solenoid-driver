@@ -799,3 +799,31 @@ def test_a_shifted_passage_moves_every_voice_together_and_lands_on_pipes():
     assert again.shifts == [{"from": 1.5, "until": 3.0, "shift": -1}]
     with pytest.raises(ot.TranscribeError):
         ot.Plan.from_dict({"voices": [], "shifts": [{"from": 5, "until": 2, "shift": 1}]})
+
+
+def test_a_drum_pattern_writes_bass_and_snare_on_the_beats_of_every_bar():
+    # four bars of 4/4 at 120 BPM (2 s a bar): bass on 1, snare on 2 and 4, only from 2 s
+    org = organ()
+    mid = tune(track("Lead", notes(0, [72] * 16, start=0, length=BEAT, step=BEAT)))
+    plan = ot.Plan.from_dict({
+        "transpose": 0,
+        "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody"}],
+        "drums": {"source": None, "map": {}, "leader": "none", "pattern": {"bass": [1], "snare": [2, 4], "from": 2}},
+        "registration": [],
+    })
+    r = ot.transcribe(mid, org, plan)
+    drums = out_notes(r.mid, "Drums")
+    tpb = r.mid.ticks_per_beat
+    by_note = {}
+    for s_, e_, n in drums:
+        by_note.setdefault(n, []).append(round(s_ / tpb, 2))          # in beats
+    assert by_note[25] == [4.0, 8.0, 12.0]                             # bass (written 25) on beat 1 of bars 2, 3, 4
+    snare = sorted(by_note.get(22, []) + by_note.get(23, []))
+    assert snare == [5.0, 7.0, 9.0, 11.0, 13.0, 15.0]                 # beats 2 and 4, two beaters alternating
+    assert len(by_note.get(22, [])) == 3 and len(by_note.get(23, [])) == 3
+    assert r.drum_counts["bass (pattern)"] == 3 and r.drum_counts["snare (pattern)"] == 6
+    assert any(ln.startswith("drum pattern: 3 bass (pattern), 6 snare (pattern)") for ln in r.lines)
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.drum_pattern == {"bass": [1.0], "snare": [2.0, 4.0], "from": 2.0}
+    with pytest.raises(ot.TranscribeError):
+        ot.Plan.from_dict({"voices": [], "drums": {"pattern": {"bass": [0]}}})

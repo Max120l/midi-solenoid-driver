@@ -355,6 +355,11 @@ class Plan:
     # shifting that passage back keeps every voice in tune with the others,
     # where snapping each note to its nearest pipe would not.
     shifts: list[dict] = field(default_factory=list)
+    # A drum part written by the transcriber, for a source that has none: for
+    # each organ percussion label, the beats of the bar it strikes on (1-based,
+    # fractions allowed), optionally within a window in seconds:
+    #   pattern: {bass: [1], snare: [2, 3], from: 26, until: 95}
+    drum_pattern: dict = field(default_factory=dict)
 
     def shift_at(self, when: float) -> int:
         """The extra semitones in force at a source time."""
@@ -376,7 +381,8 @@ class Plan:
                                                ("max_fold", v.max_fold), ("min_gap", v.min_gap_ms))
                         if val is not None}
                        for v in self.voices],
-            "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
+            "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader,
+                      **({"pattern": dict(self.drum_pattern)} if self.drum_pattern else {})},
             "registration": self.registration,
         }
 
@@ -424,9 +430,18 @@ class Plan:
                 if "from" in entry and "until" in entry and entry["until"] <= entry["from"]:
                     raise ValueError(f"shift window {entry['from']}-{entry['until']} ends before it starts")
                 shifts.append(entry)
+            pattern: dict = {}
+            for k, v in (drums.get("pattern") or {}).items():
+                if k in ("from", "until"):
+                    pattern[k] = float(v)
+                else:
+                    beats = [float(b) for b in (v if isinstance(v, (list, tuple)) else [v])]
+                    if any(b < 1 for b in beats):
+                        raise ValueError(f"drum pattern {k}: beats count from 1")
+                    pattern[str(k)] = beats
             return cls(transpose, voices, drum_source,
                        {int(k): str(v) for k, v in (drums.get("map") or DEFAULT_DRUM_MAP).items()},
-                       str(drums.get("leader", "downbeat")), list(d.get("registration") or []), shifts)
+                       str(drums.get("leader", "downbeat")), list(d.get("registration") or []), shifts, pattern)
         except (KeyError, TypeError, ValueError) as e:
             raise TranscribeError(f"malformed plan: {e}") from e
 
@@ -875,6 +890,51 @@ def map_drums(src: Source | None, plan: Plan, organ: oa.Organ, report: list[str]
     return out, counts
 
 
+def pattern_drums(organ: oa.Organ, plan: Plan, first: float, last: float, tempo_map: list[tuple[float, int]],
+                  timesig: tuple[int, int], report: list[str]) -> tuple[list[Placed], Counter]:
+    """A written drum part: each label on its beats of every bar while the
+    music plays (and inside the pattern's own window, if it has one). Two
+    solenoids under one label alternate, as in map_drums."""
+    out: list[Placed] = []
+    counts: Counter = Counter()
+    pattern = {k: v for k, v in plan.drum_pattern.items() if k not in ("from", "until")}
+    if not pattern:
+        return out, counts
+    lo = plan.drum_pattern.get("from")
+    hi = plan.drum_pattern.get("until")
+    targets = {label: percussion_notes(organ, label) for label in pattern}
+    for label, hits in targets.items():
+        if not hits:
+            report.append(f"drum pattern: the organ has no percussion labelled '{label}'; skipped")
+    alternate: Counter = Counter()
+    beats_per_bar = timesig[0] * 4 / timesig[1]
+    t = 0.0
+    seg = 0
+    while t < last - 1e-6:
+        while seg + 1 < len(tempo_map) and tempo_map[seg + 1][0] <= t + 1e-9:
+            seg += 1
+        spb = tempo_map[seg][1] / 1e6
+        for label, beats in pattern.items():
+            options = targets.get(label) or []
+            if not options:
+                continue
+            for b in beats:
+                when = t + (b - 1) * spb
+                if when < first - 1e-6 or when >= last - 1e-6:
+                    continue
+                if (lo is not None and when < lo) or (hi is not None and when >= hi):
+                    continue
+                track, note = options[alternate[label] % len(options)]
+                alternate[label] += 1
+                out.append(Placed(track, note, when, when + LEADER_PULSE_S, f"{label} (pattern)"))
+                counts[f"{label} (pattern)"] += 1
+        t += beats_per_bar * spb
+    if out:
+        report.append("drum pattern: " + ", ".join(f"{c} {k}" for k, c in counts.items())
+                      + (f", from {fmt_time(lo)}" if lo is not None else "") + (f" until {fmt_time(hi)}" if hi is not None else ""))
+    return out, counts
+
+
 def seconds_per_beat(tempo_map: list[tuple[float, int]], at: float) -> float:
     tempo = 500_000
     for t, us in tempo_map:
@@ -1080,6 +1140,9 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
                           sorted((n for s in drum_srcs for n in s.notes), key=lambda n: (n.start, n.pitch)))
     drums, drum_counts = map_drums(drum_src, plan, organ, lines)
     placed.extend(drums)
+    written, written_counts = pattern_drums(organ, plan, music_first, music_last, tempo_map, timesig, lines)
+    placed.extend(written)
+    drum_counts.update(written_counts)
 
     leader = leader_beats(organ, music_first, music_last, tempo_map, timesig) if plan.leader == "downbeat" else []
     placed.extend(leader)
@@ -1278,6 +1341,8 @@ def main(argv: list[str] | None = None) -> int:
             "# min_gap: N (ms) keeps at most one onset per N ms in a voice (a staccato figure -> a line).\n"
             "# shifts: [{from: s, until: s, shift: n}] moves a passage n semitones for every voice, on top\n"
             "# of the transposition -- for a key the organ cannot play, kept in tune across the ranks.\n"
+            "# drums.pattern: {bass: [1], snare: [2, 3], from: s, until: s} writes a drum part on those\n"
+            "# beats of every bar, for a source that has none.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:
