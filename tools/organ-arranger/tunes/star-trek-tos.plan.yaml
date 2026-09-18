@@ -18,7 +18,12 @@ voices:
 # leans on. The piccolo riff goes up to the Melody rank, where a piccolo
 # belongs, no faster than the pipes can speak.
 - {source: 'Track 1#0/ch4', rank: TenorCM, role: melody, max_poly: 1, weight: 3.0, until: 30, max_fold: 2}
-- {source: 'Track 1#0/ch7', rank: TenorCM, role: melody, max_poly: 1, weight: 3.0, from: 30, max_fold: 2}
+- {source: 'Track 1#0/ch7', rank: TenorCM, role: melody, max_poly: 1, weight: 3.0, from: 30, until: 38.3, max_fold: 2}
+# from bar 13 (38.3 s) the trumpet's fast runs were terrible on the tenor;
+# instead the tenor doubles the treble's material -- the piano's top line and
+# the strings -- an octave down, and the trumpet is silent
+- {source: 'Track 1#0/ch3', rank: TenorCM, role: counter, max_poly: 1, weight: 1.0, from: 38.3, max_fold: 2}
+- {source: 'Track 1#0/ch9', rank: TenorCM, role: counter, max_poly: 1, weight: 1.0, from: 38.3, max_fold: 2}
 - {source: 'Track 1#0/ch5', rank: Melody, role: counter, max_poly: 1, weight: 1.5, min_gap: 100, max_fold: 2}
 # harmony on the accompaniment: the pad in the opening, horn pads and the
 # second trumpet's stabs in the swing; walking bass on the Base pipes
