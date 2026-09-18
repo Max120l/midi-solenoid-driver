@@ -38,9 +38,8 @@ drums:
   map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare, 39: snare}
   leader: downbeat
   # The file's only drums are the snare roll at the very end. A written part
-  # from the theme's entrance (bar 26) to that roll: bass on the downbeat, the
-  # snare on three, the lift of a 3/4 march at this tempo.
-  pattern: {bass: [1], snare: [3], from: 25.8, until: 95.1}
+  # (bass on one, snare on three from the theme's entrance) was tried and did
+  # not sit with the music; a source with a real drum track is the answer.
 registration:
 - at: start
   'on': [Trombone Base, Clarinet TenorCM, Cello TenorCM, Violin Accompainment, Flute Melody, Trumpet Melody, Violin Melody]
