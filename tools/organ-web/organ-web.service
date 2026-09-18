@@ -24,7 +24,8 @@ ExecStart=/usr/bin/python3 organ_web.py \
     --state /home/massie/.local/share/organ-web \
     --device /dev/serial0 \
     --port 8080
-# When the pump relay exists, add:  --pump 24 --pump-active-low
+# When the pump SSR exists, add:  --pump 24
+# When the ATX PS_ON opto exists, add:  --power 25   (the organ's 12 V under the app's control)
 # The status file is small and rewritten every second; keep the state folder
 # on the SD card only if you do not mind that, or point --state at /dev/shm
 # for status alone is not possible -- it holds the playlists too. tmpfs at

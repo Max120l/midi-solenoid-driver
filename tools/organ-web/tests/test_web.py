@@ -290,6 +290,36 @@ def test_repeat_queues_the_round_again_when_the_player_goes_idle(desk):
     assert all(e["done"] for e in desk.queue) and queue_lines(desk) == []
 
 
+def test_power_comes_on_before_the_pump_and_goes_off_after_it(desk):
+    desk.power = w.FakePump()
+    desk.set_settings({"warm_up": 5, "idle_off": 30})
+    desk.add(["marches/bogey.organ.mid"])
+    assert not desk.power_on and not desk.pump_on                    # waiting for Play switches nothing on
+    desk.play()
+    assert desk.power_on and desk.pump_on and desk.pending           # both on, songs held for the warm-up
+    desk.clock.t += 5
+    desk.housekeep()
+    assert desk.to_come()
+    status(desk, state="playing", id=desk.queue[0]["id"])
+    desk.housekeep()
+    status(desk, state="idle")
+    desk.housekeep()
+    desk.clock.t += 31
+    desk.housekeep()
+    assert not desk.pump_on and not desk.power_on                    # idle time-out: pump off, then supply off
+    # the keys need the boards alive: the first tap powers up and asks for patience
+    with pytest.raises(RuntimeError, match="powering up"):
+        desk.keys_act("pulse", {"solenoid": 1})
+    assert desk.power_on and not desk.pump_on
+    desk.keys_act("pulse", {"solenoid": 1}); desk.keys.close()       # second try works
+    # power off takes the pump with it
+    desk.pump_set(True)
+    desk.power_set(False)
+    assert not desk.pump_on and not desk.power_on
+    snap = desk.snapshot()
+    assert snap["power"] == {"configured": True, "on": False}
+
+
 def test_the_pump_goes_off_after_the_idle_time_out(desk):
     desk.set_settings({"warm_up": 1, "idle_off": 60})
     desk.add(["marches/bogey.organ.mid"])
@@ -437,6 +467,11 @@ def test_routes_cover_the_desk(client, desk):
     assert client.post("/api/player/skip").get_json() == {"skipped": False}     # nothing running yet
     r = client.post("/api/service/pump", json={"on": True})
     assert r.status_code == 409
+    assert client.post("/api/service/power", json={"on": True}).status_code == 409
+    desk.power = w.FakePump()
+    assert client.post("/api/service/power", json={"on": True}).get_json() == {"configured": True, "on": True}
+    assert client.post("/api/service/power", json={"on": False}).get_json()["on"] is False
+    desk.power = None
     assert client.post("/api/service/reset").get_json()["reset"] == "dry run"
     assert client.get("/api/plans").get_json()["plans"][:2] == ["africa", "bourree"]
     lay = client.get("/api/keys/layout").get_json()

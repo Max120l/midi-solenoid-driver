@@ -26,9 +26,10 @@ What it does:
   Settings    tempo, the pause between songs, repeat, the pump's warm-up
               and idle time-out
 
-The pump: this app owns the relay, not the player. A play request while the
-pump is off switches it on and holds the songs back for the warm-up; when
-the player has been idle for the idle time-out the pump goes off again.
+The pump, and the organ's power: this app owns both relays, not the player.
+A play request while they are off switches the supply on, then the pump, and
+holds the songs back for the warm-up; when the player has been idle for the
+idle time-out the pump goes off and the supply after it.
 
 State lives in --state (default ~/.local/share/organ-web): queue.m3u,
 status.json, settings.json, playlists/. Nothing here needs root.
@@ -91,6 +92,8 @@ class Config:
     python: str = sys.executable
     pump_pin: int | None = None
     pump_active_low: bool = False
+    power_pin: int | None = None            # the organ's 12 V supply: an ATX PS_ON through an opto
+    power_active_low: bool = False
     reset_pins: list[int] = field(default_factory=lambda: [17])
     dry_run: bool = False
     host: str = "0.0.0.0"
@@ -347,7 +350,8 @@ class KeysDesk:
 # ----------------------------------------------------------------------------
 
 class Desk:
-    def __init__(self, cfg: Config, now=time.monotonic, spawn=None, pump=None, run_cmd=None, open_port=None) -> None:
+    def __init__(self, cfg: Config, now=time.monotonic, spawn=None, pump=None, run_cmd=None, open_port=None,
+                 power=None) -> None:
         self.cfg = cfg
         self.now = now
         cfg.state.mkdir(parents=True, exist_ok=True)
@@ -365,6 +369,8 @@ class Desk:
         self.player = PlayerProcess(cfg, spawn)
         self.pump = pump
         self.pump_on = False
+        self.power = power                      # the solenoid supply's relay, if the Pi has one
+        self.power_on = False
         self.idle_since: float | None = None
         self.status: dict = {}
         self.jobs: dict[str, dict] = {}
@@ -481,9 +487,7 @@ class Desk:
                 self.queue += entries
                 self.write_queue()
                 return entries
-            if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
-                self.pump_set(True)
-                self.wind_ready_at = self.now() + float(self.settings["warm_up"])
+            self.wind_up()
             if self.wind_ready_at is not None and self.now() < self.wind_ready_at:
                 self.pending = entries + self.pending if play_now else self.pending + entries
                 return entries
@@ -599,9 +603,7 @@ class Desk:
             self.held = False
             upcoming = [e for e in self.queue if not e.get("done")]
             self._renumber(upcoming)
-            if self.pump is not None and not self.pump_on and self.settings["warm_up"] > 0:
-                self.pump_set(True)
-                self.wind_ready_at = self.now() + float(self.settings["warm_up"])
+            self.wind_up()
             if self.wind_ready_at is not None and self.now() < self.wind_ready_at:
                 self.queue = [e for e in self.queue if e.get("done")]
                 self.pending = upcoming + self.pending
@@ -639,7 +641,7 @@ class Desk:
             self.write_queue()                  # tempo and gap reach the lines not yet played
             return dict(self.settings)
 
-    # -- the pump ------------------------------------------------------------
+    # -- power and wind --------------------------------------------------------
 
     def pump_set(self, on: bool) -> None:
         if self.pump is None:
@@ -651,6 +653,40 @@ class Desk:
         self.pump_on = on
         if not on:
             self.wind_ready_at = None
+
+    def power_set(self, on: bool) -> None:
+        """The organ's 12 V supply. Off takes the pump with it: no supply, no boards."""
+        if self.power is None:
+            return
+        if on:
+            self.power.on()
+        else:
+            if self.pump_on:
+                self.pump_set(False)
+            self.power.off()
+        self.power_on = on
+
+    def wind_up(self) -> None:
+        """Before music: the supply on, then the pump, and if anything had to
+        be switched on, the songs wait out the warm-up -- for the boards to
+        boot and the reservoir to fill."""
+        switched = False
+        if self.power is not None and not self.power_on:
+            self.power_set(True)
+            switched = True
+        if self.pump is not None and not self.pump_on:
+            self.pump_set(True)
+            switched = True
+        if switched and self.settings["warm_up"] > 0:
+            self.wind_ready_at = self.now() + float(self.settings["warm_up"])
+
+    def ensure_power(self, what: str) -> None:
+        """Service actions need the boards alive. Switch the supply on and ask
+        the user to come back in a moment rather than talk to dead boards."""
+        if self.power is not None and not self.power_on:
+            self.power_set(True)
+            self.idle_since = self.now()
+            raise RuntimeError(f"the organ was off: powering up for {what}, try again in a few seconds")
 
     # -- housekeeping, once a second ------------------------------------------
 
@@ -694,9 +730,10 @@ class Desk:
                 self.idle_since = None
             elif self.idle_since is None:
                 self.idle_since = now
-            if (self.pump_on and self.idle_since is not None and self.settings["idle_off"] > 0
+            if ((self.pump_on or self.power_on) and self.idle_since is not None and self.settings["idle_off"] > 0
                     and now - self.idle_since >= self.settings["idle_off"]):
                 self.pump_set(False)
+                self.power_set(False)
             # the keys tester must not share the wire with a song
             if self.keys.console is not None and busy:
                 self.keys.close()
@@ -729,6 +766,7 @@ class Desk:
                 "warming_up_s": (max(0.0, self.wind_ready_at - self.now())
                                  if self.wind_ready_at is not None and self.now() < self.wind_ready_at else 0.0),
                 "pump": {"configured": self.pump is not None, "on": self.pump_on},
+                "power": {"configured": self.power is not None, "on": self.power_on},
                 "player": {"running": self.player.running(), "pid": st.get("pid")},
                 "settings": dict(self.settings),
                 "board_defaults": dict(BOARD_DEFAULTS),
@@ -911,6 +949,7 @@ class Desk:
         with self.lock:
             if self.busy():
                 raise RuntimeError("the player is busy: stop it before retuning the boards")
+            self.ensure_power("the boards")
         req = organ_config.Request(board=board)
         sent: dict = {}
         for name, (lo, hi) in BOARD_FIELDS.items():
@@ -980,6 +1019,7 @@ class Desk:
             raise RuntimeError(f"cannot drive the backlight at {d}: {e}")
 
     def reset_boards(self) -> dict:
+        self.ensure_power("a reset")
         if self.cfg.dry_run:
             return {"reset": "dry run", "pins": self.cfg.reset_pins}
         try:
@@ -1001,17 +1041,22 @@ class Desk:
         with self.lock:
             if self.busy() and what != "off":
                 raise RuntimeError("the player is busy: stop it before using the keys")
+            if what != "off":
+                self.ensure_power("the keys")
+                self.idle_since = self.now()          # a hand on the keys is not idling
         return self.keys.act(what, body)
 
     def close(self) -> None:
         self.keys.close()
         self.player.close()
         self.pump_set(False)
-        if self.pump is not None:
-            try:
-                self.pump.close()
-            except Exception:
-                pass
+        self.power_set(False)
+        for dev in (self.pump, self.power):
+            if dev is not None:
+                try:
+                    dev.close()
+                except Exception:
+                    pass
 
 
 # ----------------------------------------------------------------------------
@@ -1200,8 +1245,20 @@ def create_app(desk: Desk):
     def service_pump():
         if desk.pump is None:
             return fail("no pump relay configured (--pump GPIO)", 409)
-        desk.pump_set(bool(body().get("on")))
+        on = bool(body().get("on"))
+        if on:
+            desk.power_set(True)                 # a pump wants a supply to live in
+        desk.pump_set(on)
+        desk.idle_since = desk.now() if on else desk.idle_since
         return jsonify(desk.snapshot()["pump"])
+
+    @app.post("/api/service/power")
+    def service_power():
+        if desk.power is None:
+            return fail("no power relay configured (--power GPIO)", 409)
+        desk.power_set(bool(body().get("on")))
+        desk.idle_since = desk.now()
+        return jsonify(desk.snapshot()["power"])
 
     return app
 
@@ -1226,6 +1283,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--python", default=sys.executable, help="interpreter for the player and the arranger (default: this one)")
     p.add_argument("--pump", type=int, metavar="GPIO", help="BCM GPIO of the bellows pump relay")
     p.add_argument("--pump-active-low", action="store_true")
+    p.add_argument("--power", type=int, metavar="GPIO", help="BCM GPIO switching the organ's 12 V supply (an ATX PS_ON through an opto)")
+    p.add_argument("--power-active-low", action="store_true")
     p.add_argument("--reset-pins", default="17", help="BCM GPIOs of the boards' reset line(s), comma-separated (default 17)")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -1240,23 +1299,27 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     cfg = Config(library=Path(a.library).expanduser(), organ=Path(a.organ).expanduser(), state=Path(a.state).expanduser(),
                  plans=Path(a.plans).expanduser(), device=a.device, python=a.python, pump_pin=a.pump,
-                 pump_active_low=a.pump_active_low, dry_run=a.dry_run, host=a.host, port=a.port,
+                 pump_active_low=a.pump_active_low, power_pin=a.power, power_active_low=a.power_active_low,
+                 dry_run=a.dry_run, host=a.host, port=a.port,
                  reset_pins=[int(x) for x in a.reset_pins.split(",") if x.strip()])
     if not cfg.organ.is_file():
         print(f"error: no organ definition at {cfg.organ}", file=sys.stderr)
         return 2
     cfg.library.mkdir(parents=True, exist_ok=True)
-    pump = None
-    if cfg.pump_pin is not None:
+    def relay(pin, active_low, flag):
+        if pin is None:
+            return None
         if cfg.dry_run:
-            pump = FakePump()
-        else:
-            try:
-                pump = grinder.Pump(cfg.pump_pin, cfg.pump_active_low)
-            except ImportError:
-                print("error: --pump needs gpiozero: pip install gpiozero lgpio", file=sys.stderr)
-                return 2
-    desk = Desk(cfg, pump=pump)
+            return FakePump()
+        try:
+            return grinder.Pump(pin, active_low)
+        except ImportError:
+            print(f"error: {flag} needs gpiozero: pip install gpiozero lgpio", file=sys.stderr)
+            raise SystemExit(2)
+
+    pump = relay(cfg.pump_pin, cfg.pump_active_low, "--pump")
+    power = relay(cfg.power_pin, cfg.power_active_low, "--power")
+    desk = Desk(cfg, pump=pump, power=power)
     app = create_app(desk)
     stop = threading.Event()
     threading.Thread(target=housekeeping, args=(desk, stop), name="housekeeping", daemon=True).start()

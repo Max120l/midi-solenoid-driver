@@ -350,6 +350,34 @@ thermal protector. An MOV across terminals 1 and 2 takes the motor's
 switch-off kick. The output leaks a milliamp or two when off: the motor
 does not turn, but the wires are live until the switch says otherwise.
 
+### The 12 V supply, and switching it from the Pi
+
+The 12 V comes from an **ATX computer supply**, which puts every rail on
+one ground: so its 12 V feeds the organ, and its 5 V feeds nothing on the
+Pi's side -- the Pi has a supply of its own, double insulated, no earth --
+or the isolation would be undone inside the box. Several yellow wires in
+parallel for the 12 V, several black for the return; a 10 Ω 10 W resistor
+across 5 V to ground if the 12 V regulates badly with nothing else loaded.
+
+An ATX supply starts when its green wire, **PS_ON**, is pulled to its own
+ground. That is on the organ's side of the divide, so the Pi switches the
+whole solenoid supply through an opto, exactly as it drives the reset line:
+
+```
+Pi GPIO ──[330 Ω]──► PC817 pin 1 (anode)          Pi side
+Pi GND ────────────── PC817 pin 2 (cathode)
+                      ──────────────────────────── isolation barrier
+                      PC817 pin 4 (collector) ── ATX PS_ON (green)
+                      PC817 pin 3 (emitter)   ── ATX GND (black)
+```
+
+The 5 V standby rail keeps the PS_ON logic alive while the rest is dark.
+organ_web drives it as `--power GPIO`: on before the pump, off after the
+idle time-out, and on again for the Service actions, which wait a moment
+for the boards to boot. Every power-up runs the boards' exercise routine,
+so with the supply switched through the day set exerciseCycles to 0 from
+the Settings card and use the Service tab's reset when the scale is wanted.
+
 The SSR lives in a metal box with the organ's 12 V supply, the Pi's 5 V
 supply and a fan. Mains earth to the box; **neither DC negative bonded to
 it**, and no shared ground strip: the 12 V negative is the organ's ground,

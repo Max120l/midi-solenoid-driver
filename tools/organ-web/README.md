@@ -41,10 +41,14 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
   tune, and "play instead" on a playlist, start at once. **Pause** is a `SIGUSR2`: the player lets
   the sounding notes end where they are written, silences the organ and
   waits; the same signal resumes from that position, registration first.
-- **The pump relay** belongs to this app, not the player. A play request
-  while the pump is off switches it on and holds the songs back for the
-  warm-up; after the idle time-out with nothing queued the pump goes off.
-  Without `--pump` the wind is your business and none of this happens.
+- **The pump relay and the power relay** belong to this app, not the
+  player. A play request while they are off switches the supply on, then
+  the pump, and holds the songs back for the warm-up, which also covers the
+  boards booting; after the idle time-out with nothing queued the pump goes
+  off and then the supply. The Service actions -- keys, reset, board
+  settings -- switch the supply on first and ask for a second try a moment
+  later, since the boards need a second to boot. Without `--pump` or
+  `--power` the wind and the power are your business.
 - **State** lives in `--state` (default `~/.local/share/organ-web`):
   `queue.m3u`, `status.json`, `settings.json`, `playlists/*.m3u`. The
   playlists are plain text in the player's own format, so a hand-written
@@ -99,7 +103,7 @@ a script or a home-automation box can do the same.
 | `GET /api/keys/layout`, `POST /api/keys/pulse` `/hold` `/roll` `/off` | `{solenoid, ms?}`, `{solenoid,on}`, `{solenoids?,interval_ms?,on}` | the keys tester |
 | `POST /api/screen` | `{brightness?: 0-100, power?: on\|off}` | the display's backlight, where the Pi has one (`/sys/class/backlight`) |
 | `POST /api/boards` | `{peak?, hold?, peak_ms?, max_note?, exercise?, command?: save\|reload\|factory, board?}` | solenoid parameters to the boards (idle only) |
-| `POST /api/service/reset`, `POST /api/service/pump` | , `{on}` | the boards' reset line; the pump by hand |
+| `POST /api/service/reset`, `POST /api/service/pump`, `POST /api/service/power` | , `{on}`, `{on}` | the boards' reset line; the pump and the supply by hand |
 
 Errors come back as `{"error": "…"}` with 400 (bad request), 404 (no such
 tune, playlist or job) or 409 (the player is busy; no pump configured).
@@ -115,6 +119,7 @@ tune, playlist or job) or 409 (the player is busy; no pump configured).
 | `--device DEV` | `/dev/serial0` | the MIDI line, passed to the player and used by the keys tester |
 | `--python EXE` | this interpreter | runs the player and the arranger |
 | `--pump GPIO`, `--pump-active-low` | none | the bellows pump relay |
+| `--power GPIO`, `--power-active-low` | none | the organ's 12 V supply: an ATX supply's PS_ON pulled low through an opto; on before the pump, off after it, and switched on for the Service actions |
 | `--reset-pins 17` | `17` | the boards' reset line(s), for the Service page |
 | `--host`, `--port` | `0.0.0.0`, `8080` | where to listen |
 | `--dry-run` | | no serial port, no GPIO |

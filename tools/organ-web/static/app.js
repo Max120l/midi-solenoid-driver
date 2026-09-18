@@ -65,7 +65,7 @@ function renderNav() {
     playlists: `${c.playlists ?? "–"} lists`,
     upload: `${(c.by_folder || {}).uploads || 0} in uploads`,
     arrange: c.jobs_running ? `${c.jobs_running} arranging` : (c.jobs_done ? `${c.jobs_done} done` : "ready"),
-    service: state.pump.on ? "pump on" : (state.idle ? "idle" : "busy"),
+    service: [state.power && state.power.on ? "power on" : "", state.pump.on ? "pump on" : ""].filter(Boolean).join(" · ") || (state.idle ? "idle" : "busy"),
     settings: `tempo ${Math.round((state.settings.tempo || 1) * 100)} %` + (state.settings.repeat ? " · repeat" : ""),
   };
   document.querySelectorAll("#tabs button").forEach((b) => { if (code[b.dataset.tab]) b.dataset.code = code[b.dataset.tab]; });
@@ -77,8 +77,10 @@ function renderNow() {
   const paused = st.state === "paused";
   $("lamp-player").className = "lamp" + (state.player.running ? " on" : "");
   const pump = state.pump;
-  $("lamp-pump").className = "lamp" + (pump.on ? (state.warming_up_s > 0 ? " warm" : " on") : "");
-  $("lamp-pump").textContent = pump.configured ? (state.warming_up_s > 0 ? `wind in ${Math.ceil(state.warming_up_s)} s` : "pump") : "pump (manual)";
+  const powered = state.power && state.power.configured ? state.power.on : true;
+  $("lamp-pump").className = "lamp" + ((pump.on || (state.power && state.power.configured && state.power.on)) ? (state.warming_up_s > 0 ? " warm" : " on") : "");
+  $("lamp-pump").textContent = state.warming_up_s > 0 ? `wind in ${Math.ceil(state.warming_up_s)} s`
+    : pump.configured ? (pump.on ? "pump" : (powered ? "pump off" : "organ off")) : (state.power && state.power.configured ? (powered ? "power" : "organ off") : "pump (manual)");
   let line;
   if (st.state === "playing") line = `${st.song}  ${fmt(st.position_s)} / ${fmt(st.length_s)}`;
   else if (paused) line = `paused  ${st.song}  ${fmt(st.position_s)} / ${fmt(st.length_s)}`;
@@ -425,13 +427,18 @@ $("bd-factory").onclick = () => { if (confirm("Return every board to its compile
 
 /* ---- service ---------------------------------------------------------- */
 $("btn-reset").onclick = () => { if (confirm("Reset all driver boards? Every note drops and the boards run their exercise routine.")) act("/api/service/reset", {}, "boards reset"); };
+$("btn-power-on").onclick = () => act("/api/service/power", { on: true }, "organ power on");
+$("btn-power-off").onclick = () => act("/api/service/power", { on: false }, "organ power off");
 $("btn-pump-on").onclick = () => act("/api/service/pump", { on: true }, "pump on");
 $("btn-pump-off").onclick = () => act("/api/service/pump", { on: false }, "pump off");
 
 function renderService() {
-  const pumpless = !state.pump.configured;
+  const pumpless = !state.pump.configured, powerless = !(state.power && state.power.configured);
   $("btn-pump-on").disabled = pumpless; $("btn-pump-off").disabled = pumpless;
-  $("service-note").textContent = pumpless ? "No pump relay configured (--pump GPIO)." : "";
+  $("btn-power-on").disabled = powerless; $("btn-power-off").disabled = powerless;
+  $("btn-power-on").classList.toggle("active", !powerless && state.power.on);
+  $("btn-pump-on").classList.toggle("active", !pumpless && state.pump.on);
+  $("service-note").textContent = [powerless ? "no power relay (--power GPIO)" : "", pumpless ? "no pump relay (--pump GPIO)" : ""].filter(Boolean).join(" · ");
   const busy = !state.idle;
   $("keys-busy").hidden = !busy;
   $("keys").classList.toggle("disabled", busy);
