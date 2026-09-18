@@ -1,14 +1,19 @@
 # Plan for organ_transcribe: M.U.L.E. theme (Roy Glover, 1983), from a
 # three-track GM file: bass, a guitar melody in the tenor register, drums.
-# The tune goes to the Melody rank an octave up and to TenorCM at written
-# pitch, where the guitar actually sits; the treble takes a third above.
-# The bass stays on the four Base pipes with spill-over to the accompaniment.
+# Shape: bass intro to 12 s; A (12-31 s); a bass break; B (43-56 s), busier
+# and higher; A again (56-68 s); a low tag on the melody track at the end.
+# The tune goes to the Melody rank an octave up throughout. In A the tenor
+# doubles it at written pitch, where the guitar sits; in B the treble takes
+# over, two octaves up, a plain doubling -- a diatonic third was tried and
+# the tune's blues scale (G, G#, A) made a mess of it. max_fold drops what
+# would have to move too far: the low tag never reaches the melody ranks.
 transpose: -3
 voices:
-- {source: Bass#1, rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment}
-- {source: Melody#2, rank: Melody, role: melody, max_poly: 1, weight: 3.0}
-- {source: Melody#2, rank: TenorCM, role: counter, max_poly: 1, weight: 1.5}
-- {source: Melody#2, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, derive: thirds}
+- {source: Bass#1, rank: 'Accompainment:Base', role: bass, max_poly: 1, weight: 2.0, fallback: Accompainment, max_fold: 2}
+- {source: Melody#2, rank: Melody, role: melody, max_poly: 1, weight: 3.0, max_fold: 2}
+- {source: Melody#2, rank: TenorCM, role: counter, max_poly: 1, weight: 1.5, until: 43.4, max_fold: 1}
+- {source: Melody#2, rank: TenorCM, role: counter, max_poly: 1, weight: 1.5, from: 55.7, max_fold: 1}
+- {source: Melody#2, rank: TrebCM, role: counter, max_poly: 1, weight: 1.0, from: 43.4, until: 55.7, max_fold: 2}
 drums:
   source: Percussion#3
   map: {35: bass, 36: bass, 38: snare, 40: snare, 37: snare}

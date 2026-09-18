@@ -296,6 +296,10 @@ class Voice:
     # embellishments a band-organ arranger writes by hand.
     derive: str | None = None
     derive_step: float = 0.5
+    # Optional: the most octaves a note may be moved to reach the rank. Beyond
+    # that it is dropped rather than folded: a bass note three octaves up is
+    # no longer a bass note, and a rest is better than a wrong register.
+    max_fold: int | None = None
 
     @property
     def windowed(self) -> bool:
@@ -351,7 +355,8 @@ class Plan:
                                                ("lowest", v.lowest), ("highest", v.highest),
                                                ("tremolo", v.tremolo_ms), ("align", v.align_ms),
                                                ("derive", v.derive),
-                                               ("derive_step", v.derive_step if v.derive == "arpeggio" else None))
+                                               ("derive_step", v.derive_step if v.derive == "arpeggio" else None),
+                                               ("max_fold", v.max_fold))
                         if val is not None}
                        for v in self.voices],
             "drums": {"source": self.drums_source, "map": dict(self.drum_map), "leader": self.leader},
@@ -372,7 +377,8 @@ class Plan:
                             int(v["tremolo"]) if v.get("tremolo") is not None else None,
                             int(v["align"]) if v.get("align") is not None else None,
                             str(v["derive"]).lower() if v.get("derive") else None,
-                            float(v.get("derive_step", 0.5)))
+                            float(v.get("derive_step", 0.5)),
+                            int(v["max_fold"]) if v.get("max_fold") is not None else None)
                       for v in d.get("voices", [])]
             for v in voices:
                 if v.derive not in (None, "arpeggio", "thirds"):
@@ -699,7 +705,7 @@ def clip_legato(notes: list[Note]) -> list[Note]:
     return out
 
 
-def place_in_rank(p: int, prev: float, rank: Rank) -> tuple[int, bool]:
+def place_in_rank(p: int, prev: float, rank: Rank, limit: int | None = None) -> tuple[int, bool]:
     """Where pitch p lands on a rank, and whether it lands on a pipe.
 
     Octave candidates inside the rank's compass are preferred if they actually
@@ -711,6 +717,12 @@ def place_in_rank(p: int, prev: float, rank: Rank) -> tuple[int, bool]:
     nearest by pitch class, and it is not exact.
     """
     candidates = [c for c in range(p % 12, 128, 12) if rank.lo <= c <= rank.hi]
+    if limit is not None:
+        # a fold limit: the octaves within it come first, so a note is never
+        # dropped for being far when a nearer pipe would have done
+        within = [c for c in candidates if abs(c - p) <= limit and c in rank.notes]
+        if within:
+            candidates = within
     if candidates:
         target = min(candidates, key=lambda c: (c not in rank.notes,
                                                  abs(c - prev) + 0.3 * abs(c - rank.center)))
@@ -720,18 +732,32 @@ def place_in_rank(p: int, prev: float, rank: Rank) -> tuple[int, bool]:
 
 
 def fold_voice(notes: list[Note], rank: Rank, shift: int, snap: bool, stats: VoiceStats,
-               report: list[str], origin: str, fallback: Rank | None = None) -> list[Placed]:
+               report: list[str], origin: str, fallback: Rank | None = None,
+               max_fold: int | None = None) -> list[Placed]:
     """Transpose and place each note on its rank; spill to the fallback rank
     when the first has no pipe for it; snap to the nearest pipe (or drop) when
-    neither does."""
+    neither does. With max_fold, a note that would have to move more than
+    that many octaves is dropped instead of folded."""
     placed: list[Placed] = []
     prev = rank.center
+    limit = None if max_fold is None else 12 * max_fold
+
+    def too_far(where: int) -> bool:
+        if limit is None or abs(where - p) <= limit:
+            return False
+        stats.dropped += 1
+        report.append(f"{fmt_time(n.start)}  {origin}: {note_name(p)} would fold {abs(where - p) // 12} octaves "
+                      f"to {note_name(where)}; dropped (max_fold {max_fold})")
+        return True
+
     for n in sorted(notes, key=lambda n: (n.start, n.pitch)):
         p = n.pitch + shift
-        target, exact = place_in_rank(p, prev, rank)
+        target, exact = place_in_rank(p, prev, rank, limit)
         if not exact and fallback is not None:
-            alt, alt_exact = place_in_rank(p, prev, fallback)
+            alt, alt_exact = place_in_rank(p, prev, fallback, limit)
             if alt_exact:
+                if too_far(alt):
+                    continue
                 stats.spilled += 1
                 if alt != p:
                     stats.folded += 1
@@ -750,6 +776,8 @@ def fold_voice(notes: list[Note], rank: Rank, shift: int, snap: bool, stats: Voi
                           f"(nearest pipe on {rank.name})")
             target = snapped
         elif target != p:
+            if too_far(target):
+                continue
             stats.folded += 1
         prev = target
         placed.append(Placed(rank.track, target, n.start, n.end, origin))
@@ -965,6 +993,9 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
             scale = implied_scale(notes)
             lines.append(f"{src.name} ({v.role}): played a diatonic third above, in the scale "
                          + " ".join(NOTE_NAMES[pc] for pc in scale))
+            if any(pc in scale and (pc + 1) % 12 in scale and (pc + 2) % 12 in scale for pc in range(12)):
+                lines.append(f"{src.name} ({v.role}): that scale has three semitones in a row -- a blues or "
+                             "chromatic tune -- so the thirds will be unreliable; a plain doubling may sound better")
         if v.max_poly == 1:
             notes = clip_legato(notes)
         if v.tremolo_ms:
@@ -975,7 +1006,7 @@ def transcribe(mid: mido.MidiFile, organ: oa.Organ, plan: Plan | None = None,
                              f"{before} notes -> {len(notes)}")
         stats.thinned = thinned
         placed.extend(fold_voice(notes, ranks[v.rank], shift, snap, stats, lines, f"{src.name} ({v.role})",
-                                 fallback=ranks.get(v.fallback) if v.fallback else None))
+                                 fallback=ranks.get(v.fallback) if v.fallback else None, max_fold=v.max_fold))
         voice_stats[v.slot] = stats
         if v.role == ROLE_MELODY and selected:
             first = min(n.start for n in selected)
@@ -1189,6 +1220,7 @@ def main(argv: list[str] | None = None) -> int:
             "# align: N (ms) snaps a voice's onsets within N of a melody onset onto it (no flams).\n"
             "# derive: arpeggio (chords -> moving line, derive_step beats per tone) or thirds\n"
             "# (a melody a diatonic third above) makes a counter line out of the material.\n"
+            "# max_fold: N drops a note that would have to move more than N octaves to fit.\n"
             + yaml.safe_dump(result.plan.to_dict(), sort_keys=False, default_flow_style=None),
             encoding="utf-8")
     if not a.quiet:

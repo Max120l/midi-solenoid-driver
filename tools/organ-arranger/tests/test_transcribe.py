@@ -720,3 +720,39 @@ def test_derive_arpeggio_walks_when_chords_change_faster_than_the_step():
     line = ot.derive_arpeggio(stabs, lambda at: 0.25)
     assert [n.pitch for n in line] == [48, 52, 55, 52, 48, 52]
     assert all(abs(n.end - n.start - 0.1) < 1e-9 for n in line)          # keeps the punched length
+
+
+def test_max_fold_drops_what_would_move_too_far_and_prefers_the_nearer_octave():
+    # Main:high is C5-C6. C2 would have to climb three octaves; G3 two; G4 one.
+    org = organ()
+    line = notes(0, [36, 55, 67, 79], start=0, length=BEAT, step=BEAT)
+    mid = tune(track("Lead", line))
+
+    def run(max_fold):
+        plan = ot.Plan.from_dict({
+            "transpose": 0,
+            "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody", "max_fold": max_fold}],
+            "drums": {"source": None, "map": {}}, "registration": [],
+        })
+        r = ot.transcribe(mid, org, plan)
+        return r, sorted(n for _, _, n in out_notes(r.mid, "Main")), r.voice_stats[plan.voices[0].slot]
+
+    r, pitches, st = run(2)
+    assert pitches == [79, 79, 79] and st.dropped == 1 and st.kept == 3
+    assert any("would fold 3 octaves" in ln and "max_fold 2" in ln for ln in r.lines)
+    r, pitches, st = run(1)
+    assert pitches == [79, 79] and st.dropped == 2
+    r, pitches, st = run(None)
+    assert st.dropped == 0 and st.kept == 4                        # no limit: everything folds, as before
+    # the limit steers the choice of octave: after A5, C3 would follow the voice
+    # leading up to C6 (three octaves); with max_fold 2 it takes C5 instead of being dropped
+    mid2 = tune(track("Lead", notes(0, [81, 48], start=0, length=BEAT, step=BEAT)))
+    def run2(max_fold):
+        plan = ot.Plan.from_dict({"transpose": 0, "voices": [{"source": "Lead#1", "rank": "Main:high", "role": "melody", "max_fold": max_fold}],
+                                  "drums": {"source": None, "map": {}}, "registration": []})
+        return plan, [n for _, _, n in out_notes(ot.transcribe(mid2, org, plan).mid, "Main")]
+    assert run2(None)[1] == [81, 84]
+    plan, pitches = run2(2)
+    assert pitches == [81, 72]
+    again = ot.Plan.from_dict(yaml.safe_load(yaml.safe_dump(plan.to_dict())))
+    assert again.voices[0].max_fold == 2
