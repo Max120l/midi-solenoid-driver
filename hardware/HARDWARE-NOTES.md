@@ -373,10 +373,14 @@ neutral and earth go straight through. If the Pi is on and a tune is
 played while the switch is in Book, the SSR closes in parallel with the
 manual contact, which is harmless.
 
-Turning Auto off cuts the Pi's mains. The front desk's **Shut down** button
-takes the pump and the 12 V down and powers the Pi off first; turn the
-switch off once the screen is dark. Pi OS usually survives a hard cut, but
-the habit removes the "usually".
+Turning Auto off cuts the Pi's mains, so the Pi is shut down first, with
+the organ's everyday switch: an antique 5 A toggle, wired between **GPIO 3
+(physical pin 5) and ground**, carrying microamps. Open, the front desk
+stops the music, drops the pump and the 12 V, and powers the Pi off
+(`--power-switch 3`); closed again, the halted Pi wakes, which that pin does
+in hardware. Then the panel switch is turned off once the screen is dark.
+Pi OS usually survives a hard cut, but the sequence removes the "usually".
+Leave I²C disabled, since GPIO 3 is its clock.
 
 ### The 12 V supply, and switching it from the Pi
 

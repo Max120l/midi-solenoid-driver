@@ -26,6 +26,7 @@ ExecStart=/usr/bin/python3 organ_web.py \
     --port 8080
 # When the pump SSR exists, add:  --pump 24
 # When the ATX PS_ON opto exists, add:  --power 25   (the organ's 12 V under the app's control)
+# The antique on-off switch, GPIO 3 to ground:  --power-switch 3   (open = shut down; closed wakes a halted Pi)
 # The status file is small and rewritten every second; keep the state folder
 # on the SD card only if you do not mind that, or point --state at /dev/shm
 # for status alone is not possible -- it holds the playlists too. tmpfs at

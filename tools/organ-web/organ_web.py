@@ -1286,6 +1286,36 @@ def create_app(desk: Desk):
     return app
 
 
+class PowerSwitch:
+    """A toggle switch between a GPIO and ground as the organ's on-off switch.
+    Closed is on. When it opens, the desk shuts the organ down and the Pi
+    powers off; a halted Pi wakes when GPIO 3 is pulled low, so on that pin
+    the same switch turns it back on with no software at all."""
+
+    def __init__(self, desk: Desk, button, out=None) -> None:
+        self.desk = desk
+        self.button = button
+        self.out = out or sys.stderr
+        self.fired = False
+        button.when_released = self.off
+        if not button.is_pressed:               # already in the off position when we come up
+            self.off()
+
+    def off(self) -> None:
+        if self.fired:
+            return
+        self.fired = True
+        print("power switch off: shutting down", file=self.out, flush=True)
+        threading.Thread(target=self._shutdown, name="power-switch", daemon=True).start()
+
+    def _shutdown(self) -> None:
+        try:
+            self.desk.shutdown()
+        except Exception as e:
+            print(f"power switch: {e}", file=self.out, flush=True)
+            self.fired = False                  # let the switch be tried again
+
+
 def housekeeping(desk: Desk, stop: threading.Event) -> None:
     while not stop.is_set():
         try:
@@ -1308,6 +1338,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pump-active-low", action="store_true")
     p.add_argument("--power", type=int, metavar="GPIO", help="BCM GPIO switching the organ's 12 V supply (an ATX PS_ON through an opto)")
     p.add_argument("--power-active-low", action="store_true")
+    p.add_argument("--power-switch", type=int, metavar="GPIO",
+                   help="a toggle switch to ground on this GPIO is the organ's on-off switch; on GPIO 3 it also wakes a halted Pi")
     p.add_argument("--reset-pins", default="17", help="BCM GPIOs of the boards' reset line(s), comma-separated (default 17)")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
@@ -1343,6 +1375,19 @@ def main(argv: list[str] | None = None) -> int:
     pump = relay(cfg.pump_pin, cfg.pump_active_low, "--pump")
     power = relay(cfg.power_pin, cfg.power_active_low, "--power")
     desk = Desk(cfg, pump=pump, power=power)
+    switch = None
+    if a.power_switch is not None and not cfg.dry_run:
+        try:
+            from gpiozero import Button
+            switch = PowerSwitch(desk, Button(a.power_switch, pull_up=True, bounce_time=0.2))
+        except ImportError:
+            print("error: --power-switch needs gpiozero: pip install gpiozero lgpio", file=sys.stderr)
+            return 2
+    # systemd stops us with SIGTERM: leave the way the Shut down button does, pump and 12 V off in order
+    def on_term(signum, frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, on_term)
     app = create_app(desk)
     stop = threading.Event()
     threading.Thread(target=housekeeping, args=(desk, stop), name="housekeeping", daemon=True).start()
@@ -1350,9 +1395,16 @@ def main(argv: list[str] | None = None) -> int:
           + ("  (dry run)" if cfg.dry_run else ""), flush=True)
     try:
         app.run(host=cfg.host, port=cfg.port, threaded=True, use_reloader=False)
+    except KeyboardInterrupt:
+        pass
     finally:
         stop.set()
         desk.close()
+        if switch is not None:
+            try:
+                switch.button.close()
+            except Exception:
+                pass
     return 0
 
 

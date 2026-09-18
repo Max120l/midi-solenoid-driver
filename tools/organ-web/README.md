@@ -121,6 +121,7 @@ tune, playlist or job) or 409 (the player is busy; no pump configured).
 | `--python EXE` | this interpreter | runs the player and the arranger |
 | `--pump GPIO`, `--pump-active-low` | none | the bellows pump relay |
 | `--power GPIO`, `--power-active-low` | none | the organ's 12 V supply: an ATX supply's PS_ON pulled low through an opto; on before the pump, off after it, and switched on for the Service actions |
+| `--power-switch GPIO` | none | a toggle switch between this GPIO and ground is the organ's on-off switch: opening it does what Shut down does; on GPIO 3 (pin 5) closing it also wakes a halted Pi |
 | `--reset-pins 17` | `17` | the boards' reset line(s), for the Service page |
 | `--host`, `--port` | `0.0.0.0`, `8080` | where to listen |
 | `--dry-run` | | no serial port, no GPIO |
@@ -146,7 +147,15 @@ massie ALL=(root) NOPASSWD: /bin/systemctl poweroff
 
 Then a shutdown from the page takes the pump and the 12 V down first and
 the Pi powers off within a few seconds; the panel switch is turned off once
-the screen is dark. Cutting the mains with the Pi running usually does no
+the screen is dark.
+
+Better than the button is a real switch: `--power-switch 3` watches a
+toggle switch wired between GPIO 3 (physical pin 5) and any ground pin.
+Opening it is the Shut down button; closing it again wakes the halted Pi,
+which is a property of that pin and needs no software. Any switch will do,
+since it carries microamps -- an antique 5 A one included. GPIO 3 is the
+I²C clock, so leave I²C off in raspi-config, which it is by default. The
+same sudoers line applies. Cutting the mains with the Pi running usually does no
 harm, but a shutdown first is the habit that makes "usually" go away. `systemctl stop organ-web`
 sends SIGTERM, which the player takes as a clean stop: the organ is silenced
 and the pump switched off before anything exits.

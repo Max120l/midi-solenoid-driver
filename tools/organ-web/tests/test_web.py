@@ -433,6 +433,39 @@ def test_shutdown_takes_the_organ_down_before_the_pi(desk):
     desk.cfg.dry_run = True
 
 
+class FakeButton:
+    def __init__(self, pressed=True):
+        self.is_pressed = pressed
+        self.when_released = None
+
+    def open(self):
+        self.is_pressed = False
+        if self.when_released:
+            self.when_released()
+
+
+def test_the_power_switch_shuts_down_when_opened_and_at_once_if_already_open(desk):
+    import time as _t
+    desk.power = w.FakePump()
+    desk.add(["marches/bogey.organ.mid"])
+    desk.play()
+    assert desk.power_on
+    b = FakeButton(pressed=True)
+    err = io.StringIO()
+    sw = w.PowerSwitch(desk, b, out=err)
+    assert not sw.fired
+    b.open()
+    for _ in range(50):
+        if not desk.power_on:
+            break
+        _t.sleep(0.02)
+    assert sw.fired and not desk.power_on and not desk.pump_on and "shutting down" in err.getvalue()
+    # coming up with the switch already off: shut down straight away
+    desk2_button = FakeButton(pressed=False)
+    sw2 = w.PowerSwitch(desk, desk2_button, out=err)
+    assert sw2.fired
+
+
 def test_the_player_process_is_restarted_after_it_dies(desk):
     desk.housekeep()
     assert len(desk.procs) == 1
