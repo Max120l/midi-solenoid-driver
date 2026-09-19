@@ -23,10 +23,14 @@ ExecStart=/usr/bin/python3 organ_web.py \
     --organ /home/massie/organ/tools/organ-arranger/instrument/organ.yaml \
     --state /home/massie/.local/share/organ-web \
     --device /dev/serial0 \
-    --port 8080
-# When the pump SSR exists, add:  --pump 24
-# When the ATX PS_ON opto exists, add:  --power 25   (the organ's 12 V under the app's control)
-# The antique on-off switch, GPIO 3 to ground:  --power-switch 3   (open = shut down; closed wakes a halted Pi)
+    --port 8080 \
+    --pump 24 \
+    --power 25 \
+    --power-switch 3
+# --pump 24: the SSR for the bellows motor.  --power 25: the ATX PS_ON opto,
+# the organ's 12 V under the app's control.  --power-switch 3: the antique
+# on-off switch, GPIO 3 to ground (open = shut down; closed wakes a halted Pi).
+# Drop a flag if that piece of hardware is not there; the app then says so.
 # The status file is small and rewritten every second; keep the state folder
 # on the SD card only if you do not mind that, or point --state at /dev/shm
 # for status alone is not possible -- it holds the playlists too. tmpfs at
