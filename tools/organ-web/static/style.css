@@ -232,7 +232,7 @@ label.setting input[type=number] { margin-left: 10px; }
 [data-theme="lcars"] #keys .key { border: none; border-radius: 12px; background: var(--lc-blue); color: #000; }
 [data-theme="lcars"] #keys .block:nth-child(even) .key { background: var(--lc-lav); }
 [data-theme="lcars"] #keys .key .n { color: #000; opacity: .7; }
-[data-theme="lcars"] #keys .key.on { background: #fff; }
+[data-theme="lcars"] #keys .key.on, [data-theme="lcars"] #keys .block:nth-child(even) .key.on { background: #fff; }
 
 [data-theme="lcars"] #toast { background: var(--lc-orange); color: #000; border-radius: 999px; }
 [data-theme="lcars"] #toast.error { background: var(--lc-red); }
