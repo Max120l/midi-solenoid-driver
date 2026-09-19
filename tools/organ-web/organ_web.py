@@ -374,6 +374,7 @@ class Desk:
         self.pump_on = False
         self.power = power                      # the solenoid supply's relay, if the Pi has one
         self.power_on = False
+        self.power_switch = None                # the PowerSwitch, when one is configured
         self.idle_since: float | None = None
         self.status: dict = {}
         self.jobs: dict[str, dict] = {}
@@ -772,6 +773,9 @@ class Desk:
                                  if self.wind_ready_at is not None and self.now() < self.wind_ready_at else 0.0),
                 "pump": {"configured": self.pump is not None, "on": self.pump_on},
                 "power": {"configured": self.power is not None, "on": self.power_on},
+                "switch": ({"configured": True, "closed": bool(self.power_switch.button.is_pressed),
+                            "enabled": bool(self.settings.get("power_switch", True))}
+                           if self.power_switch is not None else {"configured": False}),
                 "player": {"running": self.player.running(), "pid": st.get("pid")},
                 "settings": dict(self.settings),
                 "board_defaults": dict(BOARD_DEFAULTS),
@@ -1303,6 +1307,9 @@ class PowerSwitch:
         self.out = out or sys.stderr
         self.fired = False
         button.when_released = self.off
+        button.when_pressed = lambda: print("power switch closed", file=self.out, flush=True)
+        print(f"power switch watched: contact {'closed' if button.is_pressed else 'open'} at start",
+              file=self.out, flush=True)
         if not button.is_pressed:               # already in the off position when we come up
             self.off()
 
@@ -1388,6 +1395,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             from gpiozero import Button
             switch = PowerSwitch(desk, Button(a.power_switch, pull_up=True, bounce_time=0.2))
+            desk.power_switch = switch
         except ImportError:
             print("error: --power-switch needs gpiozero: pip install gpiozero lgpio", file=sys.stderr)
             return 2

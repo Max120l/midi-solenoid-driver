@@ -453,7 +453,9 @@ def test_the_power_switch_shuts_down_when_opened_and_at_once_if_already_open(des
     b = FakeButton(pressed=True)
     err = io.StringIO()
     sw = w.PowerSwitch(desk, b, out=err)
-    assert not sw.fired
+    desk.power_switch = sw
+    assert not sw.fired and desk.snapshot()["switch"] == {"configured": True, "closed": True, "enabled": True}
+    assert "contact closed at start" in err.getvalue()
     b.open()
     for _ in range(50):
         if not desk.power_on:
