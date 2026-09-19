@@ -1086,9 +1086,11 @@ class Desk:
 # ----------------------------------------------------------------------------
 
 def create_app(desk: Desk):
+    import logging
     from flask import Flask, jsonify, request, send_from_directory
 
     app = Flask(__name__, static_folder=str(HERE / "static"), static_url_path="/static")
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)      # the page polls once a second; the journal need not hear it
 
     def body() -> dict:
         return request.get_json(silent=True) or {}
