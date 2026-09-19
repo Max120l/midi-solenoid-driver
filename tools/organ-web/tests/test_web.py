@@ -99,6 +99,17 @@ def status(d, **fields):
     d.cfg.status_file.write_text(json.dumps({"time": time.time() + 1, "pid": 4242, **fields}), encoding="utf-8")
 
 
+def test_the_page_token_changes_when_a_page_file_changes(tmp_path, desk):
+    import os
+    (tmp_path / "app.js").write_text("x", encoding="utf-8")
+    (tmp_path / "style.css").write_text("y", encoding="utf-8")
+    before = w.static_build(tmp_path)
+    os.utime(tmp_path / "style.css", (before + 10, before + 10))
+    assert w.static_build(tmp_path) == before + 10
+    assert w.static_build(tmp_path / "missing") == 0
+    assert desk.snapshot()["build"] == w.static_build()                     # the desk reports it
+
+
 def test_a_stale_idle_report_does_not_clear_a_freshly_written_queue(desk):
     desk.pump = None
     desk.add(["marches/bogey.organ.mid"])

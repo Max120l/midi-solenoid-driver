@@ -7,6 +7,7 @@ const fmt = (s) => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 let state = null;
+let build = null;                 // the server's page-files token: when it changes, the page reloads itself
 let library = { tunes: [], folders: [] };
 let folder = "";
 let playlistOpen = null;
@@ -51,6 +52,8 @@ function showTab(name) {
 /* ---- state ------------------------------------------------------------ */
 async function refresh() {
   try { state = await api("/api/state"); } catch (e) { $("now-line").textContent = "no connection"; return; }
+  if (build !== null && state.build !== build) { location.reload(); return; }
+  build = state.build;
   renderNow(); renderQueue(); renderSettings(); renderBoards(); renderService(); renderNav(); renderScreen();
 }
 

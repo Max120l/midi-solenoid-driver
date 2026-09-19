@@ -51,6 +51,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+
+def static_build(folder: Path = HERE / "static") -> int:
+    """A token that changes whenever a page file changes on disk: the newest mtime.
+    The page compares it every second and reloads itself, so a git pull reaches a
+    kiosk that has been showing the page for a week."""
+    try:
+        return max(int(f.stat().st_mtime) for f in folder.iterdir() if f.is_file())
+    except (OSError, ValueError):
+        return 0
 TOOLS = HERE.parent
 sys.path.insert(0, str(TOOLS / "player"))
 sys.path.insert(0, str(TOOLS / "organ-config"))
@@ -786,6 +796,7 @@ class Desk:
                 "held": self.held,
                 "dry_run": self.cfg.dry_run,
                 "version": __version__,
+                "build": static_build(),
             }
 
     # -- playlists ------------------------------------------------------------
@@ -1112,6 +1123,14 @@ def create_app(desk: Desk):
     @app.get("/")
     def index():
         return send_from_directory(app.static_folder, "index.html")
+
+    @app.after_request
+    def revalidate(resp):
+        """Page files may be cached but must be asked about on every load, so a reload
+        after a git pull always gets the new stylesheet and script."""
+        if request.path == "/" or request.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @app.get("/api/state")
     def state():
