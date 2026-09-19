@@ -350,6 +350,28 @@ thermal protector. An MOV across terminals 1 and 2 takes the motor's
 switch-off kick. The output leaks a milliamp or two when off: the motor
 does not turn, but the wires are live until the switch says otherwise.
 
+### The Pi's header
+
+Pin 1 top left with the board's edge at the top; odd pins inner row, even
+pins outer row. Each line is paired with the nearest ground so every cable
+is a short twisted pair. The MIDI pair has no ground: TX is its return.
+
+| Pin | | Ours | Pin | | Ours |
+|---|---|---|---|---|---|
+| 1 | 3.3 V | MIDI: 6N137 IN+ | 2 | 5 V | free (the Pi is fed by USB-C) |
+| 3 | GPIO 2 SDA | free, I²C off | 4 | 5 V | free |
+| 5 | GPIO 3 SCL | on/off switch | 6 | GND | on/off switch |
+| 7 | GPIO 4 | | 8 | GPIO 14 TXD | MIDI: 6N137 IN- |
+| 9 | GND | reset opto cathode | 10 | GPIO 15 RXD | free |
+| 11 | GPIO 17 | reset: 330 Ω, PC817 B anode | 12 | GPIO 18 | |
+| 17 | 3.3 V | | 18 | GPIO 24 | pump: SSR 3 (+) |
+| 19 | GPIO 10 | | 20 | GND | pump: SSR 4 (-) |
+| 21 | GPIO 9 | | 22 | GPIO 25 | 12 V on: 330 Ω, PC817 A anode |
+| 25 | GND | 12 V on opto cathode | 26 | GPIO 7 | |
+| 27 | ID_SD | never | 28 | ID_SC | never |
+
+Pins not listed are free. Nothing on the organ's side touches any pin here.
+
 ### The box, wired
 
 Everything that is not a pipe, drawn once. Two halves, one aluminium case,
