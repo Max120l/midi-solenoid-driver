@@ -465,6 +465,17 @@ Pi GND ────────────── PC817 pin 2 (cathode)
 ```
 
 The 5 V standby rail keeps the PS_ON logic alive while the rest is dark.
+
+Found on the bench (2026-09-19): a ready-made PC817 module came with **3 kΩ on
+the input and 3 kΩ in series with the output**, meant for 12-24 V inputs and a
+logic-level output. From 3.3 V the LED got 0.7 mA, a tenth of what it needs
+(it read 1.0 V instead of 1.2 V), and even a bright LED could not pull PS_ON
+below 5 × 3k / (1k + 3k) = 3.75 V against the supply's ~1 kΩ pull-up, where
+under 0.8 V is wanted. Replacing the input resistor with 330 Ω and bridging
+the output one fixed it; the reset channel on the same kind of module needs
+the same. A bare PC817 with a 330 Ω resistor has no such surprises. The test
+is always the same: drive the GPIO high and measure the far side to its own
+ground -- PS_ON to an ATX black, ISP pin 5 to organ ground -- under 0.8 V.
 organ_web drives it as `--power GPIO`: on before the pump, off after the
 idle time-out, and on again for the Service actions, which wait a moment
 for the boards to boot. Every power-up runs the boards' exercise routine,
