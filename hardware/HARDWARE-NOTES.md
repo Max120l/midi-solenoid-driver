@@ -476,8 +476,8 @@ The 12 V comes from a **12 V-only computer supply** (Lenovo FRU
 SP50H29523: 15 A, its own fan), chosen 2026-09-21 over an ATX unit: one
 rail, so it regulates on the load it has and wants no token load on a 5 V
 it does not have. Several wires in parallel each way to the bus bars. Its
-on pin is soldered to its +12 V, which on this unit means run whenever
-mains is present, so the supply runs whenever the panel switch is in Auto and nothing waits on the Pi: the bus, the boards, the
+connector is cut off; the on wire, the green one, is soldered to its
++12 V, which on this unit means run whenever mains is present, so the supply runs whenever the panel switch is in Auto and nothing waits on the Pi: the bus, the boards, the
 fan and the Pi itself all come up together. The fan has two leads and no
 thermostat, so it turns whenever the supply does: cooling for the SSR that
 is hardware sure, on whenever the SSR can be warm. 15 A is generous: the four boards
