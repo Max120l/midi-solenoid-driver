@@ -120,7 +120,7 @@ tune, playlist or job) or 409 (the player is busy; no pump configured).
 | `--device DEV` | `/dev/serial0` | the MIDI line, passed to the player and used by the keys tester |
 | `--python EXE` | this interpreter | runs the player and the arranger |
 | `--pump GPIO`, `--pump-active-low` | none | the bellows pump relay |
-| `--power GPIO`, `--power-active-low` | none | the organ's 12 V supply: an ATX supply's PS_ON pulled low through an opto; on before the pump, off after it, and switched on for the Service actions |
+| `--power GPIO`, `--power-active-low` | none | the organ's 12 V supply: an ATX supply's PS_ON pulled low through an opto; on before the pump, off after it, and switched on for the Service actions. Pellevoisin leaves it out: its 12 V is on whenever the panel switch is in Auto |
 | `--power-switch GPIO` | none | a toggle switch between this GPIO and ground is the organ's on-off switch: opening it does what Shut down does; on GPIO 3 (pin 5) closing it also wakes a halted Pi |
 | `--reset-pins 17` | `17` | the boards' reset line(s), for the Service page |
 | `--host`, `--port` | `0.0.0.0`, `8080` | where to listen |

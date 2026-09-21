@@ -358,20 +358,19 @@ is a short twisted pair. The MIDI pair has no ground: TX is its return.
 
 | Pin | | Ours | Pin | | Ours |
 |---|---|---|---|---|---|
-| 1 | 3.3 V | MIDI: 6N137 IN+ | 2 | 5 V | free (the Pi is fed by USB-C) |
+| 1 | 3.3 V | MIDI: 6N137 IN+ | 2 | 5 V | free (the Pi is fed by USB-C from the SD-25A-5) |
 | 3 | GPIO 2 SDA | free, I²C off | 4 | 5 V | free |
 | 5 | GPIO 3 SCL | on/off switch | 6 | GND | on/off switch |
 | 7 | GPIO 4 | | 8 | GPIO 14 TXD | MIDI: 6N137 IN- |
 | 9 | GND | reset opto cathode | 10 | GPIO 15 RXD | free |
-| 11 | GPIO 17 | reset: 330 Ω, PC817 B anode | 12 | GPIO 18 | |
+| 11 | GPIO 17 | reset: 330 Ω, PC817 anode | 12 | GPIO 18 | |
 | 13 | GPIO 27 | status LED: 330 Ω, LED anode | 14 | GND | status LED cathode |
 | 17 | 3.3 V | | 18 | GPIO 24 | pump: SSR 3 (+) |
 | 19 | GPIO 10 | | 20 | GND | pump: SSR 4 (-) |
-| 21 | GPIO 9 | | 22 | GPIO 25 | 12 V on: 330 Ω, PC817 A anode |
-| 25 | GND | 12 V on opto cathode | 26 | GPIO 7 | |
 | 27 | ID_SD | never | 28 | ID_SC | never |
 
-Pins not listed are free. Nothing on the organ's side touches any pin here.
+Pins not listed are free, GPIO 25 and pin 25 among them since the PS_ON
+opto went (2026-09-21). Nothing on the organ's side touches any pin here.
 
 ### The status LED
 
@@ -399,33 +398,33 @@ pair on pins 13 and 14 is one more short twisted pair.
 ### The box, wired
 
 Everything that is not a pipe, drawn once. Two halves, one aluminium case,
-and exactly four things cross between them, each by light: the MIDI opto,
-the reset opto, the PS_ON opto and the SSR.
+and exactly four things cross between them, three by light and one by a
+transformer: the MIDI opto, the reset opto, the SSR, and the isolated
+converter that makes the Pi's 5 V from the 12 V bus.
 
 ```
 MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case ──── motor frame
-                              ├─ N ──────────────┬───────────────┬──────────────── motor N
-                              │                  ATX N          Pi PSU N
+                              ├─ N ──────────────┬──────────────────────────────── motor N
+                              │                  ATX N
                               └─ L ── PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
                                        pole A common ─┬─ BOOK ────────────────────────► motor L
                                                       └─ AUTO ─► SSR 1 ── SSR 2 ───────► motor L
-                                       pole B common ─── AUTO ─► ATX L  and  Pi PSU L
+                                       pole B common ─── AUTO ─► ATX L   (PS_ON tied to ATX GND: on with Auto)
                                        (OFF: neither pole connected; the ATX fan cools the box in Auto)
 
-ORGAN SIDE (the ATX's ground)                        PI SIDE (the Pi PSU's ground)
-ATX 12 V, several yellows ─► 12 V bus bar            Pi PSU 5 V ─USB-C─► Pi 4
-ATX GND, several blacks ──► organ GND bus bar        DSI ribbon ─► touchscreen
-12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 3 (pin 5) ── antique switch ── Pi GND   on/off
-last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
-RJ12 pin 1 = /RESET bus (jumpered board to board)     3.3 V (pin 1) ────── 6N137 IN+
-RJ12: MIDI signal, GND, as shipped                    GPIO 24 (pin 18) ── SSR 3 (+)                 pump
-                                                      Pi GND ─────────── SSR 4 (-)
-                                                      GPIO 27 (pin 13) ─[330 Ω]─ LED ─ Pi GND (pin 14)   alive
-6N137 module: VCC ◄ RJ12 pin 6, GND ◄ RJ12 GND,       GPIO 25 (pin 22) ─[330 Ω]─ PC817 A anode      12 V on
-              OUT ► boards' MIDI in                   Pi GND ─────────────────── PC817 A cathode
-PC817 A: collector ─ ATX PS_ON (green), emitter ─ ATX GND
-                                                      GPIO 17 (pin 11) ─[330 Ω]─ PC817 B anode      reset
-PC817 B: collector ─ RJ12 pin 1, emitter ─ RJ12 GND   Pi GND ─────────────────── PC817 B cathode
+ORGAN SIDE (the ATX's ground)                         PI SIDE (the converter's output ground)
+ATX 12 V, several yellows ─► 12 V bus bar             SD-25A-5 +V / -V, trimmed to 5.1 V ─USB-C─► Pi 4
+ATX GND, several blacks ──► organ GND bus bar         DSI ribbon ─► touchscreen
+ATX PS_ON (green) ────────► ATX GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
+12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
+12 V bus ─[2 A fuse]─► SD-25A-5 +Vin, GND bus ► -Vin  3.3 V (pin 1) ────── 6N137 IN+
+         ───── transformer inside the SD-25A-5 ─────  GPIO 24 (pin 18) ── SSR 3 (+)                 pump
+last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      Pi GND (pin 20) ─── SSR 4 (-)
+RJ12 pin 1 = /RESET bus (jumpered board to board)     GPIO 27 (pin 13) ─[330 Ω]─ LED ─ Pi GND (pin 14)   alive
+RJ12: MIDI signal, GND, as shipped                    GPIO 17 (pin 11) ─[330 Ω]─ PC817 anode          reset
+6N137 module: VCC ◄ RJ12 pin 6, GND ◄ RJ12 GND,       Pi GND (pin 9) ─────────── PC817 cathode
+              OUT ► boards' MIDI in
+PC817: collector ─ RJ12 pin 1, emitter ─ RJ12 GND
 SSR 1 / 2: on the mains side, above; MOV across them
 ```
 
@@ -434,7 +433,8 @@ organ GND bus and the Pi's ground; the earth stud carries earth only; mains
 bars shrouded or in covered terminal blocks; mains and low voltage on
 opposite sides of a partition, crossing once at right angles; the SSR's
 heat sink in the ATX fan's stream, paste under it. organ_web: `--pump 24
---power 25 --power-switch 3`, reset on 17 by default.
+--power-switch 3`, reset on 17 by default; `--power` is not used, since the
+12 V is on whenever Auto is.
 
 ### The panel switch: Off / Book / Auto
 
@@ -447,13 +447,14 @@ is the organ's master control:
 pole A: the motor                                pole B: the electronics
 mains L ─ fuse ─┬─ common                        mains L ─ fuse ─┬─ common
    BOOK      1  ├──────────────────► motor          BOOK      1  ├── (nothing)
-   AUTO      2  ├─► SSR 1 ── 2 ───► motor           AUTO      2  ├──► ATX mains in, Pi supply, fan
+   AUTO      2  ├─► SSR 1 ── 2 ───► motor           AUTO      2  ├──► ATX mains in (12 V, fan, and the Pi through its converter)
    OFF       0  ┘                                   OFF       0  ┘
 ```
 
-Book: the motor runs, nothing else has power. Auto: the box comes alive,
-the Pi boots and the ATX waits on standby until the Pi pulls PS_ON; the
-motor runs only when the SSR says so. Off: everything isolated, which the
+Book: the motor runs, nothing else has power. Auto: the ATX starts at
+once, since PS_ON is tied to its ground, and the 12 V bus, the fan, the
+boards and, through the isolated converter, the Pi all come up together;
+the motor runs only when the SSR says so. Off: everything isolated, which the
 SSR alone cannot do since it leaks a milliamp. Only the live is switched;
 neutral and earth go straight through. If the Pi is on and a tune is
 played while the switch is in Book, the SSR closes in parallel with the
@@ -462,58 +463,68 @@ manual contact, which is harmless.
 Turning Auto off cuts the Pi's mains, so the Pi is shut down first, with
 the organ's everyday switch: an antique 5 A toggle, wired between **GPIO 3
 (physical pin 5) and ground**, carrying microamps. Open, the front desk
-stops the music, drops the pump and the 12 V, and powers the Pi off
+stops the music, drops the pump, and powers the Pi off
 (`--power-switch 3`); closed again, the halted Pi wakes, which that pin does
 in hardware. Then the panel switch is turned off once the status LED is dark.
 Pi OS usually survives a hard cut, but the sequence removes the "usually".
 Leave I²C disabled, since GPIO 3 is its clock.
 
-### The 12 V supply, and switching it from the Pi
+### The 12 V supply, and the Pi's 5 V from it
 
-The 12 V comes from an **ATX computer supply**, which puts every rail on
-one ground: so its 12 V feeds the organ, and its 5 V feeds nothing on the
-Pi's side -- the Pi has a supply of its own, double insulated, no earth --
-or the isolation would be undone inside the box. Several yellow wires in
-parallel for the 12 V, several black for the return; a 10 Ω 10 W resistor
-across 5 V to ground if the 12 V regulates badly with nothing else loaded.
+The 12 V comes from an **ATX computer supply**: several yellow wires in
+parallel for the 12 V, several black for the return. Its green wire,
+**PS_ON**, is tied to a black one, so the supply runs whenever the panel
+switch is in Auto and nothing waits on the Pi: the bus, the boards, the
+fan and the Pi itself all come up together. The fan is therefore hardware
+sure, on whenever the SSR can be warm. The ATX's 5 V rail feeds nothing;
+if the 12 V reads above about 12.6 V with the organ idle, the supply wants
+a token load there: a 10 Ω 10 W resistor across 5 V to ground.
 
-An ATX supply starts when its green wire, **PS_ON**, is pulled to its own
-ground. That is on the organ's side of the divide, so the Pi switches the
-whole solenoid supply through an opto, exactly as it drives the reset line:
+The Pi's 5 V is made from the 12 V bus at the Pi's end of the organ by a
+**Mean Well SD-25A-5**, decided 2026-09-21: 9.2-18 V in, 5 V at 5 A out,
+1500 V isolation, a trimmer on the output. The transformer inside it is
+what keeps the Pi's ground off the organ's, so this is the only kind of
+converter that fits; a buck module of any brand, however good, bonds the
+two grounds through its inductor. The proof is the meter: no continuity
+between -Vin and -V unpowered, no DC voltage between them running.
 
-```
-Pi GPIO ──[330 Ω]──► PC817 pin 1 (anode)          Pi side
-Pi GND ────────────── PC817 pin 2 (cathode)
-                      ──────────────────────────── isolation barrier
-                      PC817 pin 4 (collector) ── ATX PS_ON (green)
-                      PC817 pin 3 (emitter)   ── ATX GND (black)
-```
+| | |
+|---|---|
+| +Vin | the 12 V bus, through its own 2 A fuse, with 100 µF across the input terminals |
+| -Vin | the organ GND bus |
+| +V, -V | the Pi's USB-C, through a short bare-ended USB-C pigtail, 20 AWG or better |
+| trimmer | 5.1 V measured at the Pi's header, pins 2 and 6, with the screen lit and a tune playing |
 
-The 5 V standby rail keeps the PS_ON logic alive while the rest is dark.
+The USB-C route keeps the Pi's own input protection in circuit; the trimmer
+takes care of the cable drop. Between the box and the Pi's end only two
+pairs run: the heavy 12 V pair and the SSR's thin pair. The Pi 4 with the
+DSI screen peaks near 2 A, so a 3 A converter would do, and 5 A leaves the
+USB ports their full budget.
 
-Found on the bench (2026-09-19): a ready-made PC817 module came with **3 kΩ on
-the input and 3 kΩ in series with the output**, meant for 12-24 V inputs and a
-logic-level output. From 3.3 V the LED got 0.7 mA, a tenth of what it needs
-(it read 1.0 V instead of 1.2 V), and even a bright LED could not pull PS_ON
-below 5 × 3k / (1k + 3k) = 3.75 V against the supply's ~1 kΩ pull-up, where
-under 0.8 V is wanted. Replacing the input resistor with 330 Ω and bridging
-the output one fixed it; the reset channel on the same kind of module needs
-the same. A bare PC817 with a 330 Ω resistor has no such surprises. The test
-is always the same: drive the GPIO high and measure the far side to its own
-ground -- PS_ON to an ATX black, ISP pin 5 to organ ground -- under 0.8 V.
-organ_web drives it as `--power GPIO`: on before the pump, off after the
-idle time-out, and on again for the Service actions, which wait a moment
-for the boards to boot. Every power-up runs the boards' exercise routine,
-this organ's solenoids start cleanly under wind, so exerciseCycles is 0 here
-(the Settings card's default) and the Service tab's reset plays the scale when
-one is wanted.
+Until 2026-09-21 the Pi switched the ATX through a PC817 on PS_ON
+(organ_web's `--power`, which stays in the software for an organ that
+wants it). It worked on the bench, and one lesson from it stands for the
+reset channel: a ready-made PC817 module came with **3 kΩ on the input
+and 3 kΩ in series with the output**, meant for 12-24 V inputs and a
+logic-level output. From 3.3 V the LED got 0.7 mA, a tenth of what it
+needs (it read 1.0 V instead of 1.2 V), and the output could not pull a
+1 kΩ pull-up below 3.75 V, where under 0.8 V is wanted. Replacing the input
+resistor with 330 Ω and bridging the output one fixed it. A bare PC817
+with a 330 Ω resistor has no such surprises. The test is always the same:
+drive the GPIO high and measure the far side to its own ground, ISP pin 5
+to organ ground, under 0.8 V.
 
-The SSR lives in a metal box with the organ's 12 V supply, the Pi's 5 V
-supply and a fan. Mains earth to the box; **neither DC negative bonded to
-it**, and no shared ground strip: the 12 V negative is the organ's ground,
-the 5 V negative is the Pi's, and the three optos (MIDI, reset, pump) are
-what keep them apart. Mains side and low-voltage side on opposite sides of
-a partition; the heat sink in the fan's stream.
+Every power-up runs the boards' exercise routine; this organ's solenoids
+start cleanly under wind, so exerciseCycles is 0 here (the Settings card's
+default) and the Service tab's reset plays the scale when one is wanted.
+
+The SSR lives in a metal box with the ATX and its fan. Mains earth to the
+box; **the 12 V negative is not bonded to it**, and there is no shared
+ground strip: the 12 V negative is the organ's ground, the converter's
+output negative is the Pi's, and the two optos, the SSR and the
+converter's transformer are what keep them apart. Mains side and
+low-voltage side on opposite sides of a partition; the heat sink in the
+fan's stream.
 
 ## Remote reset from the Pi
 

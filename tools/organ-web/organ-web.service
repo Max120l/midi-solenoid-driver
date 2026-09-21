@@ -25,12 +25,12 @@ ExecStart=/usr/bin/python3 organ_web.py \
     --device /dev/serial0 \
     --port 8080 \
     --pump 24 \
-    --power 25 \
     --power-switch 3
-# --pump 24: the SSR for the bellows motor.  --power 25: the ATX PS_ON opto,
-# the organ's 12 V under the app's control.  --power-switch 3: the antique
+# --pump 24: the SSR for the bellows motor.  --power-switch 3: the antique
 # on-off switch, GPIO 3 to ground (open = shut down; closed wakes a halted Pi).
-# Drop a flag if that piece of hardware is not there; the app then says so.
+# --power GPIO would switch the 12 V supply through an opto on ATX PS_ON;
+# Pellevoisin ties PS_ON to ground instead, so the 12 V is on whenever the
+# panel is in Auto and the flag is left out. The app says which relays it has.
 # The player's status file, rewritten every second, goes to /dev/shm (RAM)
 # by itself; the state folder is written only when a setting or a playlist
 # changes. See "Power cuts" in the README for the rest of the card's safety.
