@@ -409,13 +409,13 @@ MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case
                               └─ L ── PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
                                        pole A common ─┬─ BOOK ────────────────────────► motor L
                                                       └─ AUTO ─► SSR 1 ── SSR 2 ───────► motor L
-                                       pole B common ─── AUTO ─► PSU L   (its on pin strapped to +12 V: on with Auto)
+                                       pole B common ─── AUTO ─► PSU L   (its green on wire to its GND: on with Auto)
                                        (OFF: neither pole connected; the supply's fan cools the box in Auto)
 
 ORGAN SIDE (the 12 V supply's ground)                 PI SIDE (the converter's output ground)
 PSU 12 V, several wires ──► 12 V bus bar              SD-25A-5 +V / -V, trimmed to 5.1 V ─USB-C─► Pi 4
 PSU GND, several wires ───► organ GND bus bar         DSI ribbon ─► touchscreen
-PSU on pin ───────────────► PSU +12 V: on with Auto   GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
+PSU on wire (green) ──────► PSU GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
 12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
 12 V bus ─[2 A fuse]─► SD-25A-5 +Vin, GND bus ► -Vin  3.3 V (pin 1) ────── 6N137 IN+
          ───── transformer inside the SD-25A-5 ─────  GPIO 24 (pin 18) ── SSR 3 (+)                 pump
@@ -452,7 +452,7 @@ mains L ─ fuse ─┬─ common                        mains L ─ fuse ─┬
 ```
 
 Book: the motor runs, nothing else has power. Auto: the 12 V supply
-starts at once, since its on pin is strapped to its +12 V, and the bus, the
+starts at once, since its green on wire is tied to its ground, and the bus, the
 fan, the boards and, through the isolated converter, the Pi all come up
 together;
 the motor runs only when the SSR says so. Off: everything isolated, which the
@@ -477,9 +477,10 @@ SP50H29523: 15 A, its own fan), chosen 2026-09-21 over an ATX unit: one
 rail, so it regulates on the load it has and wants no token load on a 5 V
 it does not have. Several wires in parallel each way to the bus bars. Its
 connector is cut off; the on wire, the green one, is soldered to its
-+12 V, which on this unit means run whenever mains is present, so the supply runs whenever the panel switch is in Auto and nothing waits on the Pi: the bus, the boards, the
-fan and the Pi itself all come up together. The fan has two leads and no
-thermostat, so it turns whenever the supply does: cooling for the SSR that
+ground, so the supply runs whenever the panel switch is in Auto and nothing waits on the Pi: the bus, the boards, the
+fan and the Pi itself all come up together. The fan has two leads, soldered
+to the +12 V on the supply's own board, no thermostat, so it turns
+whenever the supply does: cooling for the SSR that
 is hardware sure, on whenever the SSR can be warm. 15 A is generous: the four boards
 together have never drawn more than 3-4 A on the bench, in the busiest
 passages the arranger has produced.
