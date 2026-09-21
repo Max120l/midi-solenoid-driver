@@ -478,8 +478,9 @@ rail, so it regulates on the load it has and wants no token load on a 5 V
 it does not have. Several wires in parallel each way to the bus bars. Its
 on pin is tied to its ground, so the supply runs whenever the panel
 switch is in Auto and nothing waits on the Pi: the bus, the boards, the
-fan and the Pi itself all come up together. The fan is therefore hardware
-sure, on whenever the SSR can be warm. 15 A is generous: the four boards
+fan and the Pi itself all come up together. The fan has two leads and no
+thermostat, so it turns whenever the supply does: cooling for the SSR that
+is hardware sure, on whenever the SSR can be warm. 15 A is generous: the four boards
 together have never drawn more than 3-4 A on the bench, in the busiest
 passages the arranger has produced.
 
