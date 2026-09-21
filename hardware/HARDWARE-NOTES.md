@@ -364,6 +364,7 @@ is a short twisted pair. The MIDI pair has no ground: TX is its return.
 | 7 | GPIO 4 | | 8 | GPIO 14 TXD | MIDI: 6N137 IN- |
 | 9 | GND | reset opto cathode | 10 | GPIO 15 RXD | free |
 | 11 | GPIO 17 | reset: 330 Ω, PC817 B anode | 12 | GPIO 18 | |
+| 13 | GPIO 27 | status LED: 330 Ω, LED anode | 14 | GND | status LED cathode |
 | 17 | 3.3 V | | 18 | GPIO 24 | pump: SSR 3 (+) |
 | 19 | GPIO 10 | | 20 | GND | pump: SSR 4 (-) |
 | 21 | GPIO 9 | | 22 | GPIO 25 | 12 V on: 330 Ω, PC817 A anode |
@@ -371,6 +372,29 @@ is a short twisted pair. The MIDI pair has no ground: TX is its return.
 | 27 | ID_SD | never | 28 | ID_SC | never |
 
 Pins not listed are free. Nothing on the organ's side touches any pin here.
+
+### The status LED
+
+A halted Pi looks exactly like a running one with the screen blanked, and
+the red LED on the board, inside the box, only says that 5 V is present.
+One LED on the panel tells them apart, beaten by the kernel itself:
+
+| | |
+|---|---|
+| GPIO 27, pin 13 | 330 Ω, then the LED's anode (the long leg) |
+| GND, pin 14 | the LED's cathode |
+| `/boot/firmware/config.txt` | `dtoverlay=gpio-led,gpio=27,label=pellevoisin,trigger=heartbeat` |
+
+The heartbeat trigger double-pulses about once a second from a few seconds
+into boot until the moment the kernel halts, when the LED driver switches
+it off. Dark LED with the panel in Auto: the Pi is halted and Off is safe.
+Close the antique switch and it beats again within seconds. None of our
+software is in the loop, on purpose: a crashed front desk does not stop
+the beat, so the LED answers "is the Pi on" and nothing else. 3.3 V less
+the LED's 2 V over 330 Ω is 4 mA, nothing for the GPIO (16 mA) and plenty
+for any modern red, amber or green LED; blue and white barely light from
+3.3 V, and a panel LED with a built-in resistor for 12 V not at all. The
+pair on pins 13 and 14 is one more short twisted pair.
 
 ### The box, wired
 
@@ -396,6 +420,7 @@ last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      GPIO 14 TX (pi
 RJ12 pin 1 = /RESET bus (jumpered board to board)     3.3 V (pin 1) ────── 6N137 IN+
 RJ12: MIDI signal, GND, as shipped                    GPIO 24 (pin 18) ── SSR 3 (+)                 pump
                                                       Pi GND ─────────── SSR 4 (-)
+                                                      GPIO 27 (pin 13) ─[330 Ω]─ LED ─ Pi GND (pin 14)   alive
 6N137 module: VCC ◄ RJ12 pin 6, GND ◄ RJ12 GND,       GPIO 25 (pin 22) ─[330 Ω]─ PC817 A anode      12 V on
               OUT ► boards' MIDI in                   Pi GND ─────────────────── PC817 A cathode
 PC817 A: collector ─ ATX PS_ON (green), emitter ─ ATX GND
@@ -439,7 +464,7 @@ the organ's everyday switch: an antique 5 A toggle, wired between **GPIO 3
 (physical pin 5) and ground**, carrying microamps. Open, the front desk
 stops the music, drops the pump and the 12 V, and powers the Pi off
 (`--power-switch 3`); closed again, the halted Pi wakes, which that pin does
-in hardware. Then the panel switch is turned off once the screen is dark.
+in hardware. Then the panel switch is turned off once the status LED is dark.
 Pi OS usually survives a hard cut, but the sequence removes the "usually".
 Leave I²C disabled, since GPIO 3 is its clock.
 

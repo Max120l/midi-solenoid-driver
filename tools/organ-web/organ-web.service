@@ -31,10 +31,9 @@ ExecStart=/usr/bin/python3 organ_web.py \
 # the organ's 12 V under the app's control.  --power-switch 3: the antique
 # on-off switch, GPIO 3 to ground (open = shut down; closed wakes a halted Pi).
 # Drop a flag if that piece of hardware is not there; the app then says so.
-# The status file is small and rewritten every second; keep the state folder
-# on the SD card only if you do not mind that, or point --state at /dev/shm
-# for status alone is not possible -- it holds the playlists too. tmpfs at
-# /var/tmp/organ-web with the playlists copied in at boot is the alternative.
+# The player's status file, rewritten every second, goes to /dev/shm (RAM)
+# by itself; the state folder is written only when a setting or a playlist
+# changes. See "Power cuts" in the README for the rest of the card's safety.
 Restart=always
 RestartSec=3
 KillSignal=SIGTERM

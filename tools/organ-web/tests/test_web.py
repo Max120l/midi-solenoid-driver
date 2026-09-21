@@ -99,6 +99,14 @@ def status(d, **fields):
     d.cfg.status_file.write_text(json.dumps({"time": time.time() + 1, "pid": 4242, **fields}), encoding="utf-8")
 
 
+def test_the_status_file_lives_in_ram_when_there_is_a_shm_folder(tmp_path):
+    cfg = w.Config(library=tmp_path, organ=ORGAN, state=tmp_path / "state", shm=tmp_path / "shm")
+    assert cfg.status_file == tmp_path / "state" / "status.json"          # no RAM folder: on disk
+    (tmp_path / "shm").mkdir()
+    assert cfg.status_file == tmp_path / "shm" / "organ-web-status.json"
+    assert cfg.queue_file == tmp_path / "state" / "queue.m3u"              # the queue stays where the playlists are
+
+
 def test_the_page_token_changes_when_a_page_file_changes(tmp_path, desk):
     import os
     (tmp_path / "app.js").write_text("x", encoding="utf-8")

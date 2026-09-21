@@ -112,6 +112,7 @@ class Config:
     host: str = "0.0.0.0"
     port: int = DEFAULT_PORT
     backlight: Path = Path("/sys/class/backlight")     # where the kernel exposes a display's backlight, if any
+    shm: Path = Path("/dev/shm")                        # RAM-backed folder, when the system has one
 
     @property
     def queue_file(self) -> Path:
@@ -119,6 +120,10 @@ class Config:
 
     @property
     def status_file(self) -> Path:
+        """Rewritten every second by the player: in RAM when the system offers it, so an
+        SD card is not written once a second for the life of the organ."""
+        if self.shm.is_dir():
+            return self.shm / "organ-web-status.json"
         return self.state / "status.json"
 
     @property

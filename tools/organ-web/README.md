@@ -115,7 +115,7 @@ tune, playlist or job) or 409 (the player is busy; no pump configured).
 |---|---|---|
 | `--library DIR` | required | arranged tunes; subfolders are the library's sections; `uploads/` is created inside |
 | `--organ FILE` | required | organ.yaml, for the keys tester's labels and the arranger |
-| `--state DIR` | `~/.local/share/organ-web` | queue, status, settings, playlists |
+| `--state DIR` | `~/.local/share/organ-web` | queue, settings, playlists; the once-a-second status file goes to `/dev/shm` (RAM) when the system has it |
 | `--plans DIR` | `tools/organ-arranger/tunes` | the `*.plan.yaml` offered on upload |
 | `--device DEV` | `/dev/serial0` | the MIDI line, passed to the player and used by the keys tester |
 | `--python EXE` | this interpreter | runs the player and the arranger |
@@ -147,7 +147,7 @@ massie ALL=(root) NOPASSWD: /bin/systemctl poweroff
 
 Then a shutdown from the page takes the pump and the 12 V down first and
 the Pi powers off within a few seconds; the panel switch is turned off once
-the screen is dark.
+the status LED is dark (see Power cuts, below).
 
 Better than the button is a real switch: `--power-switch 3` watches a
 toggle switch wired between GPIO 3 (physical pin 5) and any ground pin.
@@ -186,6 +186,71 @@ screen in landscape.
 A touchscreen on HDMI with USB touch needs no driver on Pi OS. If the
 picture is upside down for the way it is mounted, rotate it in the desktop's
 *Screen Configuration*; touch follows the rotation there.
+
+## Power cuts
+
+A pulled plug hurts nothing on the organ's side: the solenoids drop, the
+pump stops. It can hurt the Pi's SD card, if the card is being written at
+that moment, and a card that is written once a second for years will be.
+So the writes are moved off the card, and the card itself is made
+read-only where it can be.
+
+**A status LED, so a halted Pi can be told from a running one.** With the
+screen blanked they look the same, and the red LED on the board only says
+"5 V present". One LED on the panel, beaten by the kernel, settles it:
+GPIO 27 (pin 13) through 330 Ω to the LED's anode, cathode to GND (pin 14),
+and one line in `/boot/firmware/config.txt`:
+
+```
+dtoverlay=gpio-led,gpio=27,label=pellevoisin,trigger=heartbeat
+```
+
+It double-pulses about once a second from a few seconds into boot until the
+kernel halts, when the driver switches it off. No software of ours is in
+the loop, which is the point: it answers "is the Pi on" and nothing else.
+Dark LED = safe to turn the panel switch to Off. `echo none | sudo tee
+/sys/class/leds/pellevoisin/trigger` hands it to whoever wants it;
+`heartbeat` gives it back.
+
+**What is written where.** The player's status file is rewritten every
+second and lives in `/dev/shm`, RAM, without any option. The state folder
+sees a write when a setting or a playlist changes; the library when a tune
+is uploaded or arranged. The kiosk browser keeps its cache in RAM
+(`--disk-cache-dir` in `organ-kiosk.sh`). Two system settings finish the
+job on any card:
+
+```bash
+sudo mkdir -p /etc/systemd/journald.conf.d && printf '[Journal]\nStorage=volatile\n' | sudo tee /etc/systemd/journald.conf.d/organ.conf && sudo systemctl restart systemd-journald
+```
+
+keeps the journal in RAM (`journalctl` still shows the current boot, which
+is the one that matters), and
+
+```bash
+sudo systemctl disable --now dphys-swapfile
+```
+
+stops the swap file, which the organ never needs with 2 GB or more.
+
+**The read-only card, for the machine that ships.** Not done on the
+development card, and not tried yet: it is the last step of the clean
+install, once the software has stopped moving, because every update then
+needs the overlay switched off and on. Pi OS has it built in: `sudo
+raspi-config` → *Performance Options → Overlay File System*, root in RAM
+and the boot partition write-protected. The card then cannot be corrupted
+by a power cut, and every reboot is a fresh copy of the image. What must
+survive a reboot moves to a third partition, mounted read-write at
+`/home`: the repo, the tunes, the state folder, and the browser profile
+that holds the screen's own settings. The recipe, for `install.sh`: before
+the first boot remove `init=/usr/lib/raspi-config/init_resize.sh` from
+`cmdline.txt` so the root partition stays at its image size; after it,
+make an ext4 partition in the free space, copy `/home` onto it, add it to
+`/etc/fstab` with `defaults,noatime 0 2`, reboot, then enable the overlay.
+`git pull` keeps working, since the repo is on the writable partition;
+`apt` and `pip` need `sudo raspi-config nonint disable_overlayfs`, a
+reboot, and `enable_overlayfs` and a reboot afterwards. A small UPS HAT
+that signals the Pi to shut down is the other road; it costs a part and a
+battery to replace, and the overlay costs nothing.
 
 ## Tests
 

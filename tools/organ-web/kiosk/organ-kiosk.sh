@@ -17,6 +17,7 @@ BROWSER=$(command -v chromium-browser || command -v chromium)
 
 exec "$BROWSER" \
     --kiosk "$PAGE" \
+    --disk-cache-dir=/dev/shm/organ-kiosk-cache \
     --noerrdialogs \
     --disable-infobars \
     --disable-session-crashed-bubble \
