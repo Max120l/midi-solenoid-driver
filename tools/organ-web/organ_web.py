@@ -796,7 +796,7 @@ class Desk:
                 "board_defaults": dict(BOARD_DEFAULTS),
                 "firmware_defaults": dict(FIRMWARE_DEFAULTS),
                 "keys_open": self.keys.console is not None,
-                "backlight": self.backlight_dir() is not None,
+                **self.backlight_state(),
                 "idle": not self.busy(),
                 "held": self.held,
                 "dry_run": self.cfg.dry_run,
@@ -1022,24 +1022,45 @@ class Desk:
             pass
         return None
 
-    def screen(self, brightness: int | None = None, power: str | None = None) -> dict:
-        """Set the backlight's brightness (0-100 %) and/or power ('on'/'off').
-        Without a backlight, reports so; the page then dims itself."""
+    def backlight_state(self) -> dict:
+        """What the page needs to know: is there a backlight, and may this process drive it.
+        A backlight the service cannot write (no udev rule yet) is reported as locked, and
+        the page dims itself instead of failing on every slider move."""
         d = self.backlight_dir()
         if d is None:
             return {"backlight": False}
+        writable = os.access(d / "brightness", os.W_OK)
+        return {"backlight": writable, "backlight_device": d.name, "backlight_locked": not writable}
+
+    def screen(self, brightness: int | None = None, power: str | None = None) -> dict:
+        """Set the backlight's brightness (0-100 %) and/or power ('on'/'off').
+        Off is bl_power 4 (FB_BLANK_POWERDOWN), which every panel driver honours and
+        which leaves the brightness value alone for the wake; a panel without
+        bl_power gets brightness 0 instead. Without a backlight, reports so; the
+        page then dims itself."""
+        d = self.backlight_dir()
+        if d is None:
+            return {"backlight": False}
+        if power is not None and power not in ("on", "off"):
+            raise ValueError("power must be on or off")
         try:
             maximum = int((d / "max_brightness").read_text().strip() or 255)
+            has_power = (d / "bl_power").is_file()
+            if power == "on" and has_power:
+                (d / "bl_power").write_text("0")
             if brightness is not None:
                 b = max(0, min(100, int(brightness)))
                 (d / "brightness").write_text(str(round(maximum * b / 100)))
-            if power is not None:
-                if power not in ("on", "off"):
-                    raise ValueError("power must be on or off")
-                (d / "bl_power").write_text("0" if power == "on" else "1")
+            if power == "off":
+                if has_power:
+                    (d / "bl_power").write_text("4")
+                else:
+                    (d / "brightness").write_text("0")
             current = int((d / "brightness").read_text().strip() or 0)
-            powered = (d / "bl_power").read_text().strip() == "0" if (d / "bl_power").is_file() else True
+            powered = (d / "bl_power").read_text().strip() == "0" if has_power else current > 0
             return {"backlight": True, "device": d.name, "brightness": round(100 * current / maximum), "power": "on" if powered else "off"}
+        except PermissionError:
+            raise RuntimeError(f"the backlight at {d} is not writable by this user: install the udev rule from the README")
         except OSError as e:
             raise RuntimeError(f"cannot drive the backlight at {d}: {e}")
 

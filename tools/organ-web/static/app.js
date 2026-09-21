@@ -369,8 +369,9 @@ $("screen-off").addEventListener("click", (e) => { e.stopPropagation(); e.preven
 function renderScreen() {
   const hw = !!state.backlight;
   if (hw !== screen.hw) { screen.hw = hw; applyBrightness(false); }
-  $("scr-note").textContent = hw ? "This display's backlight is under the Pi's control."
-                                 : "No backlight control on this display: the page dims itself, and off is a black screen.";
+  $("scr-note").textContent = hw ? `This display's backlight (${state.backlight_device}) is under the Pi's control: off really is off.`
+    : state.backlight_locked ? `A backlight was found (${state.backlight_device}) but the app may not write it: install the udev rule from the README. Until then the page dims itself.`
+    : "No backlight control on this display: the page dims itself, and off is a black screen.";
 }
 applyBrightness(false);
 armScreenTimer();

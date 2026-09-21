@@ -64,7 +64,7 @@ phone / touchscreen  ──HTTP──▶  organ_web.py  ──writes──▶  q
 | **Upload** | drop files that are already arranged into a library folder, existing or new; they are checked to be readable MIDI and stored as `name.organ.mid` |
 | **Arrange** | drop a raw `.mid`: the transcriber runs on it, with a plan from the arranger's collection or automatically, then the arranger; the result lands in `library/uploads/` with its reports beside the source |
 | **Service** | reset the boards; the 12 V supply and the pump on and off by hand; Shut down, which turns the pump and the supply off and then powers the Pi off, so the panel switch can be turned off safely once the screen is dark; the keys tester, by section or by board, with hold mode and the snare roll, usable when the player is idle |
-| **Settings** | this screen's brightness and a screen time-out (per browser: set them on the case screen; the kiosk defaults to ten minutes, a phone to never; with a real backlight the Pi drives it, otherwise the page dims itself and "off" is a black screen the first touch wakes); the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The card starts locked and relocks after every send and after three minutes; the boards cannot be read back, so the fields show what was last sent from here, or this organ's usual values before anything has been |
+| **Settings** | this screen's brightness and a screen time-out (per browser: set them on the case screen; the kiosk defaults to ten minutes, a phone to never; with a real backlight, the DSI panel's, the Pi drives it and off powers it down; otherwise the page dims itself and "off" is a black screen the first touch wakes); the pause between songs, the pump's warm-up and idle time-out, the look and the sounds; and the driver boards' solenoid parameters (pull-in duty and window, hold duty, stuck-note watchdog, exercise passes), applied over the MIDI line as `organ_config` does, with save, reload and factory. The card starts locked and relocks after every send and after three minutes; the boards cannot be read back, so the fields show what was last sent from here, or this organ's usual values before anything has been |
 
 The keys tester shares the serial line with the player, so it only answers
 while the player is idle; the moment something is queued it closes.
@@ -101,7 +101,7 @@ a script or a home-automation box can do the same.
 | `POST /api/arrange` | multipart `file`, `plan`, `transpose` | start an arrange job |
 | `GET /api/jobs`, `GET /api/jobs/<id>` | | job state, output path, log |
 | `GET /api/keys/layout`, `POST /api/keys/pulse` `/hold` `/roll` `/off` | `{solenoid, ms?}`, `{solenoid,on}`, `{solenoids?,interval_ms?,on}` | the keys tester |
-| `POST /api/screen` | `{brightness?: 0-100, power?: on\|off}` | the display's backlight, where the Pi has one (`/sys/class/backlight`) |
+| `POST /api/screen` | `{brightness?: 0-100, power?: on\|off}` | the display's backlight, where the Pi has one (`/sys/class/backlight`); off is `bl_power` 4, the panel's power-down, and the brightness is kept for the wake |
 | `POST /api/boards` | `{peak?, hold?, peak_ms?, max_note?, exercise?, command?: save\|reload\|factory, board?}` | solenoid parameters to the boards (idle only) |
 | `POST /api/service/reset`, `POST /api/service/pump`, `POST /api/service/power` | , `{on}`, `{on}` | the boards' reset line; the pump and the supply by hand |
 | `POST /api/service/shutdown` | | pump off, 12 V off, then `systemctl poweroff` |
@@ -183,9 +183,44 @@ maintenance, plug in a keyboard and press Alt+F4, or SSH in and
 least 44 px, so it reflows for a phone in portrait and fills a 7-inch
 screen in landscape.
 
-A touchscreen on HDMI with USB touch needs no driver on Pi OS. If the
-picture is upside down for the way it is mounted, rotate it in the desktop's
-*Screen Configuration*; touch follows the rotation there.
+### The DSI touchscreen, and its backlight
+
+Pellevoisin's screen is a Waveshare 5-inch DSI panel on the Pi's display
+ribbon. It needs one line in `/boot/firmware/config.txt`, and the same line
+carries the touch controller:
+
+```
+dtoverlay=vc4-kms-dsi-waveshare-panel,5_0_inch
+```
+
+Other sizes of the same family take their own parameter (`7_0_inchC`,
+`7_9_inch`, `10_1_inch`, ...); `dmesg | grep -i panel` after a reboot says
+whether it was recognised. The panel talks over the ribbon's own I²C bus,
+not the header's, so GPIO 3 stays the on-off switch and I²C stays off in
+raspi-config. If the picture is upside down for the way the panel is
+mounted, add `,rotation=180` to the line; `invx`, `invy` and `swapxy` fix
+the touch if it does not follow.
+
+The backlight appears as a folder under `/sys/class/backlight/`, root-owned.
+One udev rule hands its two files to the video group, which the service's
+user is in:
+
+```bash
+sudo cp kiosk/99-organ-backlight.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger -s backlight
+```
+
+From then on Settings → *This screen* drives the real thing: the slider is
+the backlight, and the time-out powers it down, `bl_power` 4, which is
+where an LCD's power goes. The first touch on the dark screen brings it
+back at the brightness it had; touch works with the backlight off. Without
+the rule the page says so on that card and dims itself in software until
+the rule is in. The desktop's own screen blanking stays off, as above, so
+the two do not fight.
+
+A touchscreen on HDMI with USB touch needs no driver on Pi OS and has no
+backlight control; there the page dims itself. If its picture is upside
+down, rotate it in the desktop's *Screen Configuration*; touch follows the
+rotation there.
 
 ## Power cuts
 

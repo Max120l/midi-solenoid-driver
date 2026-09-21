@@ -633,10 +633,33 @@ def test_screen_drives_a_backlight_when_there_is_one(client, desk, tmp_path):
     d = client.post("/api/screen", json={"brightness": 40}).get_json()
     assert d["backlight"] and d["device"] == "rpi_backlight" and d["brightness"] == 40 and (bl / "brightness").read_text() == "102"
     d = client.post("/api/screen", json={"power": "off"}).get_json()
-    assert d["power"] == "off" and (bl / "bl_power").read_text() == "1"
+    assert d["power"] == "off" and (bl / "bl_power").read_text() == "4" and (bl / "brightness").read_text() == "102"
     d = client.post("/api/screen", json={"power": "on", "brightness": 100}).get_json()
-    assert d["power"] == "on" and (bl / "brightness").read_text() == "255"
+    assert d["power"] == "on" and (bl / "bl_power").read_text() == "0" and (bl / "brightness").read_text() == "255"
     assert client.post("/api/screen", json={"power": "dim"}).status_code == 400
+    # a panel without bl_power: off is brightness 0, on is the brightness asked for
+    (bl / "bl_power").unlink()
+    d = client.post("/api/screen", json={"power": "off"}).get_json()
+    assert d["power"] == "off" and (bl / "brightness").read_text() == "0"
+    d = client.post("/api/screen", json={"power": "on", "brightness": 60}).get_json()
+    assert d["power"] == "on" and d["brightness"] == 60
+
+
+def test_a_backlight_the_service_cannot_write_is_reported_as_locked(client, desk, tmp_path):
+    import os, stat
+    bl = tmp_path / "backlight" / "10-0045"
+    bl.mkdir(parents=True)
+    (bl / "max_brightness").write_text("255")
+    (bl / "brightness").write_text("255")
+    os.chmod(bl / "brightness", stat.S_IREAD)
+    desk.cfg.backlight = tmp_path / "backlight"
+    try:
+        s = client.get("/api/state").get_json()
+        assert s["backlight"] is False and s["backlight_locked"] is True and s["backlight_device"] == "10-0045"
+        r = client.post("/api/screen", json={"brightness": 50})
+        assert r.status_code >= 400 and "udev" in r.get_json()["error"]
+    finally:
+        os.chmod(bl / "brightness", stat.S_IREAD | stat.S_IWRITE)
 
 
 def test_upload_route_runs_a_job(client, desk):

@@ -1,0 +1,5 @@
+# Pellevoisin: let the desk (user in the video group) drive the display's backlight.
+# The kernel creates /sys/class/backlight/<name>/ owned by root; this hands the two
+# files the front desk writes to the video group.  Install:
+#   sudo cp 99-organ-backlight.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger -s backlight
+SUBSYSTEM=="backlight", ACTION=="add", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness /sys/class/backlight/%k/bl_power", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness /sys/class/backlight/%k/bl_power"
