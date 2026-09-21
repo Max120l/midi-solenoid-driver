@@ -405,17 +405,17 @@ converter that makes the Pi's 5 V from the 12 V bus.
 ```
 MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case ──── motor frame
                               ├─ N ──────────────┬──────────────────────────────── motor N
-                              │                  ATX N
+                              │                  PSU N
                               └─ L ── PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
                                        pole A common ─┬─ BOOK ────────────────────────► motor L
                                                       └─ AUTO ─► SSR 1 ── SSR 2 ───────► motor L
-                                       pole B common ─── AUTO ─► ATX L   (PS_ON tied to ATX GND: on with Auto)
-                                       (OFF: neither pole connected; the ATX fan cools the box in Auto)
+                                       pole B common ─── AUTO ─► PSU L   (its on pin tied to its GND: on with Auto)
+                                       (OFF: neither pole connected; the supply's fan cools the box in Auto)
 
-ORGAN SIDE (the ATX's ground)                         PI SIDE (the converter's output ground)
-ATX 12 V, several yellows ─► 12 V bus bar             SD-25A-5 +V / -V, trimmed to 5.1 V ─USB-C─► Pi 4
-ATX GND, several blacks ──► organ GND bus bar         DSI ribbon ─► touchscreen
-ATX PS_ON (green) ────────► ATX GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
+ORGAN SIDE (the 12 V supply's ground)                 PI SIDE (the converter's output ground)
+PSU 12 V, several wires ──► 12 V bus bar              SD-25A-5 +V / -V, trimmed to 5.1 V ─USB-C─► Pi 4
+PSU GND, several wires ───► organ GND bus bar         DSI ribbon ─► touchscreen
+PSU on pin ───────────────► PSU GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
 12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
 12 V bus ─[2 A fuse]─► SD-25A-5 +Vin, GND bus ► -Vin  3.3 V (pin 1) ────── 6N137 IN+
          ───── transformer inside the SD-25A-5 ─────  GPIO 24 (pin 18) ── SSR 3 (+)                 pump
@@ -432,7 +432,7 @@ Rules that make the drawing true: no wire, bar or chassis lug between the
 organ GND bus and the Pi's ground; the earth stud carries earth only; mains
 bars shrouded or in covered terminal blocks; mains and low voltage on
 opposite sides of a partition, crossing once at right angles; the SSR's
-heat sink in the ATX fan's stream, paste under it. organ_web: `--pump 24
+heat sink in the supply's fan stream, paste under it. organ_web: `--pump 24
 --power-switch 3`, reset on 17 by default; `--power` is not used, since the
 12 V is on whenever Auto is.
 
@@ -447,13 +447,14 @@ is the organ's master control:
 pole A: the motor                                pole B: the electronics
 mains L ─ fuse ─┬─ common                        mains L ─ fuse ─┬─ common
    BOOK      1  ├──────────────────► motor          BOOK      1  ├── (nothing)
-   AUTO      2  ├─► SSR 1 ── 2 ───► motor           AUTO      2  ├──► ATX mains in (12 V, fan, and the Pi through its converter)
+   AUTO      2  ├─► SSR 1 ── 2 ───► motor           AUTO      2  ├──► 12 V supply mains in (its fan, the bus, the Pi through its converter)
    OFF       0  ┘                                   OFF       0  ┘
 ```
 
-Book: the motor runs, nothing else has power. Auto: the ATX starts at
-once, since PS_ON is tied to its ground, and the 12 V bus, the fan, the
-boards and, through the isolated converter, the Pi all come up together;
+Book: the motor runs, nothing else has power. Auto: the 12 V supply
+starts at once, since its on pin is tied to its ground, and the bus, the
+fan, the boards and, through the isolated converter, the Pi all come up
+together;
 the motor runs only when the SSR says so. Off: everything isolated, which the
 SSR alone cannot do since it leaks a milliamp. Only the live is switched;
 neutral and earth go straight through. If the Pi is on and a tune is
@@ -471,14 +472,16 @@ Leave I²C disabled, since GPIO 3 is its clock.
 
 ### The 12 V supply, and the Pi's 5 V from it
 
-The 12 V comes from an **ATX computer supply**: several yellow wires in
-parallel for the 12 V, several black for the return. Its green wire,
-**PS_ON**, is tied to a black one, so the supply runs whenever the panel
+The 12 V comes from a **12 V-only computer supply** (Lenovo FRU
+SP50H29523: 15 A, its own fan), chosen 2026-09-21 over an ATX unit: one
+rail, so it regulates on the load it has and wants no token load on a 5 V
+it does not have. Several wires in parallel each way to the bus bars. Its
+on pin is tied to its ground, so the supply runs whenever the panel
 switch is in Auto and nothing waits on the Pi: the bus, the boards, the
 fan and the Pi itself all come up together. The fan is therefore hardware
-sure, on whenever the SSR can be warm. The ATX's 5 V rail feeds nothing;
-if the 12 V reads above about 12.6 V with the organ idle, the supply wants
-a token load there: a 10 Ω 10 W resistor across 5 V to ground.
+sure, on whenever the SSR can be warm. 15 A is generous: the four boards
+together have never drawn more than 3-4 A on the bench, in the busiest
+passages the arranger has produced.
 
 The Pi's 5 V is made from the 12 V bus at the Pi's end of the organ by a
 **Mean Well SD-25A-5**, decided 2026-09-21: 9.2-18 V in, 5 V at 5 A out,
@@ -501,7 +504,7 @@ pairs run: the heavy 12 V pair and the SSR's thin pair. The Pi 4 with the
 DSI screen peaks near 2 A, so a 3 A converter would do, and 5 A leaves the
 USB ports their full budget.
 
-Until 2026-09-21 the Pi switched the ATX through a PC817 on PS_ON
+Until 2026-09-21 the plan was an ATX supply switched by the Pi through a PC817 on its PS_ON
 (organ_web's `--power`, which stays in the software for an organ that
 wants it). It worked on the bench, and one lesson from it stands for the
 reset channel: a ready-made PC817 module came with **3 kΩ on the input
@@ -518,7 +521,7 @@ Every power-up runs the boards' exercise routine; this organ's solenoids
 start cleanly under wind, so exerciseCycles is 0 here (the Settings card's
 default) and the Service tab's reset plays the scale when one is wanted.
 
-The SSR lives in a metal box with the ATX and its fan. Mains earth to the
+The SSR lives in a metal box with the 12 V supply and its fan. Mains earth to the
 box; **the 12 V negative is not bonded to it**, and there is no shared
 ground strip: the 12 V negative is the organ's ground, the converter's
 output negative is the Pi's, and the two optos, the SSR and the

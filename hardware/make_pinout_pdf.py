@@ -105,17 +105,17 @@ story = [
 schematic = r"""
 MAINS -- IEC inlet with fuse -+- E ---- earth stud on the case ---- motor frame
                               +- N ---------------+-------------------------------- motor N
-                              |                  ATX N
+                              |                  PSU N
                               +- L -- PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
                                        pole A common -+- BOOK -----------------------> motor L
                                                       +- AUTO -> SSR 1 -- SSR 2 ------> motor L
-                                       pole B common --- AUTO -> ATX L   (PS_ON tied to ATX GND: on with Auto)
-                                       (OFF: neither pole connected; the ATX fan cools the box in Auto)
+                                       pole B common --- AUTO -> PSU L   (its on pin tied to its GND: on with Auto)
+                                       (OFF: neither pole connected; the supply's fan cools the box in Auto)
 
-ORGAN SIDE (the ATX's ground)                        PI SIDE (the converter's output ground)
-ATX 12 V, several yellows -> 12 V bus bar            SD-25A-5 +V / -V, trimmed to 5.1 V --USB-C--> Pi 4
-ATX GND, several blacks --> organ GND bus bar        DSI ribbon --> touchscreen
-ATX PS_ON (green) --------> ATX GND: on with Auto    GPIO 3 (pin 5) -- antique switch -- Pi GND (pin 6)   on/off
+ORGAN SIDE (the 12 V supply's ground)                PI SIDE (the converter's output ground)
+PSU 12 V, several wires --> 12 V bus bar             SD-25A-5 +V / -V, trimmed to 5.1 V --USB-C--> Pi 4
+PSU GND, several wires ---> organ GND bus bar        DSI ribbon --> touchscreen
+PSU on pin ---------------> PSU GND: on with Auto    GPIO 3 (pin 5) -- antique switch -- Pi GND (pin 6)   on/off
 12 V bus / GND bus -------> boards 1-4, 5 A fuses    GPIO 14 TX (pin 8) -- 6N137 IN-             MIDI
 12 V bus -[2 A fuse]-> SD-25A-5 +Vin, GND bus > -Vin 3.3 V (pin 1) ------- 6N137 IN+
          ----- transformer inside the SD-25A-5 ----- GPIO 24 (pin 18) -- SSR 3 (+)                pump
@@ -138,10 +138,10 @@ rules = [
     "Mains bus bars shrouded, or covered DIN terminal blocks instead. Low-voltage bars may be bare.",
     "Mains and low voltage on opposite sides of a partition: inlet, switch, supplies' inputs, SSR 1 and 2, motor lead on "
     "one side; Pi, RJ12 bus, optos, SSR 3 and 4 on the other. A wire that must cross does so once, at right angles.",
-    "The SSR's heat sink in the ATX fan's stream, thermal paste under the module. A varistor across SSR 1 and 2.",
+    "The SSR's heat sink in the 12 V supply's fan stream, thermal paste under the module. A varistor across SSR 1 and 2.",
     "Only the live is switched, ever. Neutral and earth run straight through. The panel switch is motor rated: "
     "1 HP at 125 V, or 20 A. The antique on/off switch carries microamps and may be anything.",
-    "Book: the motor runs, nothing else has power. Auto: the ATX starts at once (PS_ON tied to its ground) and the 12 V bus, "
+    "Book: the motor runs, nothing else has power. Auto: the 12 V supply (Lenovo SP50H29523, 15 A) starts at once, its on pin tied to its ground, and the bus, "
     "the fan, the boards and the Pi through its converter come up together; the motor runs only when the SSR says so. "
     "Off: everything isolated (the SSR alone leaks a milliamp).",
     "Before the panel goes from Auto to Off: the antique switch off, or Shut down on the Service tab, and wait for the status LED to go dark.",
