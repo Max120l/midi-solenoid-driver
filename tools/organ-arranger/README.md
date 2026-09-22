@@ -309,6 +309,24 @@ python preview_gm.py tune.fororgan.mid --organ instrument/organ.yaml
 It is a preview, not the organ: the arranger's merges, stretches and trims
 are not applied, and pipes do not sound like GM patches.
 
+## Regenerating every planned tune
+
+The plans in `tunes/` are committed; the source files never are, and the
+arranged files live wherever they were written. `regenerate_all.py` rebuilds
+the lot from the sources, wherever those are, one folder per tune with the
+`.fororgan.mid`, the `.organ.mid` for the organ and the `.preview.mid`:
+
+```bash
+python regenerate_all.py --sources ~/Downloads --out ~/Music/Pellevoisin
+```
+
+It matches each plan to a source by the track names inside the file, the
+same names the plan uses, so a renamed download is still found. Where more
+than one file fits (roll-maker files name every track alike; a "(1)" copy
+sits beside its original) the file named like the plan wins and the report
+lists the runners-up; `--pick over-the-waves=path/to/file.mid` overrides,
+`--only mule` limits the run, `--dry-run` only reports the matches.
+
 ## Testing the pipes one at a time
 
 `make_scale.py` writes a commissioning file: one track's notes in ascending
