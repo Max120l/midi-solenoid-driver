@@ -417,6 +417,8 @@ def test_keys_layout_and_actions_and_the_busy_guard(desk):
     assert r["sounding"] == [41] and desk.snapshot()["keys_open"] is True
     r = desk.keys_act("roll", {"interval_ms": 100})
     assert r["rolling"] == [55, 56]
+    r = desk.keys_act("roll", {"solenoids": [41], "interval_ms": 60})     # the repeat test: one pipe restruck
+    assert r["rolling"] == [41] and desk.keys.console.roll_interval_ms == 60 and desk.keys.console.roll_hit_ms() == 36
     r = desk.keys_act("off", {})
     assert r == {"sounding": [], "rolling": []}
     desk.pump = None

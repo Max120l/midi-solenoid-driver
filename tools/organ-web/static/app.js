@@ -12,7 +12,7 @@ let library = { tunes: [], folders: [] };
 let folder = "";
 let playlistOpen = null;
 let toastTimer = null;
-const keys = { layout: null, view: "section", hold: false, sounding: new Set(), rolling: [] };
+const keys = { layout: null, view: "section", hold: false, repeat: false, sounding: new Set(), rolling: [] };
 
 function toast(text, error) {
   const t = $("toast");
@@ -473,8 +473,15 @@ function renderKeys() {
   paintKeys();
 }
 function paintKeys() {
-  $("keys").querySelectorAll(".key").forEach((b) => b.classList.toggle("on", keys.sounding.has(+b.dataset.s)));
-  $("keys-roll").setAttribute("aria-pressed", keys.rolling.length ? "true" : "false");
+  $("keys").querySelectorAll(".key").forEach((b) => {
+    b.classList.toggle("on", keys.sounding.has(+b.dataset.s));
+    b.classList.toggle("rolling", keys.rolling.includes(+b.dataset.s));
+  });
+  const snare = keys.layout ? keys.layout.snare : [];
+  $("keys-roll").setAttribute("aria-pressed", keys.rolling.length && keys.rolling.every((s) => snare.includes(s)) ? "true" : "false");
+  // what one hit of the repeat is: the console strikes for 60 % of the interval, at most 150 ms
+  const iv = +$("keys-interval").value, hit = Math.max(10, Math.min(150, Math.round(iv * 0.6)));
+  $("keys-interval-note").textContent = `(${hit} on, ${iv - hit} off)`;
 }
 async function keysAct(what, body) {
   try {
@@ -484,13 +491,21 @@ async function keysAct(what, body) {
   } catch (e) { toast(e.message, true); }
 }
 function tapKey(s) {
-  if (keys.hold) keysAct("hold", { solenoid: s, on: !keys.sounding.has(s) });
+  if (keys.repeat) {
+    const same = keys.rolling.length === 1 && keys.rolling[0] === s;
+    keysAct("roll", same ? { on: false } : { on: true, solenoids: [s], interval_ms: +$("keys-interval").value });
+  } else if (keys.hold) keysAct("hold", { solenoid: s, on: !keys.sounding.has(s) });
   else keysAct("pulse", { solenoid: s });
 }
 $("keys-view").onclick = () => { keys.view = keys.view === "section" ? "board" : "section"; renderKeys(); };
-$("keys-hold").onchange = (e) => { keys.hold = e.target.checked; if (!keys.hold) keysAct("off"); };
+$("keys-hold").onchange = (e) => { keys.hold = e.target.checked; if (keys.hold) { keys.repeat = false; $("keys-repeat").checked = false; } if (!keys.hold) keysAct("off"); };
+$("keys-repeat").onchange = (e) => { keys.repeat = e.target.checked; if (keys.repeat) { keys.hold = false; $("keys-hold").checked = false; } if (!keys.repeat) keysAct("off"); };
 $("keys-roll").onclick = () => keysAct("roll", { on: !keys.rolling.length, interval_ms: +$("keys-interval").value });
-$("keys-interval").oninput = () => { $("keys-interval-v").textContent = $("keys-interval").value; if (keys.rolling.length) keysAct("roll", { on: true, interval_ms: +$("keys-interval").value }); };
+$("keys-interval").oninput = () => {
+  $("keys-interval-v").textContent = $("keys-interval").value;
+  if (keys.rolling.length) keysAct("roll", { on: true, solenoids: keys.rolling, interval_ms: +$("keys-interval").value });
+  else paintKeys();
+};
 $("keys-off").onclick = () => keysAct("off");
 
 /* ---- the look ---------------------------------------------------------- */

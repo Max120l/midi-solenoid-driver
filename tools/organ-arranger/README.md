@@ -198,6 +198,18 @@ physically do and want measuring against the chest. If fast passages smear the
 gap is too small; if notes fail to speak the minimum is too short; the
 register pulse just needs to throw the latch reliably.
 
+The measurement is on the front desk's Service tab: tick *Repeat*, tap a pipe,
+and it restrikes at the interval slider's rate, 60 % on and 40 % off, until
+tapped again. Bring the interval down until the repeats stop being distinct
+notes, and note the last clean interval for a small pipe, a middle one and the
+biggest bass pipe: the pallets and the channels behind them are what set the
+limit, and the bass is always the slowest. Set `min_note_ms` to about 60 % of
+the slowest rank's interval and `min_gap_ms` to the rest, rerun the tunes, and
+the arranger trims every re-articulation to fit; the player reads the same
+values from organ.yaml, so nothing it is given can ask for faster. A pipe that
+repeats at 120 ms but not at 100 ms wants 70 / 50; the defaults of 50 / 30 were
+a guess made before the organ was wind-tight.
+
 ## Arranging a tune that was never written for the organ
 
 `organ_transcribe.py` is the step *before* the arranger: it takes an ordinary
