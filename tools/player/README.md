@@ -88,7 +88,10 @@ Notes already sounding at the start point are not restarted.
 A skip does not cut the organ dead. The notes sounding at that moment end
 where they are written, as long as that is within half a second; anything
 held longer is cut then, but never before its minimum length. Then All Notes
-Off, which is the last thing on the wire whichever way the player leaves.
+Off, which is the last thing on the wire whichever way the player leaves. When the organ is known (`--organ`), a skip or a quit then pulses every
+register's reset coil in turn, since a tune cut short never reaches its own
+postamble and a set/reset register keeps whatever it was left with: after
+the player, every stop is off.
 
 ## The status file
 

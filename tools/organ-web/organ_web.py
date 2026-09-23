@@ -332,6 +332,12 @@ class KeysDesk:
                                               sections=self.groups, section_labels=self.section_labels)
             self.thread = threading.Thread(target=self._run, name="keys", daemon=True)
             self.thread.start()
+            if any(v is None for v in self.stop_state.values()):
+                # the first touch since the desk started: the registers sit wherever the
+                # last session left them, so every one is reset and from here on known
+                for k in self.stop_state:
+                    self.stop_state[k] = False
+                threading.Thread(target=self._stops_off, name="stops-off", daemon=True).start()
 
     _solenoid_1_note = 0
 
@@ -350,7 +356,9 @@ class KeysDesk:
                 return
             self.console.all_off()
             self.console = None
-            self.stop_state = {k: None for k in self.stop_state}   # a tune may move the stops: unknown again
+            # the player takes over: every tune resets the registers at its end, and the
+            # player clears them when a tune is cut short, so after it they are all off
+            self.stop_state = {k: False for k in self.stop_state}
             try:
                 self.port.close()
             except Exception:

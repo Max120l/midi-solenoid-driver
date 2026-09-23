@@ -452,6 +452,22 @@ class Player:
         if self.status is not None:
             self.status.write(**fields)
 
+    def clear_registers(self) -> None:
+        """Every register's reset coil, a stagger apart: a tune that ends early never
+        ran its own postamble, and a set/reset register keeps whatever it was
+        left with. With this, a stop is off after the player, always, and the
+        front desk can know where every register sits. Ctrl+C in the middle of it
+        is ignored until the last coil has been pulsed."""
+        if not self.cfg.registers:
+            return
+        for _, reset in self.cfg.registers:
+            while True:
+                try:
+                    pulse_registers([reset], self.port, self.sleep)
+                    break
+                except KeyboardInterrupt:
+                    continue
+
     def stopped(self) -> int:
         silence(self.port)
         self.say("Stopped.")
@@ -524,6 +540,7 @@ class Player:
                     _pausable = False
                     self.say("      skipped while paused")
                     self.report(state="skipped", position_s=round(at, 1))
+                    self.clear_registers()
                     return "skipped"
             except KeyboardInterrupt:
                 _pausable = False
@@ -531,9 +548,11 @@ class Player:
                 try:
                     pb.release(self.port, self.sleep, self.clock)
                 except KeyboardInterrupt:              # hammered: quit now, silenced
+                    self.clear_registers()
                     return "quit"
                 self.say(f"      skipped at {clock_text(at)}  (Ctrl+C again within {QUIT_WINDOW_S:.0f} s quits)")
                 self.report(state="skipped", position_s=round(at, 1))
+                self.clear_registers()
                 try:
                     self.sleep(QUIT_WINDOW_S)
                 except KeyboardInterrupt:

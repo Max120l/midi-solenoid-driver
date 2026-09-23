@@ -296,6 +296,20 @@ def test_an_unreadable_song_is_reported_and_the_queue_goes_on(tmp_path):
     assert "cannot play" in out.getvalue() and ("note_on", 40) in port.notes()
 
 
+def test_a_skip_leaves_every_register_off_when_the_organ_is_known(tmp_path):
+    notes = [(0, 0.1, 0), (1, 1, 40), (3, 1, 40)]                    # register 1 set, then two notes
+    s = song_file(tmp_path / "s.organ.mid", notes)
+    b = song_file(tmp_path / "b.organ.mid", [(0, 1, 41)])
+    ft, port, out = FakeTime(), FakePort(), io.StringIO()
+    port.interrupt_at = 3                                            # Ctrl+C on the second note
+    cfg = g.Settings(gap=0.0, registers=[(0, 1), (2, 3)])
+    assert g.run([g.Song(s), g.Song(b)], port, cfg, ft.sleep, ft.clock, out) == 0
+    ons = [n for t, n in port.notes() if t == "note_on"]
+    i = ons.index(41)
+    assert ons[i - 2:i] == [1, 3]                                    # both reset coils before the next song
+    assert "skipped" in out.getvalue()
+
+
 def test_start_restores_the_registration_when_the_organ_is_known(tmp_path):
     notes = [(0, 0.1, 0), (0.4, 0.1, 3), (4, 1, 40), (6, 1, 41)]
     s = song_file(tmp_path / "s.organ.mid", notes)

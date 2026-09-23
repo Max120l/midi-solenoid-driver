@@ -443,7 +443,7 @@ def test_keys_layout_and_actions_and_the_busy_guard(desk):
         desk.keys_act("pulse", {"solenoid": 1})
     desk.housekeep()
     assert desk.snapshot()["keys_open"] is False               # closed because the player has work
-    assert all(r["on"] is None for r in desk.keys.layout()["registers"])   # a tune may have moved them
+    assert all(r["on"] is False for r in desk.keys.layout()["registers"])  # the player leaves them all off
     desk.keys.close()
 
 
