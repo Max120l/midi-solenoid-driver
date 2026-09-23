@@ -12,7 +12,7 @@ let library = { tunes: [], folders: [] };
 let folder = "";
 let playlistOpen = null;
 let toastTimer = null;
-const keys = { layout: null, view: "section", hold: false, repeat: false, sounding: new Set(), rolling: [] };
+const keys = { layout: null, view: "section", hold: false, repeat: false, sounding: new Set(), rolling: [], stops: {} };
 
 function toast(text, error) {
   const t = $("toast");
@@ -454,7 +454,7 @@ function renderService() {
   const busy = !state.idle;
   $("keys-busy").hidden = !busy;
   $("keys").classList.toggle("disabled", busy);
-  if (!state.keys_open) { keys.sounding.clear(); keys.rolling = []; paintKeys(); }
+  if (!state.keys_open) { keys.sounding.clear(); keys.rolling = []; Object.keys(keys.stops).forEach((k) => { keys.stops[k] = null; }); paintKeys(); }
 }
 async function loadKeys() {
   if (keys.layout) { renderKeys(); return; }
@@ -464,11 +464,17 @@ function renderKeys() {
   const L = keys.layout, bySection = keys.view === "section";
   const blocks = bySection ? L.sections : L.boards;
   const labels = bySection ? L.section_labels : L.labels;
-  $("keys").innerHTML = blocks.map((b) => `
+  const regs = L.registers || [];
+  const stopsRow = (list, withSection) => list.length ? `<div class="stops">${list.map((r) =>
+    `<button class="stop" data-reg="${esc(r.name)}"><span class="n">${withSection && r.section ? esc(r.section) + " · " : ""}stop</span><span class="l">${esc(r.stop)}</span></button>`).join("")}</div>` : "";
+  $("keys").innerHTML = (bySection ? "" : stopsRow(regs, true)) + blocks.map((b) => `
     <div class="block"><div class="block-title">${esc(b.name)} · ${b.solenoids.length}</div>
+      ${bySection ? stopsRow(regs.filter((r) => r.section === b.name), false) : ""}
       <div class="grid">${b.solenoids.map((s) => `<button class="key" data-s="${s}"><span class="n">${s}</span><span class="l">${esc(labels[s] || "")}</span></button>`).join("")}</div>
     </div>`).join("");
   $("keys").querySelectorAll(".key").forEach((b) => b.onclick = () => tapKey(+b.dataset.s));
+  $("keys").querySelectorAll(".stop").forEach((b) => b.onclick = () => keysAct("register", { name: b.dataset.reg, on: keys.stops[b.dataset.reg] !== true }));
+  regs.forEach((r) => { keys.stops[r.name] = r.on; });
   $("keys-view").textContent = bySection ? "By section" : "By board";
   paintKeys();
 }
@@ -476,6 +482,12 @@ function paintKeys() {
   $("keys").querySelectorAll(".key").forEach((b) => {
     b.classList.toggle("on", keys.sounding.has(+b.dataset.s));
     b.classList.toggle("rolling", keys.rolling.includes(+b.dataset.s));
+  });
+  $("keys").querySelectorAll(".stop").forEach((b) => {
+    const st = keys.stops[b.dataset.reg];
+    b.classList.toggle("on", st === true);
+    b.classList.toggle("unknown", st == null);
+    b.querySelector(".n").textContent = b.querySelector(".n").textContent.replace(/ (on|off|\?)$/, "") + (st === true ? " on" : st === false ? " off" : " ?");
   });
   const snare = keys.layout ? keys.layout.snare : [];
   $("keys-roll").setAttribute("aria-pressed", keys.rolling.length && keys.rolling.every((s) => snare.includes(s)) ? "true" : "false");
@@ -486,7 +498,7 @@ function paintKeys() {
 async function keysAct(what, body) {
   try {
     const r = await api(`/api/keys/${what}`, "POST", body || {});
-    keys.sounding = new Set(r.sounding); keys.rolling = r.rolling; paintKeys();
+    keys.sounding = new Set(r.sounding); keys.rolling = r.rolling; if (r.stops) keys.stops = r.stops; paintKeys();
     if (r.sounding.length && !keys.hold) setTimeout(() => { keys.sounding.clear(); paintKeys(); }, 250);
   } catch (e) { toast(e.message, true); }
 }
@@ -507,6 +519,7 @@ $("keys-interval").oninput = () => {
   else paintKeys();
 };
 $("keys-off").onclick = () => keysAct("off");
+$("keys-stops-off").onclick = () => keysAct("stops_off");
 
 /* ---- the look ---------------------------------------------------------- */
 $("set-theme").onchange = (e) => {

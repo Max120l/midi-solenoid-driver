@@ -419,8 +419,23 @@ def test_keys_layout_and_actions_and_the_busy_guard(desk):
     assert r["rolling"] == [55, 56]
     r = desk.keys_act("roll", {"solenoids": [41], "interval_ms": 60})     # the repeat test: one pipe restruck
     assert r["rolling"] == [41] and desk.keys.console.roll_interval_ms == 60 and desk.keys.console.roll_hit_ms() == 36
+    # the stops: decoded onto their sections, thrown by pulsing the set or reset coil
+    regs = {r["name"]: r for r in lay["registers"]}
+    assert regs["Trumpet Melody"] == {"name": "Trumpet Melody", "stop": "Trumpet", "section": "Melody", "set": 9, "reset": 10, "on": None}
+    assert regs["Trombone Base"]["section"] == "Base" and regs["Cello TenorCM"]["section"] == "TenorCM"
+    r = desk.keys_act("register", {"name": "Trumpet Melody", "on": True})
+    assert 9 in r["sounding"] and r["stops"]["Trumpet Melody"] is True and desk.keys.console.pending_off[9] > 0
+    r = desk.keys_act("register", {"name": "Trumpet Melody", "on": False})
+    assert 10 in r["sounding"] and r["stops"]["Trumpet Melody"] is False
+    with pytest.raises(ValueError):
+        desk.keys_act("register", {"name": "Bagpipe", "on": True})
+    r = desk.keys_act("stops_off", {})
+    assert all(v is False for v in r["stops"].values())
+    import time as _t
+    _t.sleep(0.6)                                                           # the staggered resets run in a thread
+    assert 2 in desk.keys.console.pending_off or 2 not in desk.keys.console.sounding
     r = desk.keys_act("off", {})
-    assert r == {"sounding": [], "rolling": []}
+    assert r["sounding"] == [] and r["rolling"] == [] and set(r["stops"]) == set(regs)
     desk.pump = None
     desk.add(["marches/bogey.organ.mid"])
     desk.play()
@@ -428,6 +443,7 @@ def test_keys_layout_and_actions_and_the_busy_guard(desk):
         desk.keys_act("pulse", {"solenoid": 1})
     desk.housekeep()
     assert desk.snapshot()["keys_open"] is False               # closed because the player has work
+    assert all(r["on"] is None for r in desk.keys.layout()["registers"])   # a tune may have moved them
     desk.keys.close()
 
 

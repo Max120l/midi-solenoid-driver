@@ -290,12 +290,34 @@ class KeysDesk:
         self.lock = threading.Lock()
         self.thread: threading.Thread | None = None
         self.labels, self.groups, self.section_labels = labels, groups, section_labels
+        self.registers: list[dict] = []          # the stops: {name, stop, section, set, reset}
+        self.register_pulse_ms = 100
+        self.register_stagger_ms = 60
+        self.stop_state: dict[str, bool | None] = {}   # last commanded state, None = unknown
+
+    def set_registers(self, raw: dict) -> None:
+        """Decode the organ's register list: 'Trumpet Melody' is the Trumpet stop on the
+        Melody section, so each stop lands on the section whose pipes it colours."""
+        names = {n.lower(): n for n, _ in self.groups}
+        self.registers = []
+        for r in raw.get("registers") or []:
+            name = str(r.get("name", "")).strip()
+            words = name.split()
+            section = names.get(words[-1].lower()) if words else None
+            stop = " ".join(words[:-1]) if section and len(words) > 1 else name
+            self.registers.append({"name": name, "stop": stop, "section": section,
+                                   "set": int(r["set"]), "reset": int(r["reset"])})
+        timing = raw.get("timing") or {}
+        self.register_pulse_ms = int(timing.get("register_pulse_ms", self.register_pulse_ms))
+        self.register_stagger_ms = int(timing.get("register_stagger_ms", self.register_stagger_ms))
+        self.stop_state = {r["name"]: None for r in self.registers}
 
     def layout(self) -> dict:
         boards = [{"name": f"board {b + 1}", "solenoids": list(range(b * 16 + 1, b * 16 + 17))} for b in range(4)]
         return {"boards": boards, "sections": [{"name": n, "solenoids": s} for n, s in self.groups],
                 "labels": {str(k): v for k, v in self.labels.items()},
                 "section_labels": {str(k): v for k, v in self.section_labels.items()},
+                "registers": [dict(r, on=self.stop_state.get(r["name"])) for r in self.registers],
                 "snare": self.console.snare_pair() if self.console else organ_keys.Console(
                     send=lambda m: None, labels=self.labels).snare_pair()}
 
@@ -328,6 +350,7 @@ class KeysDesk:
                 return
             self.console.all_off()
             self.console = None
+            self.stop_state = {k: None for k in self.stop_state}   # a tune may move the stops: unknown again
             try:
                 self.port.close()
             except Exception:
@@ -356,11 +379,36 @@ class KeysDesk:
                     c.start_roll(targets, now)
                 else:
                     c.roll_targets = []
+            elif what == "register":
+                reg = next((r for r in self.registers if r["name"] == body.get("name")), None)
+                if reg is None:
+                    raise ValueError(f"no register named {body.get('name')!r}")
+                on = bool(body.get("on", True))
+                c.pulse(reg["set"] if on else reg["reset"], now, self.register_pulse_ms)
+                self.stop_state[reg["name"]] = on
+            elif what == "stops_off":
+                for r in self.registers:
+                    self.stop_state[r["name"]] = False
+                threading.Thread(target=self._stops_off, name="stops-off", daemon=True).start()
             elif what == "off":
                 c.all_off()
             else:
                 raise ValueError(f"unknown keys action {what!r}")
-            return {"sounding": sorted(c.sounding), "rolling": list(c.roll_targets)}
+            return self._state(c)
+
+    def _state(self, c) -> dict:
+        return {"sounding": sorted(c.sounding), "rolling": list(c.roll_targets), "stops": dict(self.stop_state)}
+
+    def _stops_off(self) -> None:
+        """Every reset coil in turn, a stagger apart, as the arranger's preamble does:
+        the stops share one board, and seven coils at once is a fuse's worth."""
+        for r in self.registers:
+            with self.lock:
+                c = self.console
+                if c is None:
+                    return
+                c.pulse(r["reset"], time.monotonic(), self.register_pulse_ms)
+            time.sleep(self.register_stagger_ms / 1000)
 
 
 # ----------------------------------------------------------------------------
@@ -402,7 +450,8 @@ class Desk:
         groups, section_labels = organ_keys.groups_from_organ(raw)
         self.keys = KeysDesk(cfg, labels, groups, section_labels, open_port or self._open_port)
         self.keys._solenoid_1_note = first
-        self.registers = [r.get("name") for r in raw.get("registers") or []]
+        self.keys.set_registers(raw)
+        self.registers = [r["name"] for r in self.keys.registers]
         self._written: list[dict] = []
         try:
             cfg.status_file.unlink()            # a status left by an earlier run says nothing about now
