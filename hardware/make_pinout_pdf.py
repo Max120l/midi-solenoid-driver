@@ -21,7 +21,7 @@ MONO = ParagraphStyle("m", parent=ss["Code"], fontName="Courier", fontSize=7.6, 
 
 # (pin, function, ours) for the left column (odd) and right column (even)
 pins = {
-    1: ("3.3 V", "MIDI: 6N137 module IN+"), 2: ("5 V", "free (Pi fed by USB-C from the SD-25A-5)"),
+    1: ("3.3 V", "MIDI: 6N137 module IN+"), 2: ("5 V", "free (Pi fed by USB-C from the 5 V supply in the box)"),
     3: ("GPIO 2 / SDA", "free; I2C stays off"), 4: ("5 V", "free"),
     5: ("GPIO 3 / SCL", "ON/OFF SWITCH, one side"), 6: ("GND", "ON/OFF SWITCH, other side"),
     7: ("GPIO 4", ""), 8: ("GPIO 14 / TXD", "MIDI: 6N137 module IN-"),
@@ -92,14 +92,15 @@ story = [
     Spacer(1, 6),
     Paragraph("Part pinouts: PC817 pin 1 anode, 2 cathode, 3 emitter, 4 collector (dot at pin 1). SSR-xx DA: 1 and 2 "
               "load (mains), 3 positive and 4 negative input, 3 to 32 V DC. 6N137 module: IN+ and IN- marked on the "
-              "terminals; VCC, OUT, GND on the other side. SD-25A-5: +Vin/-Vin from the 12 V bus through a 2 A fuse, +V/-V trimmed to 5.1 V at "
-              "the Pi into its USB-C; 1500 V isolation inside. organ_web: --pump 24 --power-switch 3; reset on 17. "
+              "terminals; VCC, OUT, GND on the other side. Pi 5 V: a Mean Well 5 V mains supply in the box, 3 A fuse, over the Ethernet "
+              "cable's three spare pairs (pins 1,4,7 plus; 2,5,8 return; 3,6 the SSR), trimmed to 5.1 V at the Pi, USB-C pigtail. "
+              "organ_web: --pump 24 --power-switch 3; reset on 17. "
               "Status LED: config.txt dtoverlay=gpio-led,gpio=27,label=pellevoisin,trigger=heartbeat; it beats while Linux runs and is dark when halted.", SMALL),
     PageBreak(),
     Paragraph("Pellevoisin: the box, wired", H1),
-    Paragraph("Two halves in one aluminium case, and exactly four things cross between them, three by light and one by a "
-              "transformer: the MIDI opto, the reset opto, the SSR, and the isolated converter that makes the Pi's 5 V "
-              "from the 12 V bus.", P),
+    Paragraph("Two halves in one aluminium case, and exactly three things cross between them, each by light: the MIDI "
+              "opto, the reset opto and the SSR. The Pi has a mains supply of its own, in the box, and its 5 V travels in "
+              "the Ethernet cable beside the SSR pair.", P),
     Spacer(1, 6),
 ]
 schematic = r"""
@@ -109,17 +110,17 @@ MAINS -- IEC inlet with fuse -+- E ---- earth stud on the case ---- motor frame
                               +- L -- PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
                                        pole A common -+- BOOK -----------------------> motor L
                                                       +- AUTO -> SSR 1 -- SSR 2 ------> motor L
-                                       pole B common --- AUTO -> PSU L   (its green on wire to its GND: on with Auto)
+                                       pole B common --- AUTO -> 12 V PSU L (green on wire to GND) and 5 V PSU L
                                        (OFF: neither pole connected; the supply's fan cools the box in Auto)
 
 ORGAN SIDE (the 12 V supply's ground)                PI SIDE (the converter's output ground)
-PSU 12 V, several wires --> 12 V bus bar             SD-25A-5 +V / -V, trimmed to 5.1 V --USB-C--> Pi 4
+PSU 12 V, several wires --> 12 V bus bar             5 V PSU (mains, in the box) - RJ45 pairs 1-2,4-5,7-8 -USB-C-> Pi 4
 PSU GND, several wires ---> organ GND bus bar        DSI ribbon --> touchscreen
 PSU on wire (green) ------> PSU GND: on with Auto     GPIO 3 (pin 5) -- antique switch -- Pi GND (pin 6)   on/off
 12 V bus / GND bus -------> boards 1-4, 5 A fuses    GPIO 14 TX (pin 8) -- 6N137 IN-             MIDI
-12 V bus -[2 A fuse]-> SD-25A-5 +Vin, GND bus > -Vin 3.3 V (pin 1) ------- 6N137 IN+
-         ----- transformer inside the SD-25A-5 ----- GPIO 24 (pin 18) -- SSR 3 (+)                pump
-last board ISP pin 2 -----> RJ12 pin 6 = 5 V bus     Pi GND (pin 20) --- SSR 4 (-)
+                                                     3.3 V (pin 1) ------- 6N137 IN+
+                                                     GPIO 24 (pin 18) -- RJ45 pin 3 -- SSR 3 (+)  pump
+last board ISP pin 2 -----> RJ12 pin 6 = 5 V bus     Pi GND (pin 20) --- RJ45 pin 6 -- SSR 4 (-)
 RJ12 pin 1 = /RESET bus (jumpered board to board)    GPIO 27 (pin 13) -[330 ohm]- LED - Pi GND (pin 14)  alive
 RJ12: MIDI signal, GND, as shipped                   GPIO 17 (pin 11) -[330 ohm]- PC817 anode         reset
 6N137 module: VCC < RJ12 pin 6, GND < RJ12 GND,      Pi GND (pin 9) ------------ PC817 cathode
@@ -133,8 +134,8 @@ story += [
     Paragraph("Rules", H2),
 ]
 rules = [
-    "No wire, bar or chassis lug between the organ's GND bus and the Pi's ground: the Pi's 5 V comes through the converter's "
-    "transformer, never from a buck. The earth stud carries earth only, and no DC negative goes to it.",
+    "No wire, bar or chassis lug between the organ's GND bus and the Pi's ground: the Pi's 5 V comes from its own mains "
+    "supply, never from a buck on the 12 V bus. The earth stud carries earth only, and no DC negative goes to it.",
     "Mains bus bars shrouded, or covered DIN terminal blocks instead. Low-voltage bars may be bare.",
     "Mains and low voltage on opposite sides of a partition: inlet, switch, supplies' inputs, SSR 1 and 2, motor lead on "
     "one side; Pi, RJ12 bus, optos, SSR 3 and 4 on the other. A wire that must cross does so once, at right angles.",
@@ -142,7 +143,7 @@ rules = [
     "Only the live is switched, ever. Neutral and earth run straight through. The panel switch is motor rated: "
     "1 HP at 125 V, or 20 A. The antique on/off switch carries microamps and may be anything.",
     "Book: the motor runs, nothing else has power. Auto: the 12 V supply (Lenovo SP50H29523, 15 A) starts at once, its green on wire tied to its ground, and the bus, "
-    "the fan, the boards and the Pi through its converter come up together; the motor runs only when the SSR says so. "
+    "the fan, the boards and the Pi on its own 5 V supply come up together; the motor runs only when the SSR says so. "
     "Off: everything isolated (the SSR alone leaks a milliamp).",
     "Before the panel goes from Auto to Off: the antique switch off, or Shut down on the Service tab, and wait for the status LED to go dark.",
 ]

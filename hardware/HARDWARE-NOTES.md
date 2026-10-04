@@ -358,7 +358,7 @@ is a short twisted pair. The MIDI pair has no ground: TX is its return.
 
 | Pin | | Ours | Pin | | Ours |
 |---|---|---|---|---|---|
-| 1 | 3.3 V | MIDI: 6N137 IN+ | 2 | 5 V | free (the Pi is fed by USB-C from the SD-25A-5) |
+| 1 | 3.3 V | MIDI: 6N137 IN+ | 2 | 5 V | free (the Pi is fed by USB-C from the 5 V supply in the box) |
 | 3 | GPIO 2 SDA | free, I²C off | 4 | 5 V | free |
 | 5 | GPIO 3 SCL | on/off switch | 6 | GND | on/off switch |
 | 7 | GPIO 4 | | 8 | GPIO 14 TXD | MIDI: 6N137 IN- |
@@ -398,9 +398,8 @@ pair on pins 13 and 14 is one more short twisted pair.
 ### The box, wired
 
 Everything that is not a pipe, drawn once. Two halves, one aluminium case,
-and exactly four things cross between them, three by light and one by a
-transformer: the MIDI opto, the reset opto, the SSR, and the isolated
-converter that makes the Pi's 5 V from the 12 V bus.
+and exactly three things cross between them, each by light: the MIDI opto,
+the reset opto and the SSR. The Pi has a mains supply of its own.
 
 ```
 MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case ──── motor frame
@@ -409,17 +408,17 @@ MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case
                               └─ L ── PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
                                        pole A common ─┬─ BOOK ────────────────────────► motor L
                                                       └─ AUTO ─► SSR 1 ── SSR 2 ───────► motor L
-                                       pole B common ─── AUTO ─► PSU L   (its green on wire to its GND: on with Auto)
+                                       pole B common ─── AUTO ─► 12 V PSU L (green on wire to GND) and 5 V PSU L
                                        (OFF: neither pole connected; the supply's fan cools the box in Auto)
 
 ORGAN SIDE (the 12 V supply's ground)                 PI SIDE (the converter's output ground)
-PSU 12 V, several wires ──► 12 V bus bar              SD-25A-5 +V / -V, trimmed to 5.1 V ─USB-C─► Pi 4
+PSU 12 V, several wires ──► 12 V bus bar              5 V PSU (mains, in the box) ─ RJ45 pairs 1-2, 4-5, 7-8 ─USB-C─► Pi 4
 PSU GND, several wires ───► organ GND bus bar         DSI ribbon ─► touchscreen
 PSU on wire (green) ──────► PSU GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
 12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
-12 V bus ─[2 A fuse]─► SD-25A-5 +Vin, GND bus ► -Vin  3.3 V (pin 1) ────── 6N137 IN+
-         ───── transformer inside the SD-25A-5 ─────  GPIO 24 (pin 18) ── SSR 3 (+)                 pump
-last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      Pi GND (pin 20) ─── SSR 4 (-)
+                                                      3.3 V (pin 1) ────── 6N137 IN+
+                                                      GPIO 24 (pin 18) ── RJ45 pin 3 ── SSR 3 (+)   pump
+last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      Pi GND (pin 20) ─── RJ45 pin 6 ── SSR 4 (-)
 RJ12 pin 1 = /RESET bus (jumpered board to board)     GPIO 27 (pin 13) ─[330 Ω]─ LED ─ Pi GND (pin 14)   alive
 RJ12: MIDI signal, GND, as shipped                    GPIO 17 (pin 11) ─[330 Ω]─ PC817 anode          reset
 6N137 module: VCC ◄ RJ12 pin 6, GND ◄ RJ12 GND,       Pi GND (pin 9) ─────────── PC817 cathode
@@ -485,26 +484,29 @@ is hardware sure, on whenever the SSR can be warm. 15 A is generous: the four bo
 together have never drawn more than 3-4 A on the bench, in the busiest
 passages the arranger has produced.
 
-The Pi's 5 V is made from the 12 V bus at the Pi's end of the organ by a
-**Mean Well SD-25A-5**, decided 2026-09-21: 9.2-18 V in, 5 V at 5 A out,
-1500 V isolation, a trimmer on the output. The transformer inside it is
-what keeps the Pi's ground off the organ's, so this is the only kind of
-converter that fits; a buck module of any brand, however good, bonds the
-two grounds through its inductor. The proof is the meter: no continuity
-between -Vin and -V unpowered, no DC voltage between them running.
+The Pi's 5 V comes from its own **mains supply in the box**, a Mean Well
+5 V unit with a trimmer (RS-15-5 or LRS-35-5), decided 2026-10-04 because
+it saves running the 12 V to a converter at the Pi's end: the 5 V travels in
+the **Ethernet cable that already carries the SSR pair**, on its three spare
+pairs in parallel. The Pi's ground is then that supply's negative, floating,
+and nothing bonds it to the organ's 12 V ground: the rule holds without any
+transformer at the Pi's end.
 
 | | |
 |---|---|
-| +Vin | the 12 V bus, through its own 2 A fuse, with 100 µF across the input terminals |
-| -Vin | the organ GND bus |
-| +V, -V | the Pi's USB-C, through a short bare-ended USB-C pigtail, 20 AWG or better |
-| trimmer | 5.1 V measured at the Pi's header, pins 2 and 6, with the screen lit and a tune playing |
+| RJ45 pins 1, 4, 7 (one wire of each spare pair) | +5 V, through a 3 A fuse at the box |
+| pins 2, 5, 8 (the other wire of each pair) | 5 V return |
+| pins 3 and 6 (the green pair) | SSR 3 (+) from GPIO 24, SSR 4 (-) to Pi GND |
+| at the Pi | a short USB-C pigtail, so the Pi's own input protection stays in circuit |
+| trimmer | 5.1 V at the Pi's header, pins 2 and 6, with the screen lit and a tune playing |
 
-The USB-C route keeps the Pi's own input protection in circuit; the trimmer
-takes care of the cable drop. Between the box and the Pi's end only two
-pairs run: the heavy 12 V pair and the SSR's thin pair. The Pi 4 with the
-DSI screen peaks near 2 A, so a 3 A converter would do, and 5 A leaves the
-USB ports their full budget.
+A 24 AWG conductor is about 0.085 Ω per metre: one pair over 3 m drops a
+volt at the 2 A the Pi and screen can draw, three pairs in parallel about
+0.3 V, which the trimmer takes up. RJ45 contacts carry about an amp each,
+hence three per polarity. Between the box and the Pi's end only the Ethernet
+cable and the heavy 12 V pair for the boards run. The SD-25A-5 isolated
+converter ordered on 2026-09-21 stays in the drawer as the alternative: it
+would make the 5 V from the 12 V bus at the Pi's end through its transformer.
 
 Until 2026-09-21 the plan was an ATX supply switched by the Pi through a PC817 on its PS_ON
 (organ_web's `--power`, which stays in the software for an organ that
