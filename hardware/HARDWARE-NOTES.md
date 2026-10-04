@@ -411,7 +411,7 @@ MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case
                                        pole B common ─── AUTO ─► 12 V PSU L (green on wire to GND) and 5 V PSU L
                                        (OFF: neither pole connected; the supply's fan cools the box in Auto)
 
-ORGAN SIDE (the 12 V supply's ground)                 PI SIDE (the converter's output ground)
+ORGAN SIDE (the 12 V supply's ground)                 PI SIDE (the 5 V supply's ground)      
 PSU 12 V, several wires ──► 12 V bus bar              5 V PSU (mains, in the box) ─ RJ45 pairs 1-2, 4-5, 7-8 ─USB-C─► Pi 4
 PSU GND, several wires ───► organ GND bus bar         DSI ribbon ─► touchscreen
 PSU on wire (green) ──────► PSU GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
