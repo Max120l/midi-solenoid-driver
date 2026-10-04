@@ -48,6 +48,7 @@ DEFAULT_KEYS = 49
 BOOK_W = 600                 # rectified pixels across the book, edge to edge
 BAND_TOP, BAND_BOTTOM = 18, 100   # rectified rows below the roller contact line that are read: close to the roller, where every frame agrees
 MIN_INLIERS = 40
+HOLE_RATIO = 0.74            # a track's core darker than this fraction of the card is a hole; blurred holes sit near 0.7-0.8
 ORB_FEATURES = 4000
 
 
@@ -357,6 +358,8 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     last_H = np.eye(3)
+    prev = None                                  # (keypoints, descriptors, H) of the previous frame, for chaining
+    chained = 0
     pos = np.zeros(n)
     good = np.zeros(n, bool)
     matched = np.zeros(n, bool)
@@ -401,11 +404,25 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
                 inliers_log.append(ninl)
                 if Hm is not None and ninl >= MIN_INLIERS:
                     Hs = Hm
+        if Hs is None and prev is not None and d is not None and len(k) > 20:
+            # the reference is far from this framing (the camera was still settling):
+            # go through the previous frame instead and compose
+            pk, pd, pH = prev
+            m = bf.match(pd, d)
+            if len(m) >= 12:
+                p0 = np.float32([pk[x.queryIdx].pt for x in m])
+                p1 = np.float32([k[x.trainIdx].pt for x in m])
+                Hc, inl = cv2.findHomography(p1, p0, cv2.RANSAC, 4.0)
+                if Hc is not None and inl is not None and int(inl.sum()) >= 25:
+                    Hs = pH @ Hc
+                    chained += 1
         if Hs is None:
             Hs = last_H
         else:
             last_H = Hs
             good[i] = True
+        if d is not None and len(k) > 20:
+            prev = (k, d, Hs)
         band = band_of(frame, Hcal @ Hs, length, np, cv2)
         if i == 0:
             pos[0] = 0.0
@@ -482,7 +499,7 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
     steps = np.diff(pos[:n])
     track = {"video": video.name, "fps": fps, "frames": int(n), "ref_frame": ref_index, "book_w": BOOK_W,
              "band": [BAND_TOP, BAND_BOTTOM], "nominal_step_px": float(np.median(steps)),
-             "stabilised_frames": int(good.sum()), "matched_frames": int(matched.sum()),
+             "stabilised_frames": int(good.sum()), "chained_frames": int(chained), "matched_frames": int(matched.sum()),
              "median_match": float(np.median(scores[matched])) if matched.any() else 0.0,
              "x_jitter_px": float(np.std(dxs[matched])) if matched.any() else 0.0,
              "x_shift_left_std": float(np.std(dxl_log)) if dxl_log else 0.0,
@@ -513,13 +530,13 @@ def hole_mask(mosaic, np, cv2):
     return mask, ratio
 
 
-def local_pitches(xs, weights, width, np, win=170, step=40):
+def local_pitches(xs, weights, width, np, win=120, step=30):
     """The key-track spacing measured in windows across the card: the fold of the hole
     centres is sharpest at the local pitch. Returns [(x_centre, pitch, sharpness, n)]."""
     out = []
     for x0 in range(0, width - win + 1, step):
         sel = (xs >= x0) & (xs < x0 + win)
-        if sel.sum() < 40:
+        if sel.sum() < 30:
             continue
         best = None
         for p in np.arange(8.5, 14.0, 0.02):
@@ -533,29 +550,34 @@ def local_pitches(xs, weights, width, np, win=170, step=40):
 
 
 class TrackMap:
-    """Key tracks whose spacing changes linearly across the card, p(x) = p0 + p1 (x - xc):
-    the perspective the straightening left across the width. u(x) counts tracks
-    continuously from xc; track k sits where u = phase + k."""
+    """Key tracks whose spacing changes across the card: the perspective the
+    straightening left across the width. The track density d(x) = 1/pitch is
+    interpolated between the windows it was measured in (extended linearly a little
+    way past the outermost ones); u(x), its integral, counts tracks continuously, and
+    track k sits where u = phase + k."""
 
-    def __init__(self, p0, p1, xc, np):
-        self.p0, self.p1, self.xc, self.np = float(p0), float(p1), float(xc), np
+    def __init__(self, dens_x, dens, width, np, scale=1.0):
+        self.np = np
+        dx, d = np.asarray(dens_x, float), np.asarray(dens, float) * scale
+        xs = np.arange(-50, width + 51, dtype=float)
+        dd = np.interp(xs, dx, d)
+        if len(dx) >= 2:                                    # extend the end slopes beyond the measured range
+            s_lo = (d[1] - d[0]) / (dx[1] - dx[0]); s_hi = (d[-1] - d[-2]) / (dx[-1] - dx[-2])
+            dd = np.where(xs < dx[0], d[0] + s_lo * (xs - dx[0]), dd)
+            dd = np.where(xs > dx[-1], d[-1] + s_hi * (xs - dx[-1]), dd)
+        dd = np.clip(dd, 1 / 16.0, 1 / 7.0)
+        self._xs, self._dd = xs, dd
+        self._us = np.concatenate([[0.0], np.cumsum((dd[1:] + dd[:-1]) / 2)])
+        self.dens_x, self.dens = dx, d
 
     def u(self, x):
-        np = self.np
-        x = np.asarray(x, dtype=float)
-        if abs(self.p1) < 1e-7:
-            return (x - self.xc) / self.p0
-        return np.log(np.maximum(1 + self.p1 * (x - self.xc) / self.p0, 1e-6)) / self.p1
+        return self.np.interp(self.np.asarray(x, dtype=float), self._xs, self._us)
 
     def x(self, u):
-        np = self.np
-        u = np.asarray(u, dtype=float)
-        if abs(self.p1) < 1e-7:
-            return self.xc + self.p0 * u
-        return self.xc + (self.p0 / self.p1) * (np.exp(self.p1 * u) - 1)
+        return self.np.interp(self.np.asarray(u, dtype=float), self._us, self._xs)
 
     def pitch_at(self, x):
-        return self.p0 + self.p1 * (self.np.asarray(x, dtype=float) - self.xc)
+        return 1.0 / self.np.interp(self.np.asarray(x, dtype=float), self._xs, self._dd)
 
 
 def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = None) -> dict:
@@ -577,13 +599,37 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
     sweight = np.sqrt(sh)
 
     # the key spacing across the card, and the track map it implies
-    loc = [l for l in local_pitches(sx, sweight, width, np) if l[2] > 0.2]
+    loc = [l for l in local_pitches(sx, sweight, width, np) if l[2] > 0.25]
+    # a window at the card's edge sees the guide's shadow and few holes: drop any window
+    # whose spacing disagrees with its neighbours by more than 8 %
+    kept = []
+    for i, l in enumerate(loc):
+        nb = [loc[j][1] for j in range(max(0, i - 2), min(len(loc), i + 3)) if j != i]
+        if nb and abs(l[1] - float(np.median(nb))) > 0.08 * float(np.median(nb)):
+            print(f"  spacing window at x={l[0]:.0f} dropped: {l[1]:.2f} px against neighbours {np.median(nb):.2f}", file=sys.stderr)
+            continue
+        kept.append(l)
+    loc = kept
     if len(loc) < 3:
         raise SystemExit("could not measure the key spacing across the card")
     lx = np.array([l[0] for l in loc]); lp = np.array([l[1] for l in loc]); lw = np.array([l[2] * np.sqrt(l[3]) for l in loc])
     xc = float(np.average(lx, weights=lw))
-    p1, p0 = np.polyfit(lx - xc, lp, 1, w=lw)
-    tm = TrackMap(p0, p1, xc, np)
+    tm = TrackMap(lx, 1.0 / lp, width, np)
+    anchors = []
+    if anchor:
+        # "566=2" pins one track; "422=14,58=49" pins two, and the density is then scaled
+        # so that exactly the right number of tracks lies between them
+        for part in anchor.split(","):
+            ax, akey = part.split("=")
+            anchors.append((float(ax), int(akey)))
+    if len(anchors) >= 2:
+        (xa, ka), (xb, kb) = anchors[0], anchors[-1]
+        want = abs(ka - kb)
+        got = abs(float(tm.u(xa)) - float(tm.u(xb)))
+        tm = TrackMap(lx, 1.0 / lp, width, np, scale=want / got)
+        print(f"two anchors: track density scaled by {want / got:.4f} so that {want} tracks lie between x={xa:.0f} and x={xb:.0f}", file=sys.stderr)
+    p0 = float(tm.pitch_at(xc))
+    q = [float(v) for v in tm.dens]
 
     # the lattice's phase, in tracks, and its slow drift down the book
     uu = tm.u(sx)
@@ -617,11 +663,11 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
     if used_span > keys:
         print(f"warning: holes span {used_span} tracks, more than {keys} keys: the spacing fit may be wrong", file=sys.stderr)
     k0 = k_first - (keys - used_span) // 2
-    if anchor:
+    if anchors:
         # a known track: "566=2" says the track whose centre is nearest x=566 is key 2
-        ax, akey = anchor.split("=")
-        row = (int(akey) - 1) if flip else (keys - int(akey))
-        k_anchor = int(np.floor(float(tm.u(float(ax))) - phase_at(ymid) + 0.5))
+        ax, akey = anchors[0]
+        row = (akey - 1) if flip else (keys - akey)
+        k_anchor = int(np.floor(float(tm.u(ax)) - phase_at(ymid) + 0.5))
         k0 = k_anchor - row
 
     def col_x(k, y):
@@ -634,20 +680,21 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
     def time_at(y):
         return float(np.interp(y - band_top, pos[order], frames[order])) / fps
 
-    dark = (mask > 0)
-    cs = np.concatenate([np.zeros((total, 1), np.int32), np.cumsum(dark, axis=1, dtype=np.int32)], axis=1)
+    # the darkness along each track: the mean brightness ratio over the track's core,
+    # which a blurred hole still pulls well below the card's 1.0
+    csr = np.concatenate([np.zeros((total, 1), np.float64), np.cumsum(ratio.astype(np.float64), axis=1)], axis=1)
     events = [[] for _ in range(keys)]
     holes_read = 0
     track_centres = []
     for k in range(keys):
         xk = col_x(k, yy)
         track_centres.append(float(col_x(k, ymid)))
-        half = np.maximum(2, np.rint(tm.pitch_at(xk) * 0.3)).astype(int)
+        half = np.maximum(2, np.rint(tm.pitch_at(xk) * 0.22)).astype(int)
         xc_i = np.rint(xk).astype(int)
         x0 = np.clip(xc_i - half, 0, width - 1)
         x1 = np.clip(xc_i + half + 1, 1, width)
-        frac = (cs[yy, x1] - cs[yy, x0]) / np.maximum(x1 - x0, 1)
-        on = frac > 0.5
+        core = (csr[yy, x1] - csr[yy, x0]) / np.maximum(x1 - x0, 1)
+        on = core < HOLE_RATIO
         d = np.diff(np.concatenate([[0], on.astype(np.int8), [0]]))
         starts, ends = np.nonzero(d == 1)[0], np.nonzero(d == -1)[0]
         kk = keys - 1 - k if flip else k
@@ -656,8 +703,30 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
                 continue
             events[kk].append([round(time_at(s), 3), round(time_at(e), 3)])
             holes_read += 1
+    # second pass: every single-track dark patch the run test missed (a track centre a
+    # little off its hole, a faint hole) is added on its nearest track
+    added = 0
+    for x, y, w, h in single:
+        xt = np.array([float(col_x(k, y)) for k in range(keys)])
+        k = int(np.argmin(np.abs(xt - x)))
+        if abs(xt[k] - x) > float(tm.pitch_at(x)) * 0.4:
+            continue
+        kk = keys - 1 - k if flip else k
+        t0, t1 = time_at(y - h / 2), time_at(y + h / 2)
+        if any(s < t1 and e > t0 for s, e in events[kk]):
+            continue
+        events[kk].append([round(t0, 3), round(t1, 3)])
+        added += 1
+    holes_read += added
     for k in range(keys):
         events[k].sort()
+        merged = []
+        for s, e in events[k]:
+            if merged and s <= merged[-1][1] + 1.0 / fps:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([s, e])
+        events[k] = merged
 
     stats_rows = []
     for k in range(keys):
@@ -670,7 +739,7 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
                            "last_s": round(ivs[-1][1], 2) if ivs else None})
     json.dump({str(k): v for k, v in enumerate(events)}, open(str(out) + ".events.json", "w"))
     json.dump({"video": track["video"], "fps": fps, "frames": track["frames"], "keys": keys,
-               "pitch_px_at_centre": float(p0), "pitch_slope_per_px": float(p1), "pitch_centre_x": xc,
+               "pitch_px_at_centre": float(p0), "density_coefficients": [float(v) for v in q], "pitch_centre_x": xc,
                "local_pitches": [[round(a, 1), round(b, 2), round(c, 2), n] for a, b, c, n in loc],
                "fold_sharpness": float(sharp), "first_track_index": k0, "track_centres_x": [round(v, 1) for v in track_centres],
                "phase_knots": [[float(a), float(b)] for a, b in zip(ky, ko)],
@@ -714,10 +783,10 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
     tr.append(mido.MetaMessage("end_of_track", time=0))
     mid.save(str(out) + ".book.mid")
     used = sum(1 for k in range(keys) if events[k])
-    print(f"{len(comps)} dark patches, {holes_read} holes read; key spacing {tm.pitch_at(track_centres[0]):.2f} px at the first track "
+    print(f"{len(comps)} dark patches, {holes_read} holes read ({added} by the second pass); key spacing {tm.pitch_at(track_centres[0]):.2f} px at the first track "
           f"to {tm.pitch_at(track_centres[-1]):.2f} at the last (fold {sharp:.2f}); tracks {k_first - k0}..{k_last - k0} of {keys} used; "
           f"phase drift {ko.max() - ko.min() if len(ko) else 0:.2f} tracks -> {out}.book.mid / .events.json / .rows.json / .book.png", file=sys.stderr)
-    return {"holes": holes_read, "p0": p0, "p1": p1}
+    return {"holes": holes_read, "p0": p0, "q": q}
 
 
 # ----------------------------------------------------------------------------
