@@ -53,3 +53,6 @@ tools/organ-arranger/tunes/*.mid
 
 # Claude Code desktop launch config (machine-specific paths)
 .claude/
+
+# working files: videos, mosaics and other people's music, never committed
+scratch/
