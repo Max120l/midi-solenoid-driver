@@ -670,8 +670,31 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
         k_anchor = int(np.floor(float(tm.u(ax)) - phase_at(ymid) + 0.5))
         k0 = k_anchor - row
 
-    def col_x(k, y):
+    def col_x_model(k, y):
         return tm.x(phase_at(y) + k0 + k)
+
+    # snap the tracks to the holes: a track's centre is the median x of the single
+    # holes nearest to it, where there are enough; the rest keep the model's position.
+    # Two passes, so a track that first grabbed a neighbour's holes lets go of them.
+    snap = np.zeros(keys)
+    for _ in range(2):
+        xt = np.array([float(col_x_model(k, ymid)) + snap[k] for k in range(keys)])
+        buckets = [[] for _ in range(keys)]
+        for x_, y_, w_, h_ in single:
+            k = int(np.argmin(np.abs(xt - x_)))
+            if abs(xt[k] - x_) <= float(tm.pitch_at(x_)) * 0.45:
+                buckets[k].append(x_ - float(col_x_model(k, ymid)))
+        for k in range(keys):
+            if len(buckets[k]) >= 15:
+                snap[k] = float(np.median(buckets[k]))
+        # tracks without enough holes: interpolate the snap from their neighbours
+        have = np.array([len(b_) >= 15 for b_ in buckets])
+        if have.sum() >= 2:
+            snap = np.interp(np.arange(keys), np.nonzero(have)[0], snap[have])
+    snapped = int(have.sum()) if have.sum() >= 2 else 0
+
+    def col_x(k, y):
+        return col_x_model(k, y) + snap[k]
 
     yy = np.arange(total)
     frames = np.arange(len(pos))
@@ -744,6 +767,7 @@ def read_mosaic(out: Path, keys: int, flip: bool, np, cv2, anchor: str | None = 
                "fold_sharpness": float(sharp), "first_track_index": k0, "track_centres_x": [round(v, 1) for v in track_centres],
                "phase_knots": [[float(a), float(b)] for a, b in zip(ky, ko)],
                "flip": flip, "components": int(len(comps)), "holes_read": holes_read,
+               "snapped_tracks": snapped, "snap_px": [round(float(v), 2) for v in snap],
                "stats": stats_rows}, open(str(out) + ".rows.json", "w"), indent=1)
 
     img = cv2.cvtColor(np.clip(mosaic, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
