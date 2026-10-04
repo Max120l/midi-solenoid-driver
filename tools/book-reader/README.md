@@ -64,6 +64,7 @@ in stages, each leaving a picture to check:
 
 ```bash
 python read_book_handheld.py burlesque.mp4 --keys 49 --out scratch/burlesque/out/burlesque --stage all
+python read_book_handheld.py burlesque.mp4 --out scratch/burlesque/out/burlesque --stage read --anchor 566=2
 ```
 
 1. **calib** finds the roller on a reference frame by the periodicity of its
@@ -77,10 +78,19 @@ python read_book_handheld.py burlesque.mp4 --keys 49 --out scratch/burlesque/out
    a band of card just below the roller, matches it against the mosaic built
    so far to measure the book's advance, and lays it in. `PREFIX.mosaic.png`
    is the whole book; `PREFIX.track.json` maps every frame to its position.
-3. **read** finds the dark patches, fits the pitch of the key tracks from the
-   fold of their centres, lets the lattice's phase drift slowly down the book
-   (the card wanders in the key frame), and reads every track as runs of dark
-   rows, so chained holes and scales in neighbouring tracks stay apart. A
+3. **read** finds the dark patches and fits the key tracks from the fold of
+   their centres. The spacing is measured in windows across the card and
+   allowed to vary linearly, because the straightening leaves the perspective
+   across the width in place (a camera held to one side of the organ sees the
+   far keys closer together: 9 px against 12.7 on Marche Burlesque) and a
+   single pitch drifts by several keys by the far edge, which is what made
+   the first read a cacophony while its accompaniment was right. The
+   lattice's phase may drift slowly down the book (the card wanders in the
+   key frame). Then every track is read as runs of dark rows, so chained
+   holes and scales in neighbouring tracks stay apart. The far margin is in
+   the guide's shadow, so the count is pinned with `--anchor X=KEY`, a
+   mosaic column known to be a given key; `book_audio_order.py`'s per-row
+   table names such a track, the accompaniment being unmistakable. A
    hole's time is the frame in which it passed the reading band, so the
    book's speed never has to be known. It writes the same `.events.json`,
    `.book.mid`, `.rows.json` and `.book.png` as the scan reader; rows are
