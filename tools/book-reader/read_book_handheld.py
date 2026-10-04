@@ -48,6 +48,7 @@ DEFAULT_KEYS = 49
 BOOK_W = 600                 # rectified pixels across the book, edge to edge
 BAND_TOP, BAND_BOTTOM = 18, 100   # rectified rows below the roller contact line that are read: close to the roller, where every frame agrees
 MIN_INLIERS = 40
+XSEARCH_EDGE = 22            # px either way for each end of the band: parallax moves the far edge by more than a key
 HOLE_RATIO = 0.74            # a track's core darker than this fraction of the card is a hole; blurred holes sit near 0.7-0.8
 ORB_FEATURES = 4000
 
@@ -346,7 +347,7 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
     length = cal["length"]
     band_h = BAND_BOTTOM - BAND_TOP
     search = 8                                   # px either way around the predicted position
-    xsearch = 6                                  # px either way across the book: the card's sideways jitter
+    xsearch = 6                                  # px either way across the book, for the band as a whole
     fresh = 16                                   # rows at the band's bottom that are new material each frame
     tmpl_h = band_h - fresh
 
@@ -368,17 +369,19 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
     split = np.zeros(n)                          # advance of the band's bottom half minus its top half
     inliers_log = []
     dxl_log, dxr_log = [], []
+    ecc_ok = 0
     recent = []
     nominal = step_hint if step_hint else 6.0
 
-    def lay(i, band, dx_l=0.0, dx_r=0.0):
-        """Lay the band at its position, moved left by dx_l at its left edge and dx_r
-        at its right edge (a sideways shift that may differ across the width, which
-        is what a little residual rotation or stretch of the stabilisation leaves)."""
+    def lay(i, band, dx_l=0.0, dx_r=0.0, dy_l=0.0, dy_r=0.0):
+        """Lay the band at its position, moved by (dx_l, dy_l) at its left edge and
+        (dx_r, dy_r) at its right edge: the sideways shift and the small rotation that
+        the woodwork stabilisation leaves on the card, which lies in another plane."""
         y = int(round(pos[i]))
-        if dx_l or dx_r:
-            s = (dx_r - dx_l) / BOOK_W
-            M = np.float32([[1 - s, 0, -dx_l], [0, 1, 0]])
+        if dx_l or dx_r or dy_l or dy_r:
+            sx = (dx_r - dx_l) / BOOK_W
+            sy = (dy_r - dy_l) / BOOK_W
+            M = np.float32([[1 - sx, 0, -dx_l], [-sy, 1, -dy_l]])
             b = cv2.warpAffine(band, M, (BOOK_W, band_h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
         else:
             b = band
@@ -459,20 +462,32 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
             wrow = win[my:my + tmpl_h].astype(np.float32)
 
             def xshift(sub, x_at):
+                """Where this third of the band really sits: the far edge of the card can be
+                off by more than a key spacing after the woodwork stabilisation (parallax),
+                so the search is wide, in x and in y. Returns (dx, dy) relative to the
+                global match, or None when the third has nothing to match on."""
                 if sub.std() < 4:
-                    return float(dx)
-                r = cv2.matchTemplate(wrow[:, x_at:x_at + sub.shape[1] + 2 * xsearch], sub, cv2.TM_CCOEFF_NORMED)[0]
-                j = int(np.argmax(r))
-                if r[j] < 0.3:
-                    return float(dx)
-                if 0 < j < len(r) - 1 and (r[j - 1] - 2 * r[j] + r[j + 1]) < 0:
-                    j = j + 0.5 * (r[j - 1] - r[j + 1]) / (r[j - 1] - 2 * r[j] + r[j + 1])
-                return float(j - xsearch)
+                    return None
+                sx, sy = XSEARCH_EDGE, 6
+                xa, xb = max(0, x_at - sx), min(BOOK_W, x_at + sub.shape[1] + sx)
+                ya, yb = max(0, my - sy), min(win.shape[0], my + tmpl_h + sy)
+                region = win[ya:yb, xa:xb].astype(np.float32)
+                if region.shape[0] < sub.shape[0] + 2 or region.shape[1] < sub.shape[1] + 2:
+                    return None
+                r = cv2.matchTemplate(region, sub, cv2.TM_CCOEFF_NORMED)
+                _, sc, _, (jx, jy) = cv2.minMaxLoc(r)
+                if sc < 0.4:
+                    return None
+                return float(jx + xa - x_at), float(jy + ya - my)
 
-            dx_l = xshift(tmpl[:, :third], 0)
-            dx_r = xshift(tmpl[:, -third:], tmpl.shape[1] - third)
+            sl = xshift(tmpl[:, :third], 0)
+            sr = xshift(tmpl[:, -third:], tmpl.shape[1] - third)
+            dx_l, dy_l = sl if sl else (float(dx), 0.0)
+            dx_r, dy_r = sr if sr else (float(dx), 0.0)
+            if sl is None and sr is None:
+                dx_l = dx_r = float(dx)
             dxl_log.append(dx_l); dxr_log.append(dx_r)
-            lay(i, band, dx_l, dx_r)
+            lay(i, band, dx_l, dx_r, dy_l, dy_r)
             prev_band = band
             if i % 300 == 0:
                 print(f"  frame {i}/{n}  inliers {inliers_log[-1] if inliers_log else '-'}  step {nominal:.2f}  match {best:.2f}  dx {dx:+d}",
@@ -505,6 +520,7 @@ def build_mosaic(video: Path, cal: dict, out: Path, ref_index: int, step_hint: f
              "x_shift_left_std": float(np.std(dxl_log)) if dxl_log else 0.0,
              "x_shift_right_std": float(np.std(dxr_log)) if dxr_log else 0.0,
              "x_skew_std": float(np.std(np.array(dxr_log) - np.array(dxl_log))) if dxl_log else 0.0,
+             "affine_refined_frames": int(ecc_ok),
              "split_px_median": float(np.median(split[matched])) if matched.any() else 0.0,
              "pos": [round(float(p), 3) for p in pos[:n]],
              "median_inliers": float(np.median(inliers_log)) if inliers_log else 0}

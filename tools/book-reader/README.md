@@ -101,9 +101,16 @@ left margin may lie in the guide's shadow and read as holes seconds long;
 compare the rows' total on-time with the piece before trusting them.
 
 On "LIMONAIRE 49 Touches - Marche Burlesque" (Orchestrophone1904, 1080p30,
-5,926 frames): 5,399 frames matched the mosaic at a median score of 0.90,
-pitch 11.97 px, 3,863 holes read, 3,688 notes after dropping the two shadowed
-tracks. The video itself stays out of the repository.
+5,926 frames): 5,899 frames stabilised, 5,426 matched the mosaic at a median
+score of 0.91, about 4,000 holes read, `--anchor 421=14,70=49`. The near two
+thirds of the card, keys 1 to 29, read cleanly and the recording confirms them
+pitch for pitch. The far third does not: the camera stood to one side, and
+the stabilisation locks onto woodwork that lies in a different plane from the
+card, so the far edge of the card jumps sideways by up to 14 px between
+frames (parallax) and its hole columns, 9 px apart there, come out smeared by
+about 4 px. Wider sideways searches, a per-strip rotation and an affine fit
+did not cure it; stabilising on the card's own holes from frame to frame
+would be the next thing to try. The video itself stays out of the repository.
 
 ## Which way round: ask the recording
 
