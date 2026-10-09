@@ -402,7 +402,7 @@ and exactly three things cross between them, each by light: the MIDI opto,
 the reset opto and the SSR. The Pi has a mains supply of its own.
 
 ```
-MAINS ── IEC inlet with fuse ─┬─ E ──── earth stud on the case ──── motor frame
+MAINS ── inlet, 15 A breaker ─┬─ E ──── earth stud on the case ──── motor frame
                               ├─ N ──────────────┬──────────────────────────────── motor N
                               │                  PSU N
                               └─ L ── PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
@@ -484,11 +484,12 @@ the fan. Call it 12.5 A continuous on a 15 A circuit. Hence:
 | inlet | an IEC C20 (16 A, C19 cord), or a fixed 14 AWG cord through a strain relief into a terminal block. The usual C14 inlet with a fuse drawer is rated 10 A and is too small here |
 | wiring | 14 AWG on the mains side throughout; earth pin to the case stud |
 
-A 15 A push-to-reset thermal breaker (Carling or ETA 1658 families) in the
-same position is the alternative for a machine that ships: it tolerates the
-motor start like a time-delay fuse and the customer resets it with a thumb.
-The motor's own thermal protector remains its overload protection; the fuse
-is for faults.
+Decided 2026-10-09: a **15 A push-to-reset thermal breaker** (Carling
+A-series or ETA 1658, single pole, 250 V AC) takes the fuse's place in the
+same position, since this machine ships: it tolerates the motor start like a
+time-delay fuse and the customer resets it with a thumb instead of finding a
+3AB fuse. The motor's own thermal protector remains its overload protection;
+the breaker is for faults.
 
 ### The 12 V supply, and the Pi's 5 V from it
 

@@ -104,7 +104,7 @@ story = [
     Spacer(1, 6),
 ]
 schematic = r"""
-MAINS -- IEC inlet with fuse -+- E ---- earth stud on the case ---- motor frame
+MAINS -- inlet, 15 A breaker -+- E ---- earth stud on the case ---- motor frame
                               +- N ---------------+-------------------------------- motor N
                               |                  PSU N
                               +- L -- PANEL SWITCH, 2 poles, 3 positions, centre off, motor rated
