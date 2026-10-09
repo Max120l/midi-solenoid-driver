@@ -484,12 +484,19 @@ the fan. Call it 12.5 A continuous on a 15 A circuit. Hence:
 | inlet | an IEC C20 (16 A, C19 cord), or a fixed 14 AWG cord through a strain relief into a terminal block. The usual C14 inlet with a fuse drawer is rated 10 A and is too small here |
 | wiring | 14 AWG on the mains side throughout; earth pin to the case stud |
 
-Decided 2026-10-09: a **15 A push-to-reset thermal breaker** (Carling
-A-series or ETA 1658, single pole, 250 V AC) takes the fuse's place in the
-same position, since this machine ships: it tolerates the motor start like a
-time-delay fuse and the customer resets it with a thumb instead of finding a
-3AB fuse. The motor's own thermal protector remains its overload protection;
-the breaker is for faults.
+Decided 2026-10-09: a **15 A push-to-reset thermal breaker** takes the
+fuse's place in the same position, since this machine ships: it tolerates
+the motor start like a time-delay fuse and the customer resets it with a
+thumb instead of finding a 3AB fuse. The part is **E-T-A 1658-G21-02-P10-15A**:
+G21 = push-to-reset, 3/8"-27 threaded neck (9.6 x 8.9 mm D hole); 02 = PAL
+nut and knurled front nut; P10 = straight 0.25" blade terminals. The 1658
+has one time/current curve, the slow thermal one, and a trip-free mechanism;
+UL rates it 240 V AC from 5 to 16 A. Its trip point falls as it warms (x1.1
+at 40 °C, x1.18 at 50 °C per the datasheet), so it sits on the cool side
+next to the inlet, away from the SSR; if a hot day ever trips it with
+nothing wrong, the 16 A version of the same code is the swap. The motor's
+own thermal protector remains its overload protection; the breaker is for
+faults.
 
 ### The 12 V supply, and the Pi's 5 V from it
 
