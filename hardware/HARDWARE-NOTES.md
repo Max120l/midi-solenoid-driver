@@ -469,6 +469,27 @@ in hardware. Then the panel switch is turned off once the status LED is dark.
 Pi OS usually survives a hard cut, but the sequence removes the "usually".
 Leave I²C disabled, since GPIO 3 is its clock.
 
+### The mains inlet and its fuse
+
+The load is the motor: about 9.8 A at 115 V for a 1/2 HP single-phase
+motor running, several times that for a fraction of a second at start, plus
+some 2 A for the 12 V supply and under half an amp for the 5 V supply and
+the fan. Call it 12.5 A continuous on a 15 A circuit. Hence:
+
+| | |
+|---|---|
+| fuse | 15 A time-delay, 6.3 x 32 mm ceramic (3AB: Littelfuse 326 series, Bussmann MDA-15); time-delay for the motor's start, ceramic to contain an arc at this current. Not 5 x 20 mm, which does not reach 15 A time-delay reliably |
+| holder | panel mount, shrouded, 20 A 250 V, for 6.3 x 32 mm (Littelfuse 345 series, Bussmann HKP) |
+| position | on the live, between the inlet and the panel switch; neutral and earth never interrupted |
+| inlet | an IEC C20 (16 A, C19 cord), or a fixed 14 AWG cord through a strain relief into a terminal block. The usual C14 inlet with a fuse drawer is rated 10 A and is too small here |
+| wiring | 14 AWG on the mains side throughout; earth pin to the case stud |
+
+A 15 A push-to-reset thermal breaker (Carling or ETA 1658 families) in the
+same position is the alternative for a machine that ships: it tolerates the
+motor start like a time-delay fuse and the customer resets it with a thumb.
+The motor's own thermal protector remains its overload protection; the fuse
+is for faults.
+
 ### The 12 V supply, and the Pi's 5 V from it
 
 The 12 V comes from a **12 V-only computer supply** (Lenovo FRU
