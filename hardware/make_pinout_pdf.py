@@ -95,7 +95,8 @@ story = [
               "terminals; VCC, OUT, GND on the other side. Pi 5 V: a Mean Well 5 V mains supply in the box, 3 A fuse, over the Ethernet "
               "cable's three spare pairs (pins 1,4,7 plus; 2,5,8 return; 3,6 the SSR), trimmed to 5.1 V at the Pi, USB-C pigtail. "
               "organ_web: --pump 24 --power-switch 3; reset on 17. "
-              "Status LED: config.txt dtoverlay=gpio-led,gpio=27,label=pellevoisin,trigger=heartbeat; it beats while Linux runs and is dark when halted.", SMALL),
+              "Status LED: config.txt dtoverlay=gpio-led,gpio=27,label=pellevoisin,trigger=heartbeat; it beats while Linux runs and is dark when halted. "
+              "Enclosure fan: 5 V 4-wire, always on, +5 V and GND from the terminal where the RJ45 5 V pairs feed the USB-C pigtail (never header pins 2/4); tach and PWM wires insulated, unconnected PWM = full speed.", SMALL),
     PageBreak(),
     Paragraph("Pellevoisin: the box, wired", H1),
     Paragraph("Two halves in one aluminium case, and exactly three things cross between them, each by light: the MIDI "
@@ -115,7 +116,7 @@ MAINS -- inlet, 15 A breaker -+- E ---- earth stud on the case ---- motor frame
 
 ORGAN SIDE (the 12 V supply's ground)                PI SIDE (the 5 V supply's ground)      
 PSU 12 V, several wires --> 12 V bus bar             5 V PSU (mains, in the box) - RJ45 pairs 1-2,4-5,7-8 -USB-C-> Pi 4
-PSU GND, several wires ---> organ GND bus bar        DSI ribbon --> touchscreen
+PSU GND, several wires ---> organ GND bus bar        DSI ribbon --> touchscreen;  same 5 V terminal --> enclosure fan
 PSU on wire (green) ------> PSU GND: on with Auto     GPIO 3 (pin 5) -- antique switch -- Pi GND (pin 6)   on/off
 12 V bus / GND bus -------> boards 1-4, 5 A fuses    GPIO 14 TX (pin 8) -- 6N137 IN-             MIDI
                                                      3.3 V (pin 1) ------- 6N137 IN+
