@@ -372,6 +372,18 @@ is a short twisted pair. The MIDI pair has no ground: TX is its return.
 Pins not listed are free, GPIO 25 and pin 25 among them since the PS_ON
 opto went (2026-09-21). Nothing on the organ's side touches any pin here.
 
+### The enclosure fan
+
+A 5 V 4-wire PWM fan in the Pi's enclosure, run always on (decided
+2026-10-15): +5 V and ground only, taken from the terminal where the
+Ethernet cable's 5 V pairs land at the Pi's end and feed the USB-C pigtail,
+never from header pins 2 and 4. The speed (tach) and PWM wires are cut short
+and insulated; with PWM unconnected a 4-wire fan runs at full speed by
+design. Up to 0.2 A is well inside the 5 V budget. It blows across the Pi's
+processor and out, with an inlet on the opposite side. Temperature control,
+if quiet at idle is ever wanted, is one small transistor on a free GPIO and
+the gpio-fan overlay; nothing else changes.
+
 ### The status LED
 
 A halted Pi looks exactly like a running one with the screen blanked, and
