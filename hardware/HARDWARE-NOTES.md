@@ -328,14 +328,28 @@ switches it through a **solid-state relay of the Fotek SSR-xx DA pattern**
 (DC input 3-32 V, AC load, zero-crossing), bought as an 80 A unit on
 2026-09-17 and treated as a 30 A one, since the clones' labels run high.
 The SSR is itself an optocoupler -- LED in, light across, triac out -- so
-the Pi drives it directly, no further isolation:
+no further isolation is needed. It is not driven from the GPIO directly,
+though: found in the box on 2026-10-15, the pin delivered 3.12 V across
+terminals 3 and 4 at the far end of the Ethernet cable, enough to light the
+SSR's LED but at the edge of its 3 V trigger, and the triac never fired. The
+box's 5 V supply drives it instead, through an NPN transistor beside the
+SSR that the pin switches; the 5 V return is the Pi's ground (one supply),
+so nothing about the isolation changes:
 
 ```
-Pi GPIO 24 ── SSR terminal 3 (+)        Pi side
-Pi GND ────── SSR terminal 4 (-)
+box +5 V ──────────────────────────── SSR terminal 3 (+)
+                                      SSR terminal 4 (-) ── NPN collector
+RJ45 pin 3 (GPIO 24) ──[1 kΩ]──┬───── NPN base            2N3904, PN2222 or BC547
+                               └[10 kΩ]┐                  (holds it off while the pin floats at boot)
+RJ45 pin 6 (Pi GND = 5 V return) ──────┴── NPN emitter
               ───────────────────────── isolation, inside the SSR
 mains live ── SSR terminal 1 ── terminal 2 ── motor
 ```
+
+The pin supplies 2.6 mA of base current, the transistor saturates and the
+SSR sees about 4.9 V. Logic unchanged: GPIO high, pump on. Not a 2N7000:
+its gate threshold may be as high as 3 V, the same margin problem again.
+Terminals 1 and 2 are the two ends of a triac and interchangeable.
 
 GPIO 24 rests low at boot, so the pump is off until organ_web says otherwise
 (`--pump 24`, no active-low flag). organ_web owns the relay: on when songs
@@ -365,8 +379,8 @@ is a short twisted pair. The MIDI pair has no ground: TX is its return.
 | 9 | GND | reset opto cathode | 10 | GPIO 15 RXD | free |
 | 11 | GPIO 17 | reset: 330 Ω, PC817 anode | 12 | GPIO 18 | |
 | 13 | GPIO 27 | status LED: 330 Ω, LED anode | 14 | GND | status LED cathode |
-| 17 | 3.3 V | | 18 | GPIO 24 | pump: SSR 3 (+) |
-| 19 | GPIO 10 | | 20 | GND | pump: SSR 4 (-) |
+| 17 | 3.3 V | | 18 | GPIO 24 | pump: RJ45 pin 3, 1 kΩ to the NPN's base in the box |
+| 19 | GPIO 10 | | 20 | GND | pump: RJ45 pin 6, the NPN's emitter |
 | 27 | ID_SD | never | 28 | ID_SC | never |
 
 Pins not listed are free, GPIO 25 and pin 25 among them since the PS_ON
@@ -429,8 +443,8 @@ PSU GND, several wires ───► organ GND bus bar         DSI ribbon ─► 
 PSU on wire (green) ──────► PSU GND: on with Auto     GPIO 3 (pin 5) ── antique switch ── Pi GND (pin 6)   on/off
 12 V bus / GND bus ───────► boards 1-4, 5 A fuses     GPIO 14 TX (pin 8) ── 6N137 IN-              MIDI
                                                       3.3 V (pin 1) ────── 6N137 IN+
-                                                      GPIO 24 (pin 18) ── RJ45 pin 3 ── SSR 3 (+)   pump
-last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      Pi GND (pin 20) ─── RJ45 pin 6 ── SSR 4 (-)
+                                                      GPIO 24 (pin 18) ── RJ45 pin 3 ─[1 k]─ NPN   pump
+last board ISP pin 2 ─────► RJ12 pin 6 = 5 V bus      Pi GND (pin 20) ─── RJ45 pin 6 ── NPN emitter; SSR 3 ◄ box 5 V, SSR 4 ► NPN collector
 RJ12 pin 1 = /RESET bus (jumpered board to board)     GPIO 27 (pin 13) ─[330 Ω]─ LED ─ Pi GND (pin 14)   alive
 RJ12: MIDI signal, GND, as shipped                    GPIO 17 (pin 11) ─[330 Ω]─ PC817 anode          reset
 6N137 module: VCC ◄ RJ12 pin 6, GND ◄ RJ12 GND,       Pi GND (pin 9) ─────────── PC817 cathode
@@ -537,7 +551,7 @@ transformer at the Pi's end.
 |---|---|
 | RJ45 pins 1, 4, 7 (one wire of each spare pair) | +5 V, through a 3 A fuse at the box |
 | pins 2, 5, 8 (the other wire of each pair) | 5 V return |
-| pins 3 and 6 (the green pair) | SSR 3 (+) from GPIO 24, SSR 4 (-) to Pi GND |
+| pins 3 and 6 (the green pair) | GPIO 24 to the NPN's base through 1 kΩ, Pi GND to its emitter; the SSR runs from the box's 5 V (see the pump section) |
 | at the Pi | a short USB-C pigtail, so the Pi's own input protection stays in circuit |
 | trimmer | 5.1 V at the Pi's header, pins 2 and 6, with the screen lit and a tune playing |
 

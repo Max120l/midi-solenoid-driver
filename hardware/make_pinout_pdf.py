@@ -29,8 +29,8 @@ pins = {
     11: ("GPIO 17", "RESET: 330 ohm to PC817 anode"), 12: ("GPIO 18", ""),
     13: ("GPIO 27", "STATUS LED: 330 ohm to LED anode"), 14: ("GND", "STATUS LED cathode"),
     15: ("GPIO 22", ""), 16: ("GPIO 23", ""),
-    17: ("3.3 V", ""), 18: ("GPIO 24", "PUMP: SSR terminal 3 (+)"),
-    19: ("GPIO 10", ""), 20: ("GND", "PUMP: SSR terminal 4 (-)"),
+    17: ("3.3 V", ""), 18: ("GPIO 24", "PUMP: RJ45 3, 1k to NPN base in box"),
+    19: ("GPIO 10", ""), 20: ("GND", "PUMP: RJ45 6, NPN emitter"),
     21: ("GPIO 9", ""), 22: ("GPIO 25", ""),
     23: ("GPIO 11", ""), 24: ("GPIO 8", ""),
     25: ("GND", ""), 26: ("GPIO 7", ""),
@@ -120,8 +120,8 @@ PSU GND, several wires ---> organ GND bus bar        DSI ribbon --> touchscreen;
 PSU on wire (green) ------> PSU GND: on with Auto     GPIO 3 (pin 5) -- antique switch -- Pi GND (pin 6)   on/off
 12 V bus / GND bus -------> boards 1-4, 5 A fuses    GPIO 14 TX (pin 8) -- 6N137 IN-             MIDI
                                                      3.3 V (pin 1) ------- 6N137 IN+
-                                                     GPIO 24 (pin 18) -- RJ45 pin 3 -- SSR 3 (+)  pump
-last board ISP pin 2 -----> RJ12 pin 6 = 5 V bus     Pi GND (pin 20) --- RJ45 pin 6 -- SSR 4 (-)
+                                                     GPIO 24 (pin 18) -- RJ45 pin 3 -[1 k]- NPN  pump
+last board ISP pin 2 -----> RJ12 pin 6 = 5 V bus     Pi GND (pin 20) --- RJ45 pin 6 -- NPN emitter; SSR 3 < box 5 V, SSR 4 > NPN collector
 RJ12 pin 1 = /RESET bus (jumpered board to board)    GPIO 27 (pin 13) -[330 ohm]- LED - Pi GND (pin 14)  alive
 RJ12: MIDI signal, GND, as shipped                   GPIO 17 (pin 11) -[330 ohm]- PC817 anode         reset
 6N137 module: VCC < RJ12 pin 6, GND < RJ12 GND,      Pi GND (pin 9) ------------ PC817 cathode
