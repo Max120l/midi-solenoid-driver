@@ -153,7 +153,7 @@ the status LED is dark (see Power cuts, below).
 Better than the button is a real switch: `--power-switch 3` watches a
 toggle switch wired between GPIO 3 (physical pin 5) and any ground pin.
 Opening it is the Shut down button; closing it again wakes the halted Pi,
-which is a property of that pin and needs no software. Any switch will do,
+which is a property of that pin and needs no software. Only a change counts: the switch is armed once it has been seen closed, so a switch that is not wired yet, which reads exactly like an open one, never powers the Pi off at boot; the Service tab says "not armed" then. Any switch will do,
 since it carries microamps -- an antique 5 A one included. Should the old
 contact start opening on its own, Settings has a tick box that makes the
 app ignore it; closing it still wakes the Pi, since that is hardware. GPIO 3 is the

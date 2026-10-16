@@ -474,14 +474,20 @@ class FakeButton:
     def __init__(self, pressed=True):
         self.is_pressed = pressed
         self.when_released = None
+        self.when_pressed = None
 
     def open(self):
         self.is_pressed = False
         if self.when_released:
             self.when_released()
 
+    def close(self):
+        self.is_pressed = True
+        if self.when_pressed:
+            self.when_pressed()
 
-def test_the_power_switch_shuts_down_when_opened_and_at_once_if_already_open(desk):
+
+def test_the_power_switch_shuts_down_when_opened_but_never_because_it_reads_open_at_boot(desk):
     import time as _t
     desk.power = w.FakePump()
     desk.add(["marches/bogey.organ.mid"])
@@ -491,7 +497,7 @@ def test_the_power_switch_shuts_down_when_opened_and_at_once_if_already_open(des
     err = io.StringIO()
     sw = w.PowerSwitch(desk, b, out=err)
     desk.power_switch = sw
-    assert not sw.fired and desk.snapshot()["switch"] == {"configured": True, "closed": True, "enabled": True}
+    assert not sw.fired and desk.snapshot()["switch"] == {"configured": True, "closed": True, "armed": True, "enabled": True}
     assert "contact closed at start" in err.getvalue()
     b.open()
     for _ in range(50):
@@ -499,9 +505,16 @@ def test_the_power_switch_shuts_down_when_opened_and_at_once_if_already_open(des
             break
         _t.sleep(0.02)
     assert sw.fired and not desk.power_on and not desk.pump_on and "shutting down" in err.getvalue()
-    # coming up with the switch already off: shut down straight away
+    # coming up with the contact open (or not wired at all, which reads the same):
+    # nothing happens, not even on a bounce, until the switch has been seen closed
     desk2_button = FakeButton(pressed=False)
     sw2 = w.PowerSwitch(desk, desk2_button, out=err)
+    assert not sw2.fired and not sw2.armed and "not armed" in err.getvalue()
+    desk2_button.open()
+    assert not sw2.fired and "never seen closed" in err.getvalue()
+    desk2_button.close()
+    assert sw2.armed and "armed" in err.getvalue()
+    desk2_button.open()
     assert sw2.fired
     # a switch that has started opening on its own can be ignored from Settings
     desk.set_settings({"power_switch": False})

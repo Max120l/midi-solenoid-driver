@@ -846,6 +846,7 @@ class Desk:
                 "pump": {"configured": self.pump is not None, "on": self.pump_on},
                 "power": {"configured": self.power is not None, "on": self.power_on},
                 "switch": ({"configured": True, "closed": bool(self.power_switch.button.is_pressed),
+                            "armed": bool(self.power_switch.armed),
                             "enabled": bool(self.settings.get("power_switch", True))}
                            if self.power_switch is not None else {"configured": False}),
                 "player": {"running": self.player.running(), "pid": st.get("pid")},
@@ -1401,22 +1402,37 @@ class PowerSwitch:
     """A toggle switch between a GPIO and ground as the organ's on-off switch.
     Closed is on. When it opens, the desk shuts the organ down and the Pi
     powers off; a halted Pi wakes when GPIO 3 is pulled low, so on that pin
-    the same switch turns it back on with no software at all."""
+    the same switch turns it back on with no software at all.
+
+    Only a change counts: the switch is armed once it has been seen closed,
+    and only an opening after that shuts down. A switch that is not wired
+    reads exactly like an open one (the pull-up), and must never power the
+    Pi off at every boot."""
 
     def __init__(self, desk: Desk, button, out=None) -> None:
         self.desk = desk
         self.button = button
         self.out = out or sys.stderr
         self.fired = False
+        self.armed = bool(button.is_pressed)    # seen closed: an opening now means off
         button.when_released = self.off
-        button.when_pressed = lambda: print("power switch closed", file=self.out, flush=True)
-        print(f"power switch watched: contact {'closed' if button.is_pressed else 'open'} at start",
+        button.when_pressed = self.closed
+        print(f"power switch watched: contact {'closed' if button.is_pressed else 'open'} at start"
+              + ("" if self.armed else "; not armed until it is seen closed (unwired reads as open)"),
               file=self.out, flush=True)
-        if not button.is_pressed:               # already in the off position when we come up
-            self.off()
+
+    def closed(self) -> None:
+        if not self.armed:
+            print("power switch closed: armed", file=self.out, flush=True)
+        else:
+            print("power switch closed", file=self.out, flush=True)
+        self.armed = True
 
     def off(self) -> None:
         if self.fired:
+            return
+        if not self.armed:
+            print("power switch reads open but was never seen closed: ignored", file=self.out, flush=True)
             return
         if not self.desk.settings.get("power_switch", True):
             print("power switch opened, ignored: disabled in Settings", file=self.out, flush=True)

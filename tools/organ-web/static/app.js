@@ -449,7 +449,7 @@ function renderService() {
   $("btn-power-on").classList.toggle("active", !powerless && state.power.on);
   $("btn-pump-on").classList.toggle("active", !pumpless && state.pump.on);
   const sw = state.switch || {};
-  const swText = !sw.configured ? "no on/off switch (--power-switch GPIO)" : `on/off switch: contact ${sw.closed ? "closed (on)" : "OPEN (off)"}${sw.enabled ? "" : ", ignored"}`;
+  const swText = !sw.configured ? "no on/off switch (--power-switch GPIO)" : `on/off switch: contact ${sw.closed ? "closed (on)" : (sw.armed ? "OPEN (off)" : "open, not armed: never seen closed, so it is ignored (not wired?)")}${sw.enabled ? "" : ", ignored"}`;
   $("service-note").textContent = [swText, powerless ? "no power relay (--power GPIO)" : "", pumpless ? "no pump relay (--pump GPIO)" : ""].filter(Boolean).join(" · ");
   const busy = !state.idle;
   $("keys-busy").hidden = !busy;
