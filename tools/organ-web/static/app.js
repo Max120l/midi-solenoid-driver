@@ -436,8 +436,9 @@ $("btn-reset").onclick = () => { if (confirm("Reset all driver boards? Every not
 $("btn-power-on").onclick = () => act("/api/service/power", { on: true }, "organ power on");
 $("btn-power-off").onclick = () => act("/api/service/power", { on: false }, "organ power off");
 $("btn-shutdown").onclick = () => {
-  if (!confirm("Shut the organ down? The pump and the 12 V go off, then the Pi powers itself off. Turn the panel switch off once the screen is dark.")) return;
-  act("/api/service/shutdown", {}, "powering off -- turn the switch off when the screen is dark");
+  const relay = state && state.power && state.power.configured;
+  if (!confirm(`Shut the organ down? The pump${relay ? " and the 12 V go" : " goes"} off, then the Pi powers itself off. Turn the panel switch off once the status LED is dark.`)) return;
+  act("/api/service/shutdown", {}, "powering off -- turn the panel switch off when the status LED is dark");
 };
 $("btn-pump-on").onclick = () => act("/api/service/pump", { on: true }, "pump on");
 $("btn-pump-off").onclick = () => act("/api/service/pump", { on: false }, "pump off");
@@ -445,12 +446,13 @@ $("btn-pump-off").onclick = () => act("/api/service/pump", { on: false }, "pump 
 function renderService() {
   const pumpless = !state.pump.configured, powerless = !(state.power && state.power.configured);
   $("btn-pump-on").disabled = pumpless; $("btn-pump-off").disabled = pumpless;
-  $("btn-power-on").disabled = powerless; $("btn-power-off").disabled = powerless;
+  // without a power relay the 12 V is simply on whenever the panel is in Auto: no buttons for it
+  $("btn-power-on").hidden = powerless; $("btn-power-off").hidden = powerless;
   $("btn-power-on").classList.toggle("active", !powerless && state.power.on);
   $("btn-pump-on").classList.toggle("active", !pumpless && state.pump.on);
   const sw = state.switch || {};
   const swText = !sw.configured ? "no on/off switch (--power-switch GPIO)" : `on/off switch: contact ${sw.closed ? "closed (on)" : (sw.armed ? "OPEN (off)" : "open, not armed: never seen closed, so it is ignored (not wired?)")}${sw.enabled ? "" : ", ignored"}`;
-  $("service-note").textContent = [swText, powerless ? "no power relay (--power GPIO)" : "", pumpless ? "no pump relay (--pump GPIO)" : ""].filter(Boolean).join(" · ");
+  $("service-note").textContent = [swText, pumpless ? "no pump relay (--pump GPIO)" : ""].filter(Boolean).join(" · ");
   const busy = !state.idle;
   $("keys-busy").hidden = !busy;
   $("keys").classList.toggle("disabled", busy);
