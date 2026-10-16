@@ -352,8 +352,13 @@ about 5 V. Logic unchanged: GPIO high, pump on. The SSR must run from the
 box's **5 V**, never the 12 V: the MOSFET's source is on the Pi's ground,
 and the 12 V supply's negative is the organ's, so 12 V here would join the
 two grounds. A small NPN (2N3904, 1 kΩ base, 10 kΩ base to emitter) does the
-same job. Neither a 2N7000 (threshold up to 3 V) nor a PC817 module (tried:
-its output could not sink the SSR's input current) has the margin.
+same job. Fitted on 2026-10-16: a **2N7000**, which works on this build;
+its threshold is specified up to 3 V, so a replacement part is checked by
+measuring 4.8 V or more across SSR 3-4 with the pump on, and the RFP30N06LE
+(threshold 1-2 V) is the sure substitute. A PC817 module does not have the
+margin (tried: its output could not sink the SSR's input current), and a
+leftover one in series with the MOSFET is what made the first MOSFET test
+read 2.1 V.
 Terminals 1 and 2 are the two ends of a triac and interchangeable.
 
 GPIO 24 rests low at boot, so the pump is off until organ_web says otherwise
